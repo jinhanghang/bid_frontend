@@ -10,6 +10,24 @@ import {
   setToken
 } from '@/utils/storage'
 
+function normalizeUserFromResponse(res = {}) {
+  const roleCodes = res?.roleCodes || res?.roles || []
+  const roleNames = res?.roleNames || []
+
+  return {
+    id: res?.userId ?? res?.id,
+    username: res?.username,
+    fullName: res?.fullName,
+    phone: res?.phone,
+    email: res?.email,
+    enterpriseId: res?.enterpriseId,
+    enterpriseName: res?.enterpriseName,
+    roles: roleCodes,
+    roleCodes,
+    roleNames
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: getToken(),
@@ -19,23 +37,18 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isLogin: (state) => Boolean(state.token),
-    displayName: (state) => state.user?.fullName || state.user?.username || state.user?.phone || '未登录'
+    displayName: (state) => state.user?.fullName || state.user?.username || state.user?.phone || '未登录',
+    roleCodes: (state) => state.user?.roleCodes || state.user?.roles || [],
+    enterpriseId: (state) => state.user?.enterpriseId
   },
   actions: {
     async login(payload) {
       const res = await loginApi(payload)
-      // 后端 LoginResponse: tokenType, token, userId, username, fullName, roles, permissions, menus
       const token = res?.token || ''
       setToken(token)
       this.token = token
 
-      this.user = {
-        id: res?.userId,
-        username: res?.username,
-        fullName: res?.fullName,
-        phone: res?.phone,
-        roles: res?.roles || []
-      }
+      this.user = normalizeUserFromResponse(res)
       this.permissions = res?.permissions || []
       this.menus = res?.menus || []
       setStoredUser(this.user)
@@ -46,9 +59,10 @@ export const useAuthStore = defineStore('auth', {
     async loadMe() {
       if (!this.token) return null
       const me = await getMe()
-      this.user = me
-      setStoredUser(me)
-      return me
+      this.user = normalizeUserFromResponse(me)
+      this.permissions = me?.permissions || this.permissions || []
+      setStoredUser(this.user)
+      return this.user
     },
 
     async logout() {

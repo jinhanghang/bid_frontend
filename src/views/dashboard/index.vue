@@ -20,12 +20,12 @@
 
       <div class="card card--table dashboard-guide">
         <div class="guide-title">主流程建议</div>
-        <el-steps :active="4" finish-status="success" align-center>
-          <el-step title="建项目" description="录入项目名称、预算、工期、客户等信息" />
-          <el-step title="配模板" description="选择标书模板和Prompt模板" />
-          <el-step title="上传资料" description="招标文件、资质、业绩等资料进入文件中心" />
-          <el-step title="AI生成" description="根据项目和变量调用 /ai/bid-project/{id}/generate" />
-          <el-step title="导出" description="通过 /ai/export/word/{resultId} 导出Word" />
+        <el-steps :active="5" finish-status="success" align-center>
+          <el-step title="建知识库" description="新建知识库并上传企业资料、招标文件、业绩文件" />
+          <el-step title="建项目" description="录入项目名称、企业、预算、工期、客户等信息" />
+          <el-step title="配模板" description="选择标书模板、Prompt模板和引用知识库" />
+          <el-step title="AI生成" description="根据项目、变量和知识库生成标书内容" />
+          <el-step title="导出" description="导出Word或Markdown文件" />
         </el-steps>
       </div>
     </div>

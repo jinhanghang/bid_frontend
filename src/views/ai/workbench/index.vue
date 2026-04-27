@@ -20,11 +20,21 @@
           </el-form-item>
 
           <el-form-item label="关联业务ID">
-            <el-input-number v-model="form.bizId" controls-position="right" style="width: 100%" />
+            <el-input
+              v-model="form.bizId"
+              class="number-input"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="请输入关联业务ID"
+              clearable
+            />
           </el-form-item>
 
-          <el-form-item label="Prompt模板ID">
-            <el-input-number v-model="form.promptTemplateId" controls-position="right" style="width: 100%" />
+          <el-form-item label="Prompt模板">
+            <el-select v-model="form.promptTemplateId" clearable filterable placeholder="请选择Prompt模板" style="width: 100%">
+              <el-option v-for="item in promptTemplates" :key="item.id" :label="`${item.name}（${item.scene || '-'}）`" :value="item.id" />
+            </el-select>
           </el-form-item>
 
           <el-row :gutter="12">
@@ -64,18 +74,36 @@
           <el-row :gutter="12">
             <el-col :span="12">
               <el-form-item label="预算金额">
-                <el-input-number v-model="form.budgetAmount" :min="0" :precision="2" controls-position="right" style="width: 100%" />
+                <el-input
+                v-model="form.budgetAmount"
+                class="number-input"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="请输入预算金额"
+                clearable
+              />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="工期天数">
-                <el-input-number v-model="form.periodDays" :min="0" controls-position="right" style="width: 100%" />
+                <el-input
+                v-model="form.periodDays"
+                class="number-input"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="请输入工期天数"
+                clearable
+              />
               </el-form-item>
             </el-col>
           </el-row>
 
-          <el-form-item label="知识库ID">
-            <JsonEditor v-model="form.knowledgeIds" :rows="4" placeholder="例如：[1,2,3]" />
+          <el-form-item label="引用知识库">
+            <el-select v-model="form.knowledgeIds" multiple clearable filterable placeholder="请选择要引用的知识库" style="width: 100%">
+              <el-option v-for="item in knowledgeBases" :key="item.id" :label="item.kbName" :value="item.id" />
+            </el-select>
           </el-form-item>
 
           <el-form-item label="动态变量">
@@ -89,12 +117,30 @@
           <el-row :gutter="12">
             <el-col :span="12">
               <el-form-item label="温度参数">
-                <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" controls-position="right" style="width: 100%" />
+                <el-input
+                v-model="form.temperature"
+                class="number-input"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                placeholder="请输入温度参数"
+                clearable
+              />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="最大Token">
-                <el-input-number v-model="form.maxTokens" :min="1000" :max="50000" controls-position="right" style="width: 100%" />
+                <el-input
+                v-model="form.maxTokens"
+                class="number-input"
+                type="number"
+                min="1000"
+                max="50000"
+                step="1"
+                placeholder="请输入最大Token"
+                clearable
+              />
               </el-form-item>
             </el-col>
           </el-row>
@@ -120,14 +166,17 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { generateAi } from '@/api/ai'
+import { createCrudApi } from '@/api/crud'
 import JsonEditor from '@/components/JsonEditor.vue'
 import { parseJsonLoose } from '@/utils/format'
 
 const loading = ref(false)
 const result = reactive({})
+const promptTemplates = ref([])
+const knowledgeBases = ref([])
 
 const form = reactive({
   bizType: 'bid',
@@ -141,12 +190,30 @@ const form = reactive({
   clientName: '',
   budgetAmount: 0,
   periodDays: 0,
-  knowledgeIds: '[]',
+  knowledgeIds: [],
   variables: '{}',
   extraRequirement: '',
   temperature: 0.7,
   maxTokens: 8192
 })
+
+
+onMounted(() => {
+  loadOptions()
+})
+
+async function loadOptions() {
+  try {
+    promptTemplates.value = await createCrudApi('/prompt-template').list()
+  } catch (e) {
+    promptTemplates.value = []
+  }
+  try {
+    knowledgeBases.value = await createCrudApi('/knowledge-base').list()
+  } catch (e) {
+    knowledgeBases.value = []
+  }
+}
 
 function reset() {
   Object.assign(form, {
@@ -161,13 +228,19 @@ function reset() {
     clientName: '',
     budgetAmount: 0,
     periodDays: 0,
-    knowledgeIds: '[]',
+    knowledgeIds: [],
     variables: '{}',
     extraRequirement: '',
     temperature: 0.7,
     maxTokens: 8192
   })
   for (const key of Object.keys(result)) delete result[key]
+}
+
+function toNumberOrUndefined(value) {
+  if (value === '' || value === null || value === undefined) return undefined
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : undefined
 }
 
 async function submitGenerate() {
@@ -179,12 +252,16 @@ async function submitGenerate() {
   try {
     const payload = {
       ...form,
-      bizId: form.bizId || undefined,
+      bizId: toNumberOrUndefined(form.bizId),
       promptTemplateId: form.promptTemplateId || undefined,
       modelProvider: form.modelProvider || undefined,
       modelName: form.modelName || undefined,
-      knowledgeIds: parseJsonLoose(form.knowledgeIds, []),
-      variables: parseJsonLoose(form.variables, {})
+      knowledgeIds: Array.isArray(form.knowledgeIds) ? form.knowledgeIds : parseJsonLoose(form.knowledgeIds, []),
+      variables: parseJsonLoose(form.variables, {}),
+      budgetAmount: toNumberOrUndefined(form.budgetAmount),
+      periodDays: toNumberOrUndefined(form.periodDays),
+      temperature: toNumberOrUndefined(form.temperature),
+      maxTokens: toNumberOrUndefined(form.maxTokens)
     }
     const res = await generateAi(payload)
     Object.assign(result, res || {})
@@ -223,6 +300,21 @@ async function submitGenerate() {
   margin: 12px 0;
   color: var(--text-sub);
   font-size: 13px;
+}
+
+
+.number-input {
+  width: 100%;
+}
+
+:deep(.number-input input[type='number']::-webkit-outer-spin-button),
+:deep(.number-input input[type='number']::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+:deep(.number-input input[type='number']) {
+  -moz-appearance: textfield;
 }
 
 @media (max-width: 1100px) {

@@ -8,6 +8,7 @@ const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
+const KnowledgeBase = () => import('@/views/knowledge/base/index.vue')
 
 const routes = [
   { path: '/login', component: Login, meta: { title: '登录', public: true } },
@@ -33,7 +34,7 @@ const routes = [
       { path: 'tender/notices', component: GenericCrudView, meta: { title: '招标公告', configKey: 'tenderNotice' } },
       { path: 'tender/reports', component: GenericCrudView, meta: { title: '一键报备', configKey: 'tenderReport' } },
 
-      { path: 'knowledge/bases', component: GenericCrudView, meta: { title: '知识库', configKey: 'knowledgeBase' } },
+      { path: 'knowledge/bases', component: KnowledgeBase, meta: { title: '知识库' } },
       { path: 'knowledge/files', component: GenericCrudView, meta: { title: '知识库文件', configKey: 'knowledgeFile' } },
 
       { path: 'system/users', component: UserManage, meta: { title: '用户管理' } },

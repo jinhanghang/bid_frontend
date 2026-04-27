@@ -59,23 +59,22 @@
               <el-icon><Collection /></el-icon>
               <span>知识库</span>
             </template>
-            <el-menu-item index="/knowledge/bases">知识库</el-menu-item>
-            <el-menu-item index="/knowledge/files">知识库文件</el-menu-item>
+            <el-menu-item index="/knowledge/bases">知识库管理</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="system">
+          <el-sub-menu v-if="showSystemMenu" index="system">
             <template #title>
               <el-icon><Setting /></el-icon>
               <span>系统管理</span>
             </template>
-            <el-menu-item index="/system/users">用户管理</el-menu-item>
-            <el-menu-item index="/system/roles">角色管理</el-menu-item>
-            <el-menu-item index="/system/menus">菜单管理</el-menu-item>
-            <el-menu-item index="/system/enterprises">企业管理</el-menu-item>
-            <el-menu-item index="/system/files">文件资源</el-menu-item>
-            <el-menu-item index="/system/configs">系统配置</el-menu-item>
-            <el-menu-item index="/system/dict-types">字典类型</el-menu-item>
-            <el-menu-item index="/system/dict-data">字典数据</el-menu-item>
+            <el-menu-item v-if="canManageUsers" index="/system/users">用户管理</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/roles">角色管理</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/menus">菜单管理</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/enterprises">企业管理</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/files">文件资源</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/configs">系统配置</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/dict-types">字典类型</el-menu-item>
+            <el-menu-item v-if="canManagePlatformSystem" index="/system/dict-data">字典数据</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-scrollbar>
@@ -95,7 +94,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>
-                  {{ auth.user?.phone || auth.user?.username || '暂无账号信息' }}
+                  {{ userSubText }}
                 </el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -122,8 +121,36 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
+const ROLE_SUPER_ADMIN = 'SUPERADMIN'
+const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
+const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
+
 const currentTitle = computed(() => route.meta.title || 'AI标书后台管理系统')
 const avatarText = computed(() => (auth.displayName || '用').slice(0, 1))
+const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
+const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
+const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
+const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
+const canManagePlatformSystem = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
+const showSystemMenu = computed(() => canManageUsers.value || canManagePlatformSystem.value)
+const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
+
+function normalizeRoleCode(value = '') {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE[_-]?/, '')
+    .replace(/[^A-Z0-9]/g, '')
+}
+
+function normalizeRoleList(values = []) {
+  if (!Array.isArray(values)) return []
+  return values.map((item) => {
+    if (typeof item === 'string') return normalizeRoleCode(item)
+    return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
+  }).filter(Boolean)
+}
 
 async function reloadMe() {
   await auth.loadMe()
