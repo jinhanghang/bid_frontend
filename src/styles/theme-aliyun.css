@@ -1,0 +1,38 @@
+:root {
+  --aliyun-orange: #2563eb;
+  --aliyun-orange-dark: #1d4ed8;
+  --aliyun-orange-light: #60a5fa;
+  --page-bg: #f5f7fb;
+  --card-bg: #ffffff;
+  --border: #e5e7eb;
+  --text-main: #111827;
+  --text-sub: #6b7280;
+  --shadow-soft: 0 8px 26px rgba(15, 23, 42, 0.06);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--aliyun-orange);
+  --el-button-border-color: var(--aliyun-orange);
+  --el-button-hover-bg-color: var(--aliyun-orange-dark);
+  --el-button-hover-border-color: var(--aliyun-orange-dark);
+}
+
+.el-menu {
+  --el-menu-active-color: #ffffff;
+  --el-menu-hover-bg-color: rgba(37, 99, 235, 0.10);
+}
+
+.el-table.ui-table th.el-table__cell {
+  background: #f8fafc !important;
+  color: #334155;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.el-table.ui-table td.el-table__cell {
+  color: #334155;
+}
+
+.el-table.ui-table .cell {
+  white-space: nowrap;
+}
