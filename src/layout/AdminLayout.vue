@@ -68,6 +68,7 @@
               <span>系统管理</span>
             </template>
             <el-menu-item v-if="canManageUsers" index="/system/users">用户管理</el-menu-item>
+            <el-menu-item v-if="canViewEnterpriseProfile" index="/system/enterprise-profile">企业资料</el-menu-item>
             <el-menu-item v-if="canManagePlatformSystem" index="/system/roles">角色管理</el-menu-item>
             <el-menu-item v-if="canManagePlatformSystem" index="/system/menus">菜单管理</el-menu-item>
             <el-menu-item v-if="canManagePlatformSystem" index="/system/enterprises">企业管理</el-menu-item>
@@ -133,6 +134,7 @@ const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLAT
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
 const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 const canManagePlatformSystem = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
+const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManagePlatformSystem.value)
 const showSystemMenu = computed(() => canManageUsers.value || canManagePlatformSystem.value)
 const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 
