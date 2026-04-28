@@ -28,6 +28,9 @@
         >
           <el-table-column prop="id" label="ID" width="90" />
           <el-table-column prop="projectName" label="项目名称" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="enterpriseId" label="所属企业" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ getEnterpriseName(row.enterpriseId, row.enterpriseName) }}</template>
+          </el-table-column>
           <el-table-column prop="projectCode" label="项目编号" min-width="150" show-overflow-tooltip />
           <el-table-column prop="projectType" label="项目类型" width="120" />
           <el-table-column prop="clientName" label="招标方/客户" min-width="180" show-overflow-tooltip />
@@ -83,21 +86,24 @@
           <el-input v-model="form.projectName" placeholder="请输入项目名称" />
         </el-form-item>
         <el-form-item label="项目编号">
-          <el-input v-model="form.projectCode" placeholder="请输入项目编号" />
-        </el-form-item>
-        <el-form-item label="创建用户ID" prop="userId">
-          <el-input-number v-model="form.userId" controls-position="right" style="width: 100%" />
-          <div class="form-tip">后端 t_bid_project.user_id 为必填；这里默认使用当前登录用户ID。</div>
+          <el-input v-model="form.projectCode" placeholder="可不填；由后端或人工维护" />
         </el-form-item>
         <el-row :gutter="12">
           <el-col :span="12">
-            <el-form-item label="企业ID">
-              <el-input-number v-model="form.enterpriseId" controls-position="right" style="width: 100%" />
+            <el-form-item label="所属企业">
+              <el-select v-model="form.enterpriseId" clearable filterable placeholder="请选择企业" style="width: 100%">
+                <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="项目类型">
-              <el-input v-model="form.projectType" placeholder="工程 / 服务 / 采购等" />
+              <el-select v-model="form.projectType" clearable filterable allow-create default-first-option placeholder="工程 / 服务 / 采购等" style="width: 100%">
+                <el-option label="工程类" value="工程类" />
+                <el-option label="服务类" value="服务类" />
+                <el-option label="采购类" value="采购类" />
+                <el-option label="政府采购" value="政府采购" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -123,17 +129,36 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="预算金额">
-              <el-input-number v-model="form.budgetAmount" :min="0" :precision="2" controls-position="right" style="width: 100%" />
+              <el-input
+                v-model="form.budgetAmount"
+                class="number-input"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="请输入预算金额"
+                clearable
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="工期天数">
-              <el-input-number v-model="form.periodDays" :min="0" controls-position="right" style="width: 100%" />
+              <el-input
+                v-model="form.periodDays"
+                class="number-input"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="请输入工期天数"
+                clearable
+              />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="知识库ID">
-          <JsonEditor v-model="form.knowledgeIds" :rows="4" placeholder="请输入知识库ID数组，例如：[1,2,3]" />
+        <el-form-item label="引用知识库">
+          <el-select v-model="form.knowledgeIds" multiple clearable filterable placeholder="请选择本项目要引用的知识库" style="width: 100%">
+            <el-option v-for="item in knowledgeBases" :key="item.id" :label="item.kbName" :value="item.id" />
+          </el-select>
+          <div class="form-tip">后续 AI 生成会优先使用这里选择的知识库资料。</div>
         </el-form-item>
         <el-form-item label="项目状态">
           <el-select v-model="form.status" style="width: 100%">
@@ -158,7 +183,7 @@
     <el-drawer v-model="generateDrawer.visible" title="AI生成标书内容" size="720px" destroy-on-close>
       <el-form :model="generateForm" label-width="130px">
         <el-alert
-          title="调用接口：POST /ai/bid-project/{projectId}/generate"
+          title="选择 Prompt 和知识库后生成标书内容，模型服务商/模型名称不填则使用后端默认配置。"
           type="info"
           show-icon
           :closable="false"
@@ -168,11 +193,20 @@
           <el-input :model-value="currentRow?.projectName" disabled />
         </el-form-item>
         <el-form-item label="业务类型">
-          <el-input v-model="generateForm.bizType" />
+          <el-select v-model="generateForm.bizType" style="width: 100%">
+            <el-option label="标书" value="bid" />
+            <el-option label="可研" value="feasibility" />
+            <el-option label="合同" value="contract" />
+          </el-select>
         </el-form-item>
         <el-form-item label="Prompt模板">
           <el-select v-model="generateForm.promptTemplateId" clearable filterable style="width: 100%">
             <el-option v-for="item in promptTemplates" :key="item.id" :label="`${item.name}（${item.scene || '-'}）`" :value="item.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="引用知识库">
+          <el-select v-model="generateForm.knowledgeIds" multiple clearable filterable placeholder="不选则使用项目已配置的知识库" style="width: 100%">
+            <el-option v-for="item in knowledgeBases" :key="item.id" :label="item.kbName" :value="item.id" />
           </el-select>
         </el-form-item>
         <el-row :gutter="12">
@@ -187,9 +221,6 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="知识库ID">
-          <JsonEditor v-model="generateForm.knowledgeIds" :rows="4" placeholder="不填则使用项目 knowledgeIds；例如：[1,2]" />
-        </el-form-item>
         <el-form-item label="动态变量">
           <JsonEditor v-model="generateForm.variables" :rows="8" placeholder='例如：{"project_name":"某项目","service_year":"3年"}' />
         </el-form-item>
@@ -199,12 +230,30 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="温度参数">
-              <el-input-number v-model="generateForm.temperature" :min="0" :max="2" :step="0.1" controls-position="right" style="width: 100%" />
+              <el-input
+                v-model="generateForm.temperature"
+                class="number-input"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                placeholder="请输入温度参数"
+                clearable
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="最大Token">
-              <el-input-number v-model="generateForm.maxTokens" :min="1000" :max="50000" controls-position="right" style="width: 100%" />
+              <el-input
+                v-model="generateForm.maxTokens"
+                class="number-input"
+                type="number"
+                min="1000"
+                max="50000"
+                step="1"
+                placeholder="请输入最大Token"
+                clearable
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -236,7 +285,6 @@
         @success="onUploadSuccess"
       />
       <el-table v-if="uploadedFiles.length" :data="uploadedFiles" border style="margin-top: 14px">
-        <el-table-column prop="id" label="文件ID" width="100" />
         <el-table-column prop="originalName" label="文件名" min-width="220" />
         <el-table-column prop="fileUrl" label="地址" min-width="180">
           <template #default="{ row }">
@@ -260,20 +308,24 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import JsonEditor from '@/components/JsonEditor.vue'
 import FileUploadBox from '@/components/FileUploadBox.vue'
-import { money, parseJsonLoose, toJsonText } from '@/utils/format'
+import { money, parseJsonLoose } from '@/utils/format'
 import { projectStatusMap } from '@/config/statusMaps'
 
 const projectApi = createCrudApi('/bid-project')
+const enterpriseApi = createCrudApi('/enterprise')
 const bidTemplateApi = createCrudApi('/bid-template')
 const promptApi = createCrudApi('/prompt-template')
+const knowledgeBaseApi = createCrudApi('/knowledge-base')
 const auth = useAuthStore()
 
 const loading = ref(false)
 const generating = ref(false)
 const rows = ref([])
 const keyword = ref('')
+const enterprises = ref([])
 const bidTemplates = ref([])
 const promptTemplates = ref([])
+const knowledgeBases = ref([])
 const currentRow = ref(null)
 const lastResultId = ref(null)
 const uploadedFiles = ref([])
@@ -298,16 +350,15 @@ const contentForm = reactive({ contentMarkdown: '' })
 let timer = null
 
 const rules = {
-  projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
-  userId: [{ required: true, message: '请输入创建用户ID', trigger: 'blur' }]
+  projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
 }
 
 const displayRows = computed(() => {
   const key = keyword.value.trim().toLowerCase()
   if (!key) return rows.value
   return rows.value.filter((row) => {
-    return ['projectName', 'projectCode', 'clientName', 'projectType', 'status']
-      .some((field) => String(row[field] ?? '').toLowerCase().includes(key))
+    return ['projectName', 'projectCode', 'clientName', 'projectType', 'status', 'enterpriseName']
+      .some((field) => String(row[field] ?? '').toLowerCase().includes(key)) || getEnterpriseName(row.enterpriseId).toLowerCase().includes(key)
   })
 })
 
@@ -315,6 +366,19 @@ onMounted(() => {
   loadData()
   loadOptions()
 })
+
+function normalizeIdList(value) {
+  const parsed = parseJsonLoose(value, value)
+  if (Array.isArray(parsed)) return parsed.filter((item) => item !== null && item !== undefined && item !== '')
+  if (parsed === null || parsed === undefined || parsed === '') return []
+  return [parsed]
+}
+
+function getEnterpriseName(id, fallback = '') {
+  if (fallback) return fallback
+  const match = enterprises.value.find((item) => String(item.id) === String(id))
+  return match?.enterpriseName || (id ? `企业 #${id}` : '-')
+}
 
 function onKeywordInput() {
   clearTimeout(timer)
@@ -340,16 +404,13 @@ async function loadData() {
 }
 
 async function loadOptions() {
-  try {
-    bidTemplates.value = await bidTemplateApi.list()
-  } catch (e) {
-    bidTemplates.value = []
-  }
-  try {
-    promptTemplates.value = await promptApi.list()
-  } catch (e) {
-    promptTemplates.value = []
-  }
+  const tasks = [
+    enterpriseApi.list().then((res) => { enterprises.value = Array.isArray(res) ? res : [] }).catch(() => { enterprises.value = [] }),
+    bidTemplateApi.list().then((res) => { bidTemplates.value = Array.isArray(res) ? res : [] }).catch(() => { bidTemplates.value = [] }),
+    promptApi.list().then((res) => { promptTemplates.value = Array.isArray(res) ? res : [] }).catch(() => { promptTemplates.value = [] }),
+    knowledgeBaseApi.list().then((res) => { knowledgeBases.value = Array.isArray(res) ? res : [] }).catch(() => { knowledgeBases.value = [] })
+  ]
+  await Promise.all(tasks)
 }
 
 function resetProjectForm(row = {}) {
@@ -362,7 +423,7 @@ function resetProjectForm(row = {}) {
     projectCode: row.projectCode ?? '',
     bidTemplateId: row.bidTemplateId ?? '',
     promptTemplateId: row.promptTemplateId ?? '',
-    knowledgeIds: toJsonText(row.knowledgeIds || []),
+    knowledgeIds: normalizeIdList(row.knowledgeIds),
     projectType: row.projectType ?? '',
     clientName: row.clientName ?? '',
     budgetAmount: row.budgetAmount ?? 0,
@@ -387,16 +448,30 @@ function openEdit(row) {
   formDialog.visible = true
 }
 
+function toNumberOrUndefined(value) {
+  if (value === '' || value === null || value === undefined) return undefined
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : undefined
+}
+
 function normalizeProjectPayload() {
-  return {
+  const payload = {
     ...form,
-    knowledgeIds: parseJsonLoose(form.knowledgeIds, [])
+    userId: form.userId || auth.user?.id,
+    knowledgeIds: normalizeIdList(form.knowledgeIds)
   }
+  payload.budgetAmount = toNumberOrUndefined(payload.budgetAmount)
+  payload.periodDays = toNumberOrUndefined(payload.periodDays)
+  return payload
 }
 
 async function submitForm() {
   await formRef.value.validate()
   const payload = normalizeProjectPayload()
+  if (!payload.userId) {
+    ElMessage.warning('没有获取到当前登录用户，请刷新用户信息后再保存')
+    return
+  }
   if (formDialog.isEdit) {
     await projectApi.update(form.id, payload)
     ElMessage.success('修改成功')
@@ -423,7 +498,7 @@ function resetGenerateForm(row) {
     promptTemplateId: row.promptTemplateId || '',
     modelProvider: '',
     modelName: '',
-    knowledgeIds: '',
+    knowledgeIds: normalizeIdList(row.knowledgeIds),
     variables: '{}',
     extraRequirement: '',
     temperature: 0.7,
@@ -445,10 +520,12 @@ async function submitGenerate() {
     const payload = {
       ...generateForm,
       promptTemplateId: generateForm.promptTemplateId || undefined,
-      knowledgeIds: parseJsonLoose(generateForm.knowledgeIds, undefined),
+      knowledgeIds: normalizeIdList(generateForm.knowledgeIds),
       variables: parseJsonLoose(generateForm.variables, {}),
       modelProvider: generateForm.modelProvider || undefined,
-      modelName: generateForm.modelName || undefined
+      modelName: generateForm.modelName || undefined,
+      temperature: toNumberOrUndefined(generateForm.temperature),
+      maxTokens: toNumberOrUndefined(generateForm.maxTokens)
     }
     const res = await generateBidProject(currentRow.value.id, payload)
     Object.assign(generateResult, res || {})
@@ -501,3 +578,19 @@ async function doExportMarkdown() {
   if (file?.fileUrl) window.open(file.fileUrl, '_blank')
 }
 </script>
+
+<style scoped>
+.number-input {
+  width: 100%;
+}
+
+:deep(.number-input input[type='number']::-webkit-outer-spin-button),
+:deep(.number-input input[type='number']::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+:deep(.number-input input[type='number']) {
+  -moz-appearance: textfield;
+}
+</style>

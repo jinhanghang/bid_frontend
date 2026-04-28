@@ -4,7 +4,7 @@
       <div class="card card--table">
         <div class="list-head">
           <div class="list-head__left">
-            <!-- 按你的列表页规范：左侧只放一个 keyword 模糊查询，不放 label，不放查询/重置按钮。 -->
+            <!-- 按列表页统一规范：左侧只放一个 keyword 模糊查询，不放 label，不放查询/重置按钮。 -->
             <el-input
               v-model="keyword"
               class="filter-input"
@@ -29,7 +29,7 @@
           v-loading="loading"
         >
           <el-table-column
-            v-for="col in config.columns"
+            v-for="col in visibleColumns"
             :key="col.prop"
             :prop="col.prop"
             :label="col.label"
@@ -42,8 +42,12 @@
               <el-link v-else-if="col.type === 'link' && row[col.prop]" type="primary" :href="row[col.prop]" target="_blank">
                 打开链接
               </el-link>
+              <el-link v-else-if="col.type === 'fileLink' && getFileUrl(row, col)" type="primary" :href="getFileUrl(row, col)" target="_blank">
+                {{ getFileName(row, col) }}
+              </el-link>
               <span v-else-if="col.type === 'money'">¥ {{ money(row[col.prop]) }}</span>
               <span v-else-if="col.type === 'fileSize'">{{ fileSize(row[col.prop]) }}</span>
+              <span v-else-if="col.type === 'optionLabel'">{{ getOptionLabel(col, row[col.prop]) }}</span>
               <span v-else>{{ row[col.prop] ?? '-' }}</span>
             </template>
           </el-table-column>
@@ -74,25 +78,32 @@
       destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="130px">
-        <template v-for="field in config.formFields" :key="field.prop">
+        <template v-for="field in visibleFormFields" :key="field.prop">
           <el-form-item :label="field.label" :prop="field.prop">
-            <el-input-number
+            <el-input
               v-if="field.type === 'number'"
               v-model="form[field.prop]"
+              class="number-input"
+              type="number"
               :min="field.min"
               :max="field.max"
-              controls-position="right"
-              style="width: 100%"
+              :step="field.step || 1"
+              :disabled="field.disabled"
+              :placeholder="field.placeholder || `请输入${field.label}`"
+              clearable
             />
             <el-select
               v-else-if="field.type === 'select'"
               v-model="form[field.prop]"
+              :multiple="Boolean(field.multiple)"
+              :disabled="field.disabled"
               clearable
               filterable
+              :placeholder="field.placeholder || `请选择${field.label}`"
               style="width: 100%"
             >
               <el-option
-                v-for="opt in field.options || []"
+                v-for="opt in getFieldOptions(field)"
                 :key="String(opt.value)"
                 :label="opt.label"
                 :value="opt.value"
@@ -103,6 +114,7 @@
               v-model="form[field.prop]"
               value-format="YYYY-MM-DD"
               type="date"
+              :disabled="field.disabled"
               style="width: 100%"
             />
             <el-date-picker
@@ -110,6 +122,7 @@
               v-model="form[field.prop]"
               value-format="YYYY-MM-DD HH:mm:ss"
               type="datetime"
+              :disabled="field.disabled"
               style="width: 100%"
             />
             <JsonEditor
@@ -117,17 +130,34 @@
               v-model="form[field.prop]"
               :rows="field.rows || 6"
             />
+            <div v-else-if="field.type === 'fileUpload'" class="upload-field">
+              <FileUploadBox
+                :module-type="field.moduleType || 'other'"
+                :biz-id="dialog.id || ''"
+                :private-flag="field.privateFlag !== false"
+                @success="(file) => onFormFileUpload(field, file)"
+              />
+              <div v-if="form[field.prop]" class="form-tip upload-value">
+                已选择文件：
+                <el-link v-if="form[`_${field.prop}FileUrl`]" :href="form[`_${field.prop}FileUrl`]" target="_blank" type="primary">
+                  {{ form[`_${field.prop}FileName`] || `文件 #${form[field.prop]}` }}
+                </el-link>
+                <span v-else>{{ form[`_${field.prop}FileName`] || `文件 #${form[field.prop]}` }}</span>
+              </div>
+            </div>
             <el-input
               v-else-if="field.type === 'textarea'"
               v-model="form[field.prop]"
               type="textarea"
               :rows="field.rows || 4"
+              :disabled="field.disabled"
             />
-            <el-input v-else v-model="form[field.prop]" clearable />
+            <el-input v-else v-model="form[field.prop]" :disabled="field.disabled" clearable />
+            <div v-if="field.tip" class="form-tip">{{ field.tip }}</div>
           </el-form-item>
         </template>
 
-        <div v-if="!config.formFields.length" class="form-tip">
+        <div v-if="!visibleFormFields.length" class="form-tip">
           当前模块配置为只读，仅用于查看后端数据。
         </div>
       </el-form>
@@ -145,9 +175,11 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { createCrudApi } from '@/api/crud'
+import { useAuthStore } from '@/stores/auth'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import JsonEditor from '@/components/JsonEditor.vue'
+import FileUploadBox from '@/components/FileUploadBox.vue'
 import { fileSize, money, parseJsonLoose } from '@/utils/format'
 
 const props = defineProps({
@@ -157,11 +189,13 @@ const props = defineProps({
   }
 })
 
+const auth = useAuthStore()
 const loading = ref(false)
 const rows = ref([])
 const keyword = ref('')
 const formRef = ref()
 const form = reactive({})
+const optionStore = reactive({})
 const pager = reactive({
   page: 1,
   size: 10,
@@ -176,6 +210,8 @@ const dialog = reactive({
 })
 
 const api = computed(() => createCrudApi(props.config.baseUrl))
+const visibleColumns = computed(() => (props.config.columns || []).filter((col) => !col.hidden))
+const visibleFormFields = computed(() => (props.config.formFields || []).filter((field) => !field.hidden))
 
 const displayRows = computed(() => {
   const key = keyword.value.trim().toLowerCase()
@@ -188,8 +224,8 @@ const displayRows = computed(() => {
 const rules = computed(() => {
   const obj = {}
   for (const field of props.config.formFields || []) {
-    if (field.required) {
-      obj[field.prop] = [{ required: true, message: `请填写${field.label}`, trigger: 'blur' }]
+    if (field.required && !field.hidden) {
+      obj[field.prop] = [{ required: true, message: field.type === 'select' ? `请选择${field.label}` : `请填写${field.label}`, trigger: field.type === 'select' ? 'change' : 'blur' }]
     }
   }
   return obj
@@ -200,10 +236,77 @@ watch(
   () => {
     pager.page = 1
     keyword.value = ''
+    loadFieldOptions()
     loadData()
   },
   { immediate: true }
 )
+
+function getOptionKey(source, fallbackProp) {
+  if (!source) return fallbackProp
+  return source.key || `${source.baseUrl || 'static'}:${source.label || 'label'}:${source.value || 'value'}:${fallbackProp}`
+}
+
+async function loadOptionsBySource(source, fallbackProp) {
+  const key = getOptionKey(source, fallbackProp)
+  if (optionStore[key]) return optionStore[key]
+  if (!source?.baseUrl) return []
+  try {
+    const list = await createCrudApi(source.baseUrl).list(source.params || {})
+    const labelField = source.label || 'label'
+    const valueField = source.value || 'value'
+    optionStore[key] = (Array.isArray(list) ? list : []).map((item) => ({
+      label: item[labelField] || item.name || item.title || item.id,
+      value: item[valueField]
+    }))
+  } catch (e) {
+    optionStore[key] = []
+  }
+  return optionStore[key]
+}
+
+async function loadFieldOptions() {
+  const fields = props.config.formFields || []
+  const columns = props.config.columns || []
+  const tasks = []
+  for (const field of fields) {
+    if (field.optionSource) tasks.push(loadOptionsBySource(field.optionSource, field.prop))
+  }
+  for (const col of columns) {
+    if (col.optionSource) tasks.push(loadOptionsBySource(col.optionSource, col.prop))
+  }
+  await Promise.all(tasks)
+}
+
+function getFieldOptions(field) {
+  if (field.options) return field.options
+  if (!field.optionSource) return []
+  return optionStore[getOptionKey(field.optionSource, field.prop)] || []
+}
+
+function getOptionLabel(col, value) {
+  if (value === null || value === undefined || value === '') return '-'
+  const options = col.options || optionStore[getOptionKey(col.optionSource, col.prop)] || []
+  const match = options.find((opt) => String(opt.value) === String(value))
+  return match?.label || value
+}
+
+function getFileUrl(row, col) {
+  return row[col.urlProp || 'fileUrl'] || row.fileUrl || ''
+}
+
+function getFileName(row, col) {
+  return row[col.nameProp || 'originalName'] || row.originalName || row.fileName || '打开文件'
+}
+
+function resolveDefault(field, row = {}) {
+  const value = row[field.prop]
+  if (value !== undefined && value !== null) return value
+  if (field.defaultFromCurrentUser === 'id') return auth.user?.id ?? ''
+  if (field.defaultFromCurrentUser === 'enterpriseId') return auth.user?.enterpriseId ?? ''
+  if (field.multiple) return Array.isArray(field.default) ? field.default : []
+  return field.default ?? ''
+}
 
 function onKeywordInput() {
   clearTimeout(timer)
@@ -234,8 +337,11 @@ async function loadData() {
 function resetForm(row = {}) {
   for (const key of Object.keys(form)) delete form[key]
   for (const field of props.config.formFields || []) {
-    const value = row[field.prop]
-    form[field.prop] = value !== undefined && value !== null ? value : field.default ?? ''
+    form[field.prop] = resolveDefault(field, row)
+    if (field.type === 'fileUpload') {
+      form[`_${field.prop}FileName`] = row.originalName || row.fileName || ''
+      form[`_${field.prop}FileUrl`] = row.fileUrl || ''
+    }
   }
 }
 
@@ -253,14 +359,33 @@ function openEdit(row) {
   dialog.visible = true
 }
 
+function toNumberOrUndefined(value) {
+  if (value === '' || value === null || value === undefined) return undefined
+  const numberValue = Number(value)
+  return Number.isFinite(numberValue) ? numberValue : undefined
+}
+
 function normalizePayload() {
   const payload = { ...form }
+  for (const key of Object.keys(payload)) {
+    if (key.startsWith('_')) delete payload[key]
+  }
   for (const field of props.config.formFields || []) {
     if (field.type === 'json') {
       payload[field.prop] = parseJsonLoose(payload[field.prop], payload[field.prop] || null)
     }
+    if (field.type === 'number') {
+      payload[field.prop] = toNumberOrUndefined(payload[field.prop])
+    }
   }
   return payload
+}
+
+function onFormFileUpload(field, file) {
+  form[field.prop] = file?.id || file?.fileId || ''
+  form[`_${field.prop}FileName`] = file?.originalName || file?.fileName || ''
+  form[`_${field.prop}FileUrl`] = file?.fileUrl || ''
+  ElMessage.success('文件已绑定到当前表单，保存后生效')
 }
 
 async function submitForm() {
@@ -287,3 +412,20 @@ async function removeRow(row) {
   loadData()
 }
 </script>
+
+
+<style scoped>
+.number-input {
+  width: 100%;
+}
+
+:deep(.number-input input[type='number']::-webkit-outer-spin-button),
+:deep(.number-input input[type='number']::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+:deep(.number-input input[type='number']) {
+  -moz-appearance: textfield;
+}
+</style>
