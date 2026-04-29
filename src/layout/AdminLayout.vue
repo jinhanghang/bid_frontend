@@ -21,7 +21,7 @@
             <span>工作台</span>
           </el-menu-item>
 
-          <el-sub-menu index="bid">
+          <el-sub-menu v-if="canUseBusiness" index="bid">
             <template #title>
               <el-icon><Document /></el-icon>
               <span>标书业务</span>
@@ -31,20 +31,20 @@
             <el-menu-item index="/bid/template-variables">模板变量</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="ai">
+          <el-sub-menu v-if="canUseBusiness" index="ai">
             <template #title>
               <el-icon><MagicStick /></el-icon>
               <span>AI能力</span>
             </template>
             <el-menu-item index="/ai/workbench">AI生成工作台</el-menu-item>
             <el-menu-item index="/ai/prompts">Prompt模板</el-menu-item>
-            <el-menu-item index="/ai/models">模型配置</el-menu-item>
+            <el-menu-item v-if="canManageAiModel" index="/ai/models">模型配置</el-menu-item>
             <el-menu-item index="/ai/tasks">生成任务</el-menu-item>
             <el-menu-item index="/ai/results">生成结果</el-menu-item>
             <el-menu-item index="/ai/exports">导出记录</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="tender">
+          <el-sub-menu v-if="canUseBusiness" index="tender">
             <template #title>
               <el-icon><Tickets /></el-icon>
               <span>一键中标</span>
@@ -54,7 +54,7 @@
             <el-menu-item index="/tender/reports">一键报备</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="knowledge">
+          <el-sub-menu v-if="canUseBusiness" index="knowledge">
             <template #title>
               <el-icon><Collection /></el-icon>
               <span>知识库</span>
@@ -68,14 +68,16 @@
               <span>系统管理</span>
             </template>
             <el-menu-item v-if="canManageUsers" index="/system/users">用户管理</el-menu-item>
+            <el-menu-item v-if="canSubmitEnterpriseApply" index="/system/enterprise-apply">企业申请</el-menu-item>
+            <el-menu-item v-if="canAuditEnterpriseApply" index="/system/enterprise-apply-audit">企业申请审核</el-menu-item>
             <el-menu-item v-if="canViewEnterpriseProfile" index="/system/enterprise-profile">企业资料</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/roles">角色管理</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/menus">菜单管理</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/enterprises">企业管理</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/files">文件资源</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/configs">系统配置</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/dict-types">字典类型</el-menu-item>
-            <el-menu-item v-if="canManagePlatformSystem" index="/system/dict-data">字典数据</el-menu-item>
+            <el-menu-item v-if="canManageEnterprise" index="/system/enterprises">企业管理</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/roles">角色管理</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/menus">菜单管理</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/files">文件资源</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/configs">系统配置</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/dict-types">字典类型</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/dict-data">字典数据</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-scrollbar>
@@ -132,10 +134,16 @@ const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || au
 const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
 const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
-const canManagePlatformSystem = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
-const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManagePlatformSystem.value)
-const showSystemMenu = computed(() => canManageUsers.value || canManagePlatformSystem.value)
+const canManageEnterprise = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
+const canManageCoreSystem = computed(() => isSuperAdmin.value)
+const canManageAiModel = computed(() => isSuperAdmin.value)
+const canUseBusiness = computed(() => hasEnterprise.value || canManageEnterprise.value)
+const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManageEnterprise.value)
+const canSubmitEnterpriseApply = computed(() => !hasEnterprise.value && !canManageEnterprise.value)
+const canAuditEnterpriseApply = computed(() => canManageEnterprise.value || isEnterpriseAdmin.value)
+const showSystemMenu = computed(() => canManageUsers.value || canManageEnterprise.value || canManageCoreSystem.value || canSubmitEnterpriseApply.value || canAuditEnterpriseApply.value)
 const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 
 function normalizeRoleCode(value = '') {
