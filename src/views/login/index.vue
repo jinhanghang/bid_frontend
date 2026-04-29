@@ -103,13 +103,14 @@
         class="login-form"
         @submit.prevent
       >
-        <el-form-item prop="account">
+        <el-form-item prop="phone">
           <div class="phone-input-wrap">
             <div class="area-code">+86</div>
             <el-input
-              v-model.trim="passwordForm.account"
+              v-model.trim="passwordForm.phone"
               size="large"
-              placeholder="请输入手机号/账号"
+              placeholder="请输入手机号"
+              maxlength="11"
               @keyup.enter="submitPasswordLogin"
             />
           </div>
@@ -202,7 +203,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
-const activeTab = ref('sms')
+const activeTab = ref('password')
 const smsFormRef = ref()
 const passwordFormRef = ref()
 const loading = ref(false)
@@ -223,7 +224,7 @@ const smsForm = reactive({
 })
 
 const passwordForm = reactive({
-  account: '',
+  phone: '',
   password: '',
   captchaKey: '',
   captchaCode: '',
@@ -242,7 +243,10 @@ const smsRules = {
 }
 
 const passwordRules = {
-  account: [{ required: true, message: '请输入手机号/账号', trigger: 'blur' }],
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: phoneReg, message: '手机号格式不正确', trigger: 'blur' }
+  ],
   password: [{ required: true, message: '请输入登录密码', trigger: 'blur' }],
   captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }]
 }
@@ -324,7 +328,7 @@ async function submitPasswordLogin() {
   loading.value = true
   try {
     await auth.login({
-      account: passwordForm.account,
+      phone: passwordForm.phone,
       password: passwordForm.password,
       captchaKey: passwordForm.captchaKey,
       captchaCode: passwordForm.captchaCode

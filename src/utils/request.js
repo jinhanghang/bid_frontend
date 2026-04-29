@@ -3,6 +3,8 @@ import { ElMessage } from 'element-plus'
 import router from '@/router'
 import { getToken, clearAuthStorage } from '@/utils/storage'
 
+let loginExpiredNotified = false
+
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/ai_bid/api',
   timeout: 120000
@@ -38,8 +40,13 @@ service.interceptors.response.use(
 
     if (status === 401) {
       clearAuthStorage()
-      ElMessage.warning('登录已过期，请重新登录')
-      router.replace('/login')
+      if (!loginExpiredNotified) {
+        loginExpiredNotified = true
+        ElMessage.warning('登录已过期，请重新登录')
+      }
+      if (router.currentRoute.value.path !== '/login') {
+        router.replace('/login')
+      }
       return Promise.reject(error)
     }
 
