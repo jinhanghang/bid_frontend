@@ -1,3 +1,4 @@
+
 <template>
   <div class="page">
     <div class="page-body kb-page">
@@ -36,6 +37,14 @@
             </template>
           </el-table-column>
           <el-table-column prop="fileCount" label="文件" width="70" />
+          <el-table-column prop="chunkCount" label="切片" width="70" />
+          <el-table-column prop="embeddingStatus" label="入库" width="90">
+            <template #default="{ row }">
+              <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light">
+                {{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="status" label="状态" width="90">
             <template #default="{ row }">
               <StatusTag :value="row.status" :map="enableMap" />
@@ -73,11 +82,15 @@
                 <span> · {{ selectedBase.description || '暂无描述' }}</span>
               </div>
             </div>
-            <el-button type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
+            <div class="kb-header-actions">
+              <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
+              <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
+              <el-button type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
+            </div>
           </div>
 
           <el-alert
-            title="当前只做资料归档和企业隔离；文件解析、切片、向量化、AI调用后续最后统一接入。"
+            title="文件加入知识库后会自动触发：OSS存储 → 文档解析 → 文本切片 → Embedding向量化 → 可检索问答。解析失败时可点击“重新入库”。"
             type="success"
             show-icon
             :closable="false"
@@ -114,11 +127,13 @@
               </template>
             </el-table-column>
             <el-table-column prop="chunkCount" label="切片数" width="90" />
+            <el-table-column prop="errorMsg" label="错误信息" min-width="180" show-overflow-tooltip />
             <el-table-column prop="createTime" label="添加时间" width="170" />
-            <el-table-column label="操作" width="120" fixed="right">
+            <el-table-column label="操作" width="210" fixed="right">
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
+                  <el-button link type="success" @click="rebuildFile(row)">重新入库</el-button>
                   <el-button link type="danger" @click="deleteFile(row)">删除</el-button>
                 </div>
               </template>
@@ -183,7 +198,75 @@
       />
 
       <div class="form-tip" style="margin-top: 10px">
-        文件上传成功后，系统会自动把文件加入当前知识库。
+        文件上传成功后，系统会自动把文件加入当前知识库，并开始解析、切片和向量化。
+      </div>
+    </el-dialog>
+
+    <el-dialog v-model="searchDialog.visible" title="知识库检索测试" width="820px" destroy-on-close>
+      <el-form label-width="90px">
+        <el-form-item label="检索问题">
+          <el-input
+            v-model="searchForm.query"
+            type="textarea"
+            :rows="3"
+            placeholder="例如：公司有哪些类似项目业绩？"
+          />
+        </el-form-item>
+        <el-form-item label="返回数量">
+          <el-input-number v-model="searchForm.topK" :min="1" :max="20" />
+        </el-form-item>
+      </el-form>
+
+      <div class="dialog-actions">
+        <el-button type="primary" :loading="searchDialog.loading" @click="submitSearch">开始检索</el-button>
+      </div>
+
+      <div v-if="searchResult.length" class="hit-list">
+        <div v-for="item in searchResult" :key="item.chunkId" class="hit-card">
+          <div class="hit-head">
+            <span>相似度：{{ formatScore(item.score) }}</span>
+            <span>{{ item.fileName || `文件#${item.knowledgeFileId}` }}</span>
+          </div>
+          <div class="hit-content">{{ item.content }}</div>
+        </div>
+      </div>
+
+      <el-empty v-else description="暂无检索结果" />
+    </el-dialog>
+
+    <el-dialog v-model="askDialog.visible" title="知识库问答" width="860px" destroy-on-close>
+      <el-form label-width="90px">
+        <el-form-item label="问题">
+          <el-input
+            v-model="askForm.question"
+            type="textarea"
+            :rows="3"
+            placeholder="例如：根据企业资料，总结一下我们的核心优势"
+          />
+        </el-form-item>
+        <el-form-item label="引用数量">
+          <el-input-number v-model="askForm.topK" :min="1" :max="10" />
+        </el-form-item>
+      </el-form>
+
+      <div class="dialog-actions">
+        <el-button type="primary" :loading="askDialog.loading" @click="submitAsk">生成回答</el-button>
+      </div>
+
+      <div v-if="askAnswer" class="answer-box">
+        <div class="answer-title">AI回答</div>
+        <div class="answer-content">{{ askAnswer }}</div>
+      </div>
+
+      <div v-if="askReferences.length" class="hit-list">
+        <div class="answer-title">引用片段</div>
+        <div v-for="item in askReferences" :key="item.chunkId" class="hit-card">
+          <div class="hit-head">
+            <span>相似度：{{ formatScore(item.score) }}</span>
+            <span>{{ item.fileName || `文件#${item.knowledgeFileId}` }}</span>
+          </div>
+          <div class="hit-content">{{ item.content }}</div>
+        </div>
       </div>
     </el-dialog>
   </div>
@@ -192,7 +275,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { ChatLineRound, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
@@ -200,12 +283,15 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { enableMap } from '@/config/statusMaps'
 import {
+  askKnowledge,
   createKnowledgeBase,
   createKnowledgeFile,
   deleteKnowledgeBase,
   deleteKnowledgeFile,
   pageKnowledgeBases,
   pageKnowledgeFiles,
+  rebuildKnowledgeFile,
+  searchKnowledge,
   updateKnowledgeBase,
   updateKnowledgeBaseStatus
 } from '@/api/knowledge'
@@ -240,6 +326,30 @@ const baseDialog = reactive({
 const uploadDialog = reactive({
   visible: false
 })
+
+const searchDialog = reactive({
+  visible: false,
+  loading: false
+})
+
+const askDialog = reactive({
+  visible: false,
+  loading: false
+})
+
+const searchForm = reactive({
+  query: '',
+  topK: 5
+})
+
+const askForm = reactive({
+  question: '',
+  topK: 5
+})
+
+const searchResult = ref([])
+const askAnswer = ref('')
+const askReferences = ref([])
 
 const baseForm = reactive({
   enterpriseId: '',
@@ -489,11 +599,79 @@ async function onKnowledgeFileUploaded(file) {
     fileId
   })
 
-  ElMessage.success('文件已添加到当前知识库')
+  ElMessage.success('文件已添加到当前知识库，正在解析入库')
   uploadDialog.visible = false
 
   await loadFiles()
   await loadBases(selectedBase.value.id)
+}
+
+async function rebuildFile(row) {
+  await ElMessageBox.confirm(`确定重新解析并向量化「${row.fileName || row.id}」吗？`, '重新入库', {
+    type: 'warning'
+  })
+
+  await rebuildKnowledgeFile(row.id, true)
+  ElMessage.success('已提交重新入库任务，请稍后刷新查看状态')
+  await loadFiles()
+}
+
+function openSearchDialog() {
+  if (!selectedBase.value?.id) {
+    ElMessage.warning('请先选择知识库')
+    return
+  }
+  searchDialog.visible = true
+  searchResult.value = []
+}
+
+function openAskDialog() {
+  if (!selectedBase.value?.id) {
+    ElMessage.warning('请先选择知识库')
+    return
+  }
+  askDialog.visible = true
+  askAnswer.value = ''
+  askReferences.value = []
+}
+
+async function submitSearch() {
+  if (!searchForm.query.trim()) {
+    ElMessage.warning('请输入检索问题')
+    return
+  }
+
+  searchDialog.loading = true
+  try {
+    const res = await searchKnowledge({
+      knowledgeBaseIds: [selectedBase.value.id],
+      query: searchForm.query,
+      topK: searchForm.topK
+    })
+    searchResult.value = res?.hits || []
+  } finally {
+    searchDialog.loading = false
+  }
+}
+
+async function submitAsk() {
+  if (!askForm.question.trim()) {
+    ElMessage.warning('请输入问题')
+    return
+  }
+
+  askDialog.loading = true
+  try {
+    const res = await askKnowledge({
+      knowledgeBaseIds: [selectedBase.value.id],
+      question: askForm.question,
+      topK: askForm.topK
+    })
+    askAnswer.value = res?.answer || ''
+    askReferences.value = res?.references || []
+  } finally {
+    askDialog.loading = false
+  }
 }
 
 function openFile(row) {
@@ -523,6 +701,11 @@ function formatFileSize(size) {
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`
 }
+
+function formatScore(score) {
+  const value = Number(score || 0)
+  return value.toFixed(4)
+}
 </script>
 
 <style scoped>
@@ -545,6 +728,14 @@ function formatFileSize(size) {
   margin-bottom: 12px;
 }
 
+.kb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .kb-title {
   font-size: 18px;
   font-weight: 800;
@@ -561,6 +752,60 @@ function formatFileSize(size) {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.hit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 440px;
+  overflow: auto;
+}
+
+.hit-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.hit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.hit-content {
+  color: var(--text-main);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.answer-box {
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+
+.answer-title {
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.answer-content {
+  line-height: 1.8;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 1180px) {

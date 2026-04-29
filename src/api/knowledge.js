@@ -47,3 +47,17 @@ export function createKnowledgeFile(data) {
 export function deleteKnowledgeFile(id) {
   return request.delete(`/knowledge-file/${id}`)
 }
+
+export function rebuildKnowledgeFile(id, async = true) {
+  return request.post(`/knowledge-vector/files/${id}/rebuild`, null, {
+    params: { async }
+  })
+}
+
+export function searchKnowledge(data) {
+  return request.post('/knowledge-vector/search', data)
+}
+
+export function askKnowledge(data) {
+  return request.post('/knowledge-vector/ask', data)
+}
