@@ -1,298 +1,449 @@
 <template>
   <div class="page">
-    <div class="page-body">
-      <div class="card card--table">
+    <div class="page-body project-page">
+      <!-- 左侧：项目列表 -->
+      <div class="card card--table project-left">
         <div class="list-head">
           <div class="list-head__left">
             <el-input
               v-model="keyword"
               class="filter-input"
-              placeholder="按项目名称 / 项目编号 / 客户名称自动筛选"
+              placeholder="按项目编号 / 项目名称 / 招标单位 / 投标单位自动查询"
               clearable
               @input="onKeywordInput"
             />
           </div>
           <div class="list-head__right">
-            <el-button class="table-icon-btn" text :icon="Refresh" @click="loadData" />
-            <el-button type="primary" :icon="Plus" @click="openCreate">新增项目</el-button>
+            <el-button class="table-icon-btn" text :icon="Refresh" @click="loadProjects" />
+            <el-button type="primary" :icon="Plus" @click="openCreateProject">新建项目</el-button>
           </div>
         </div>
 
         <el-table
           class="ui-table"
-          :data="displayRows"
+          :data="projects"
           border
           stripe
+          highlight-current-row
           height="calc(100vh - 224px)"
-          v-loading="loading"
+          v-loading="projectLoading"
+          @current-change="selectProject"
         >
-          <el-table-column prop="id" label="ID" width="90" />
-          <el-table-column prop="projectName" label="项目名称" min-width="260" show-overflow-tooltip />
-          <el-table-column prop="enterpriseId" label="所属企业" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }">{{ getEnterpriseName(row.enterpriseId, row.enterpriseName) }}</template>
-          </el-table-column>
           <el-table-column prop="projectCode" label="项目编号" min-width="150" show-overflow-tooltip />
-          <el-table-column prop="projectType" label="项目类型" width="120" />
-          <el-table-column prop="clientName" label="招标方/客户" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="budgetAmount" label="预算金额" width="130">
-            <template #default="{ row }">¥ {{ money(row.budgetAmount) }}</template>
-          </el-table-column>
-          <el-table-column prop="periodDays" label="工期" width="100">
-            <template #default="{ row }">{{ row.periodDays || '-' }} 天</template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="110">
+          <el-table-column prop="projectName" label="项目名称" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="clientName" label="招标单位" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="bidderName" label="投标单位" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="budgetAmount" label="预算金额" width="120">
             <template #default="{ row }">
-              <StatusTag :value="row.status" :map="projectStatusMap" />
+              {{ formatMoney(row.budgetAmount) }}
             </template>
           </el-table-column>
-          <el-table-column prop="fileUrl" label="生成文件" width="110">
+          <el-table-column prop="bidOpenTime" label="开标时间" width="170" />
+          <el-table-column prop="status" label="状态" width="110">
             <template #default="{ row }">
-              <el-link v-if="row.fileUrl" type="primary" :href="row.fileUrl" target="_blank">打开</el-link>
-              <span v-else>-</span>
+              <el-tag :type="projectStatusMap[row.status]?.type || 'info'" effect="light">
+                {{ projectStatusMap[row.status]?.label || row.status || '-' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="ownerFullName" label="负责人" width="110" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ row.ownerFullName || row.creatorFullName || '-' }}
             </template>
           </el-table-column>
           <el-table-column prop="createTime" label="创建时间" width="170" />
-
-          <el-table-column label="操作" width="330" fixed="right">
+          <el-table-column label="操作" width="240" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
-                <el-button link type="primary" @click="openGenerate(row)">AI生成</el-button>
-                <el-button link type="primary" @click="openContent(row)">内容</el-button>
-                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-                <el-button link type="warning" @click="openUpload(row)">上传资料</el-button>
-                <el-button link type="danger" @click="deleteRow(row)">删除</el-button>
+                <el-button link type="primary" @click.stop="selectProject(row)">详情</el-button>
+                <el-button link type="primary" @click.stop="openEditProject(row)">编辑</el-button>
+                <el-button link type="warning" @click.stop="archiveProject(row)">归档</el-button>
+                <el-button link type="danger" @click.stop="deleteProjectRow(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
         </el-table>
 
         <PageFooterPager
-          v-model:page="pager.page"
-          v-model:size="pager.size"
-          :total="pager.total"
-          @change="loadData"
+          v-model:page="projectPager.page"
+          v-model:size="projectPager.size"
+          :total="projectPager.total"
+          @change="loadProjects"
         />
+      </div>
+
+      <!-- 右侧：项目详情 / 资料 / 知识库 -->
+      <div class="card card--table project-right">
+        <template v-if="selectedProject">
+          <div class="project-header">
+            <div>
+              <div class="project-title">
+                {{ selectedProject.projectName }}
+              </div>
+              <div class="project-sub">
+                {{ selectedProject.projectCode }}
+                <span v-if="selectedProject.enterpriseName"> · {{ selectedProject.enterpriseName }}</span>
+                <span v-if="selectedProject.clientName"> · 招标单位：{{ selectedProject.clientName }}</span>
+              </div>
+            </div>
+            <div class="project-header__actions">
+              <el-button :icon="Edit" @click="openEditProject(selectedProject)">编辑项目</el-button>
+              <el-button type="primary" :icon="Upload" @click="openUploadMaterial">上传资料</el-button>
+            </div>
+          </div>
+
+          <el-tabs v-model="activeTab" class="project-tabs">
+            <el-tab-pane label="基础信息" name="info">
+              <el-descriptions :column="2" border>
+                <el-descriptions-item label="项目编号">
+                  {{ selectedProject.projectCode || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="状态">
+                  <el-tag :type="projectStatusMap[selectedProject.status]?.type || 'info'" effect="light">
+                    {{ projectStatusMap[selectedProject.status]?.label || selectedProject.status || '-' }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="项目名称">
+                  {{ selectedProject.projectName || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="项目类型">
+                  {{ projectTypeLabel(selectedProject.projectType) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="所属企业">
+                  {{ selectedProject.enterpriseName || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="负责人">
+                  {{ selectedProject.ownerFullName || selectedProject.creatorFullName || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="招标单位">
+                  {{ selectedProject.clientName || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="投标单位">
+                  {{ selectedProject.bidderName || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="预算金额">
+                  {{ formatMoney(selectedProject.budgetAmount) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="工期天数">
+                  {{ selectedProject.periodDays || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="投标截止时间">
+                  {{ selectedProject.tenderDeadline || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="开标时间">
+                  {{ selectedProject.bidOpenTime || '-' }}
+                </el-descriptions-item>
+                <el-descriptions-item label="资料数量">
+                  {{ selectedProject.materialCount || 0 }}
+                </el-descriptions-item>
+                <el-descriptions-item label="绑定知识库">
+                  {{ selectedProject.knowledgeCount || 0 }} 个
+                </el-descriptions-item>
+                <el-descriptions-item label="备注" :span="2">
+                  {{ selectedProject.remark || '-' }}
+                </el-descriptions-item>
+              </el-descriptions>
+
+              <el-alert
+                title="当前阶段只做项目基础信息、项目资料、知识库绑定。AI 章节生成和 Word 导出后面单独接入。"
+                type="success"
+                show-icon
+                :closable="false"
+                style="margin-top: 14px"
+              />
+            </el-tab-pane>
+
+            <el-tab-pane label="项目资料" name="materials">
+              <div class="section-head">
+                <div class="section-title">项目资料</div>
+                <el-button type="primary" :icon="Upload" @click="openUploadMaterial">上传资料</el-button>
+              </div>
+
+              <el-table
+                class="ui-table"
+                :data="materials"
+                border
+                stripe
+                height="calc(100vh - 352px)"
+                v-loading="materialLoading"
+              >
+                <el-table-column prop="materialType" label="资料分类" width="120">
+                  <template #default="{ row }">
+                    {{ materialTypeLabel(row.materialType) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="fileName" label="文件名" min-width="230" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    {{ row.fileName || row.originalName || '-' }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="fileExt" label="扩展名" width="90" />
+                <el-table-column prop="fileSize" label="大小" width="110">
+                  <template #default="{ row }">
+                    {{ formatFileSize(row.fileSize) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="uploadFullName" label="上传人" width="110" show-overflow-tooltip />
+                <el-table-column prop="createTime" label="上传时间" width="170" />
+                <el-table-column label="操作" width="230" fixed="right">
+                  <template #default="{ row }">
+                    <div class="table-actions">
+                      <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
+                      <el-button link type="success" @click="openAddToKnowledge(row)">加入知识库</el-button>
+                      <el-button link type="danger" @click="deleteMaterialRow(row)">删除</el-button>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+
+            <el-tab-pane label="绑定知识库" name="knowledge">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">绑定知识库</div>
+                  <div class="section-desc">
+                    后续 AI 章节生成时，会优先从这里绑定的知识库中检索资料。
+                  </div>
+                </div>
+                <el-button type="primary" :icon="Edit" @click="openEditProject(selectedProject)">
+                  调整绑定
+                </el-button>
+              </div>
+
+              <el-table
+                class="ui-table"
+                :data="selectedKnowledgeBases"
+                border
+                stripe
+                height="calc(100vh - 352px)"
+              >
+                <el-table-column prop="kbName" label="知识库名称" min-width="220" show-overflow-tooltip />
+                <el-table-column prop="enterpriseName" label="所属企业" min-width="160" show-overflow-tooltip />
+                <el-table-column prop="kbType" label="类型" width="120">
+                  <template #default="{ row }">
+                    {{ kbTypeLabel(row.kbType) }}
+                  </template>
+                </el-table-column>
+                <el-table-column prop="fileCount" label="文件数" width="90" />
+                <el-table-column prop="status" label="状态" width="90">
+                  <template #default="{ row }">
+                    <el-tag :type="Number(row.status) === 1 ? 'success' : 'info'" effect="light">
+                      {{ Number(row.status) === 1 ? '正常' : '停用' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createTime" label="创建时间" width="170" />
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
+        </template>
+
+        <el-empty v-else description="请先新建或选择一个标书项目">
+          <el-button type="primary" :icon="Plus" @click="openCreateProject">新建项目</el-button>
+        </el-empty>
       </div>
     </div>
 
+    <!-- 新建/编辑项目 -->
     <el-dialog
-      v-model="formDialog.visible"
-      :title="formDialog.isEdit ? '编辑标书项目' : '新增标书项目'"
-      width="820px"
+      v-model="projectDialog.visible"
+      :title="projectDialog.isEdit ? '编辑标书项目' : '新建标书项目'"
+      width="840px"
       destroy-on-close
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="130px">
+      <el-form ref="projectFormRef" :model="projectForm" :rules="projectRules" label-width="130px">
+        <el-form-item v-if="canManagePlatform" label="所属企业" prop="enterpriseId">
+          <el-select
+            v-model="projectForm.enterpriseId"
+            placeholder="请选择企业"
+            filterable
+            clearable
+            style="width: 100%"
+            @change="onProjectEnterpriseChange"
+          >
+            <el-option
+              v-for="item in enterprises"
+              :key="item.id"
+              :label="item.enterpriseName"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+
         <el-form-item label="项目名称" prop="projectName">
-          <el-input v-model="form.projectName" placeholder="请输入项目名称" />
+          <el-input v-model="projectForm.projectName" placeholder="请输入项目名称" />
         </el-form-item>
-        <el-form-item label="项目编号">
-          <el-input v-model="form.projectCode" placeholder="可不填；由后端或人工维护" />
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="所属企业">
-              <el-select v-model="form.enterpriseId" clearable filterable placeholder="请选择企业" style="width: 100%">
-                <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="项目类型">
-              <el-select v-model="form.projectType" clearable filterable allow-create default-first-option placeholder="工程 / 服务 / 采购等" style="width: 100%">
-                <el-option label="工程类" value="工程类" />
-                <el-option label="服务类" value="服务类" />
-                <el-option label="采购类" value="采购类" />
-                <el-option label="政府采购" value="政府采购" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="标书模板">
-              <el-select v-model="form.bidTemplateId" clearable filterable placeholder="请选择标书模板" style="width: 100%">
-                <el-option v-for="item in bidTemplates" :key="item.id" :label="item.templateName" :value="item.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="Prompt模板">
-              <el-select v-model="form.promptTemplateId" clearable filterable placeholder="请选择Prompt模板" style="width: 100%">
-                <el-option v-for="item in promptTemplates" :key="item.id" :label="`${item.name}（${item.scene || '-'}）`" :value="item.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="招标方/客户">
-          <el-input v-model="form.clientName" placeholder="请输入招标方或客户名称" />
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="预算金额">
-              <el-input
-                v-model="form.budgetAmount"
-                class="number-input"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="请输入预算金额"
-                clearable
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="工期天数">
-              <el-input
-                v-model="form.periodDays"
-                class="number-input"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="请输入工期天数"
-                clearable
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="引用知识库">
-          <el-select v-model="form.knowledgeIds" multiple clearable filterable placeholder="请选择本项目要引用的知识库" style="width: 100%">
-            <el-option v-for="item in knowledgeBases" :key="item.id" :label="item.kbName" :value="item.id" />
-          </el-select>
-          <div class="form-tip">后续 AI 生成会优先使用这里选择的知识库资料。</div>
-        </el-form-item>
-        <el-form-item label="项目状态">
-          <el-select v-model="form.status" style="width: 100%">
-            <el-option label="草稿" value="draft" />
-            <el-option label="生成中" value="generating" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="失败" value="failed" />
-            <el-option label="已归档" value="archived" />
+
+        <el-form-item label="项目类型">
+          <el-select v-model="projectForm.projectType" placeholder="请选择项目类型" clearable style="width: 100%">
+            <el-option label="工程施工" value="CONSTRUCTION" />
+            <el-option label="货物采购" value="GOODS" />
+            <el-option label="服务采购" value="SERVICE" />
+            <el-option label="信息化项目" value="IT" />
+            <el-option label="其他" value="OTHER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Markdown内容">
-          <el-input v-model="form.contentMarkdown" type="textarea" :rows="8" placeholder="AI生成后会写入最后生成的Markdown内容" />
+
+        <el-form-item label="招标单位">
+          <el-input v-model="projectForm.clientName" placeholder="请输入招标单位" />
+        </el-form-item>
+
+        <el-form-item label="投标单位">
+          <el-input v-model="projectForm.bidderName" placeholder="默认可填写当前企业名称" />
+        </el-form-item>
+
+        <el-form-item label="预算金额">
+          <el-input-number
+            v-model="projectForm.budgetAmount"
+            :min="0"
+            :precision="2"
+            :step="1000"
+            style="width: 100%"
+            placeholder="请输入预算金额"
+          />
+        </el-form-item>
+
+        <el-form-item label="投标截止时间">
+          <el-date-picker
+            v-model="projectForm.tenderDeadline"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            placeholder="请选择投标截止时间"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="开标时间">
+          <el-date-picker
+            v-model="projectForm.bidOpenTime"
+            type="datetime"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            placeholder="请选择开标时间"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="工期天数">
+          <el-input-number
+            v-model="projectForm.periodDays"
+            :min="0"
+            :step="1"
+            style="width: 100%"
+            placeholder="请输入工期天数"
+          />
+        </el-form-item>
+
+        <el-form-item label="绑定知识库">
+          <el-select
+            v-model="projectForm.knowledgeIds"
+            multiple
+            filterable
+            clearable
+            placeholder="请选择知识库，可多选"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in knowledgeOptions"
+              :key="item.id"
+              :label="item.kbName"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item v-if="projectDialog.isEdit" label="项目状态">
+          <el-select v-model="projectForm.status" style="width: 100%">
+            <el-option label="草稿" value="DRAFT" />
+            <el-option label="资料已准备" value="MATERIAL_READY" />
+            <el-option label="生成中" value="GENERATING" />
+            <el-option label="已生成" value="GENERATED" />
+            <el-option label="已导出" value="EXPORTED" />
+            <el-option label="已归档" value="ARCHIVED" />
+            <el-option label="已取消" value="CANCELLED" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="备注">
+          <el-input v-model="projectForm.remark" type="textarea" :rows="4" placeholder="请输入备注" />
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="formDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">保存</el-button>
+        <el-button @click="projectDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="submitProject">保存</el-button>
       </template>
     </el-dialog>
 
-    <el-drawer v-model="generateDrawer.visible" title="AI生成标书内容" size="720px" destroy-on-close>
-      <el-form :model="generateForm" label-width="130px">
-        <el-alert
-          title="选择 Prompt 和知识库后生成标书内容，模型服务商/模型名称不填则使用后端默认配置。"
-          type="info"
-          show-icon
-          :closable="false"
-          style="margin-bottom: 14px"
-        />
-        <el-form-item label="当前项目">
-          <el-input :model-value="currentRow?.projectName" disabled />
-        </el-form-item>
-        <el-form-item label="业务类型">
-          <el-select v-model="generateForm.bizType" style="width: 100%">
-            <el-option label="标书" value="bid" />
-            <el-option label="可研" value="feasibility" />
-            <el-option label="合同" value="contract" />
+    <!-- 上传项目资料 -->
+    <el-dialog
+      v-model="materialDialog.visible"
+      :title="`上传项目资料：${selectedProject?.projectName || ''}`"
+      width="720px"
+      destroy-on-close
+    >
+      <el-form label-width="120px">
+        <el-form-item label="资料分类">
+          <el-select v-model="materialForm.materialType" style="width: 100%">
+            <el-option label="招标文件" value="TENDER_DOC" />
+            <el-option label="商务资料" value="BUSINESS_DOC" />
+            <el-option label="技术资料" value="TECH_DOC" />
+            <el-option label="报价资料" value="QUOTE_DOC" />
+            <el-option label="图纸/CAD" value="DRAWING" />
+            <el-option label="合同资料" value="CONTRACT_DOC" />
+            <el-option label="其他资料" value="OTHER" />
           </el-select>
         </el-form-item>
-        <el-form-item label="Prompt模板">
-          <el-select v-model="generateForm.promptTemplateId" clearable filterable style="width: 100%">
-            <el-option v-for="item in promptTemplates" :key="item.id" :label="`${item.name}（${item.scene || '-'}）`" :value="item.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="引用知识库">
-          <el-select v-model="generateForm.knowledgeIds" multiple clearable filterable placeholder="不选则使用项目已配置的知识库" style="width: 100%">
-            <el-option v-for="item in knowledgeBases" :key="item.id" :label="item.kbName" :value="item.id" />
-          </el-select>
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="模型服务商">
-              <el-input v-model="generateForm.modelProvider" placeholder="不填则使用后端默认" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="模型名称">
-              <el-input v-model="generateForm.modelName" placeholder="不填则使用后端默认" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="动态变量">
-          <JsonEditor v-model="generateForm.variables" :rows="8" placeholder='例如：{"project_name":"某项目","service_year":"3年"}' />
-        </el-form-item>
-        <el-form-item label="额外要求">
-          <el-input v-model="generateForm.extraRequirement" type="textarea" :rows="5" placeholder="例如：重点突出施工组织、售后服务、人员配置、风险控制等" />
-        </el-form-item>
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="温度参数">
-              <el-input
-                v-model="generateForm.temperature"
-                class="number-input"
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                placeholder="请输入温度参数"
-                clearable
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="最大Token">
-              <el-input
-                v-model="generateForm.maxTokens"
-                class="number-input"
-                type="number"
-                min="1000"
-                max="50000"
-                step="1"
-                placeholder="请输入最大Token"
-                clearable
-              />
-            </el-form-item>
-          </el-col>
-        </el-row>
 
-        <el-button type="primary" :loading="generating" @click="submitGenerate">开始生成</el-button>
-        <el-button :disabled="!lastResultId" @click="doExportWord">导出Word</el-button>
-        <el-button :disabled="!lastResultId" @click="doExportMarkdown">导出Markdown</el-button>
+        <el-form-item label="选择文件">
+          <FileUploadBox
+            v-if="selectedProject"
+            module-type="project_material"
+            :biz-id="selectedProject.id"
+            :private-flag="true"
+            @success="onMaterialUploaded"
+          />
+        </el-form-item>
       </el-form>
 
-      <div v-if="generateResult.contentMarkdown || generateResult.contentHtml" style="margin-top: 18px">
-        <div class="form-tip">生成结果ID：{{ lastResultId || '-' }}，任务ID：{{ generateResult.taskId || '-' }}</div>
-        <div v-if="generateResult.contentHtml" class="markdown-box" v-html="generateResult.contentHtml"></div>
-        <div v-else class="markdown-box">{{ generateResult.contentMarkdown }}</div>
+      <div class="form-tip">
+        注意：一个项目只能存在一个“招标文件”，其他资料可以上传多个。
       </div>
-    </el-drawer>
-
-    <el-dialog v-model="contentDialog.visible" title="标书内容预览/编辑" width="920px" destroy-on-close>
-      <el-input v-model="contentForm.contentMarkdown" type="textarea" :rows="20" />
-      <template #footer>
-        <el-button @click="contentDialog.visible = false">关闭</el-button>
-        <el-button type="primary" @click="saveContent">保存到项目</el-button>
-      </template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialog.visible" title="上传项目资料" width="680px" destroy-on-close>
-      <FileUploadBox
-        module-type="tender_material"
-        :biz-id="currentRow?.id"
-        @success="onUploadSuccess"
-      />
-      <el-table v-if="uploadedFiles.length" :data="uploadedFiles" border style="margin-top: 14px">
-        <el-table-column prop="originalName" label="文件名" min-width="220" />
-        <el-table-column prop="fileUrl" label="地址" min-width="180">
-          <template #default="{ row }">
-            <el-link v-if="row.fileUrl" :href="row.fileUrl" target="_blank" type="primary">打开</el-link>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-      </el-table>
+    <!-- 加入知识库 -->
+    <el-dialog
+      v-model="knowledgeDialog.visible"
+      title="加入知识库"
+      width="560px"
+      destroy-on-close
+    >
+      <el-form label-width="110px">
+        <el-form-item label="项目资料">
+          <el-input :model-value="knowledgeDialog.material?.fileName || knowledgeDialog.material?.originalName || ''" disabled />
+        </el-form-item>
+
+        <el-form-item label="选择知识库">
+          <el-select
+            v-model="knowledgeDialog.knowledgeBaseId"
+            placeholder="请选择知识库"
+            filterable
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in knowledgeOptions"
+              :key="item.id"
+              :label="item.kbName"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="knowledgeDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="submitAddToKnowledge">确定</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -300,297 +451,574 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh } from '@element-plus/icons-vue'
-import { createCrudApi } from '@/api/crud'
-import { exportMarkdown, exportWord, generateBidProject } from '@/api/ai'
+import { Edit, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import PageFooterPager from '@/components/PageFooterPager.vue'
-import StatusTag from '@/components/StatusTag.vue'
-import JsonEditor from '@/components/JsonEditor.vue'
+import { listEnterprises } from '@/api/enterprise'
+import { listKnowledgeBases } from '@/api/knowledge'
+import {
+  addProjectMaterialToKnowledge,
+  createBidProject,
+  createProjectMaterial,
+  deleteBidProject,
+  deleteProjectMaterial,
+  getBidProject,
+  pageBidProjects,
+  pageProjectMaterials,
+  updateBidProject,
+  updateBidProjectStatus
+} from '@/api/bidProject'
 import FileUploadBox from '@/components/FileUploadBox.vue'
-import { money, parseJsonLoose } from '@/utils/format'
-import { projectStatusMap } from '@/config/statusMaps'
+import PageFooterPager from '@/components/PageFooterPager.vue'
 
-const projectApi = createCrudApi('/bid-project')
-const enterpriseApi = createCrudApi('/enterprise')
-const bidTemplateApi = createCrudApi('/bid-template')
-const promptApi = createCrudApi('/prompt-template')
-const knowledgeBaseApi = createCrudApi('/knowledge-base')
 const auth = useAuthStore()
 
-const loading = ref(false)
-const generating = ref(false)
-const rows = ref([])
-const keyword = ref('')
-const enterprises = ref([])
-const bidTemplates = ref([])
-const promptTemplates = ref([])
-const knowledgeBases = ref([])
-const currentRow = ref(null)
-const lastResultId = ref(null)
-const uploadedFiles = ref([])
+const ROLE_SUPER_ADMIN = 'SUPERADMIN'
+const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 
-const pager = reactive({
+const projectLoading = ref(false)
+const materialLoading = ref(false)
+const projects = ref([])
+const materials = ref([])
+const enterprises = ref([])
+const knowledgeOptions = ref([])
+const keyword = ref('')
+const selectedProject = ref(null)
+const activeTab = ref('info')
+const projectFormRef = ref()
+const timer = ref(null)
+
+const projectPager = reactive({
   page: 1,
   size: 10,
   total: 0
 })
 
-const formDialog = reactive({ visible: false, isEdit: false })
-const generateDrawer = reactive({ visible: false })
-const contentDialog = reactive({ visible: false })
-const uploadDialog = reactive({ visible: false })
-
-const formRef = ref()
-const form = reactive({})
-const generateForm = reactive({})
-const generateResult = reactive({})
-const contentForm = reactive({ contentMarkdown: '' })
-
-let timer = null
-
-const rules = {
-  projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
-}
-
-const displayRows = computed(() => {
-  const key = keyword.value.trim().toLowerCase()
-  if (!key) return rows.value
-  return rows.value.filter((row) => {
-    return ['projectName', 'projectCode', 'clientName', 'projectType', 'status', 'enterpriseName']
-      .some((field) => String(row[field] ?? '').toLowerCase().includes(key)) || getEnterpriseName(row.enterpriseId).toLowerCase().includes(key)
-  })
+const projectDialog = reactive({
+  visible: false,
+  isEdit: false,
+  id: null
 })
+
+const projectForm = reactive({
+  enterpriseId: '',
+  projectName: '',
+  projectType: '',
+  clientName: '',
+  bidderName: '',
+  budgetAmount: null,
+  tenderDeadline: '',
+  bidOpenTime: '',
+  periodDays: null,
+  ownerUserId: null,
+  knowledgeIds: [],
+  status: 'DRAFT',
+  remark: ''
+})
+
+const materialDialog = reactive({
+  visible: false
+})
+
+const materialForm = reactive({
+  materialType: 'TENDER_DOC'
+})
+
+const knowledgeDialog = reactive({
+  visible: false,
+  material: null,
+  knowledgeBaseId: ''
+})
+
+const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
+const canManagePlatform = computed(() => {
+  return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
+})
+
+const selectedKnowledgeBases = computed(() => {
+  const ids = selectedProject.value?.knowledgeIdList || []
+  return knowledgeOptions.value.filter((item) => ids.map(String).includes(String(item.id)))
+})
+
+const projectRules = computed(() => {
+  const rules = {
+    projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
+  }
+
+  if (canManagePlatform.value) {
+    rules.enterpriseId = [{ required: true, message: '请选择所属企业', trigger: 'change' }]
+  }
+
+  return rules
+})
+
+const projectStatusMap = {
+  DRAFT: { label: '草稿', type: 'info' },
+  MATERIAL_READY: { label: '资料已准备', type: 'success' },
+  GENERATING: { label: '生成中', type: 'warning' },
+  GENERATED: { label: '已生成', type: 'success' },
+  EXPORTED: { label: '已导出', type: 'success' },
+  ARCHIVED: { label: '已归档', type: 'info' },
+  CANCELLED: { label: '已取消', type: 'danger' }
+}
 
 onMounted(() => {
-  loadData()
-  loadOptions()
+  loadEnterprises()
+  loadKnowledgeOptions()
+  loadProjects()
 })
 
-function normalizeIdList(value) {
-  const parsed = parseJsonLoose(value, value)
-  if (Array.isArray(parsed)) return parsed.filter((item) => item !== null && item !== undefined && item !== '')
-  if (parsed === null || parsed === undefined || parsed === '') return []
-  return [parsed]
+function normalizeRoleCode(value = '') {
+  return String(value)
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE[_-]?/, '')
+    .replace(/[^A-Z0-9]/g, '')
 }
 
-function getEnterpriseName(id, fallback = '') {
-  if (fallback) return fallback
-  const match = enterprises.value.find((item) => String(item.id) === String(id))
-  return match?.enterpriseName || (id ? `企业 #${id}` : '-')
+function normalizeRoleList(values = []) {
+  if (!Array.isArray(values)) return []
+  return values.map((item) => {
+    if (typeof item === 'string') return normalizeRoleCode(item)
+    return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
+  }).filter(Boolean)
 }
 
 function onKeywordInput() {
-  clearTimeout(timer)
-  timer = setTimeout(() => {
-    pager.page = 1
-    loadData()
+  clearTimeout(timer.value)
+  timer.value = setTimeout(() => {
+    projectPager.page = 1
+    loadProjects()
   }, 300)
 }
 
-async function loadData() {
-  loading.value = true
+async function loadEnterprises() {
+  if (!canManagePlatform.value) {
+    enterprises.value = []
+    return
+  }
+
   try {
-    const res = await projectApi.page({
-      current: pager.page,
-      size: pager.size,
-      keyword: keyword.value || undefined
-    })
-    rows.value = res?.records || []
-    pager.total = Number(res?.total || 0)
-  } finally {
-    loading.value = false
+    enterprises.value = await listEnterprises({ status: 1 })
+  } catch (e) {
+    enterprises.value = []
   }
 }
 
-async function loadOptions() {
-  const tasks = [
-    enterpriseApi.list().then((res) => { enterprises.value = Array.isArray(res) ? res : [] }).catch(() => { enterprises.value = [] }),
-    bidTemplateApi.list().then((res) => { bidTemplates.value = Array.isArray(res) ? res : [] }).catch(() => { bidTemplates.value = [] }),
-    promptApi.list().then((res) => { promptTemplates.value = Array.isArray(res) ? res : [] }).catch(() => { promptTemplates.value = [] }),
-    knowledgeBaseApi.list().then((res) => { knowledgeBases.value = Array.isArray(res) ? res : [] }).catch(() => { knowledgeBases.value = [] })
-  ]
-  await Promise.all(tasks)
+async function loadKnowledgeOptions(enterpriseId) {
+  try {
+    const params = { status: 1 }
+    if (enterpriseId) {
+      params.enterpriseId = enterpriseId
+    }
+    knowledgeOptions.value = await listKnowledgeBases(params)
+  } catch (e) {
+    knowledgeOptions.value = []
+  }
+}
+
+async function loadProjects(selectId) {
+  projectLoading.value = true
+  try {
+    const res = await pageBidProjects({
+      current: projectPager.page,
+      size: projectPager.size,
+      pageNum: projectPager.page,
+      pageSize: projectPager.size,
+      keyword: keyword.value || undefined
+    })
+
+    projects.value = res?.records || []
+    projectPager.total = Number(res?.total || 0)
+
+    const next = selectId
+      ? projects.value.find((item) => String(item.id) === String(selectId))
+      : selectedProject.value
+        ? projects.value.find((item) => String(item.id) === String(selectedProject.value.id))
+        : projects.value[0]
+
+    if (next) {
+      await selectProject(next)
+    } else {
+      selectedProject.value = null
+      materials.value = []
+    }
+  } finally {
+    projectLoading.value = false
+  }
+}
+
+async function selectProject(row) {
+  if (!row) return
+
+  selectedProject.value = await getBidProject(row.id)
+  activeTab.value = 'info'
+
+  if (selectedProject.value?.enterpriseId) {
+    await loadKnowledgeOptions(selectedProject.value.enterpriseId)
+  } else {
+    await loadKnowledgeOptions()
+  }
+
+  await loadMaterials()
+}
+
+async function loadMaterials() {
+  if (!selectedProject.value?.id) return
+
+  materialLoading.value = true
+  try {
+    const res = await pageProjectMaterials({
+      current: 1,
+      size: 200,
+      pageNum: 1,
+      pageSize: 200,
+      projectId: selectedProject.value.id
+    })
+
+    materials.value = res?.records || []
+  } finally {
+    materialLoading.value = false
+  }
 }
 
 function resetProjectForm(row = {}) {
-  for (const key of Object.keys(form)) delete form[key]
-  Object.assign(form, {
-    id: row.id,
-    enterpriseId: row.enterpriseId ?? auth.user?.enterpriseId ?? '',
-    userId: row.userId ?? auth.user?.id ?? '',
-    projectName: row.projectName ?? '',
-    projectCode: row.projectCode ?? '',
-    bidTemplateId: row.bidTemplateId ?? '',
-    promptTemplateId: row.promptTemplateId ?? '',
-    knowledgeIds: normalizeIdList(row.knowledgeIds),
-    projectType: row.projectType ?? '',
-    clientName: row.clientName ?? '',
-    budgetAmount: row.budgetAmount ?? 0,
-    periodDays: row.periodDays ?? 0,
-    status: row.status ?? 'draft',
-    generatedFileId: row.generatedFileId ?? '',
-    fileUrl: row.fileUrl ?? '',
-    contentMarkdown: row.contentMarkdown ?? ''
-  })
+  projectForm.enterpriseId = row.enterpriseId || ''
+  projectForm.projectName = row.projectName || ''
+  projectForm.projectType = row.projectType || ''
+  projectForm.clientName = row.clientName || ''
+  projectForm.bidderName = row.bidderName || auth.user?.enterpriseName || ''
+  projectForm.budgetAmount = row.budgetAmount ?? null
+  projectForm.tenderDeadline = toDateTimePickerValue(row.tenderDeadline)
+  projectForm.bidOpenTime = toDateTimePickerValue(row.bidOpenTime)
+  projectForm.periodDays = row.periodDays ?? null
+  projectForm.ownerUserId = row.ownerUserId || null
+  projectForm.knowledgeIds = Array.isArray(row.knowledgeIdList) ? row.knowledgeIdList : []
+  projectForm.status = String(row.status || 'DRAFT').toUpperCase()
+  projectForm.remark = row.remark || ''
 }
 
-function openCreate() {
-  formDialog.isEdit = false
-  resetProjectForm()
-  formDialog.visible = true
-}
+async function openCreateProject() {
+  projectDialog.isEdit = false
+  projectDialog.id = null
+  resetProjectForm({})
 
-function openEdit(row) {
-  currentRow.value = row
-  formDialog.isEdit = true
-  resetProjectForm(row)
-  formDialog.visible = true
-}
-
-function toNumberOrUndefined(value) {
-  if (value === '' || value === null || value === undefined) return undefined
-  const numberValue = Number(value)
-  return Number.isFinite(numberValue) ? numberValue : undefined
-}
-
-function normalizeProjectPayload() {
-  const payload = {
-    ...form,
-    userId: form.userId || auth.user?.id,
-    knowledgeIds: normalizeIdList(form.knowledgeIds)
+  if (!canManagePlatform.value && auth.user?.enterpriseName) {
+    projectForm.bidderName = auth.user.enterpriseName
   }
-  payload.budgetAmount = toNumberOrUndefined(payload.budgetAmount)
-  payload.periodDays = toNumberOrUndefined(payload.periodDays)
-  return payload
+
+  await loadKnowledgeOptions(projectForm.enterpriseId || undefined)
+  projectDialog.visible = true
 }
 
-async function submitForm() {
-  await formRef.value.validate()
-  const payload = normalizeProjectPayload()
-  if (!payload.userId) {
-    ElMessage.warning('没有获取到当前登录用户，请刷新用户信息后再保存')
+async function openEditProject(row) {
+  const detail = await getBidProject(row.id)
+  projectDialog.isEdit = true
+  projectDialog.id = detail.id
+  resetProjectForm(detail)
+
+  await loadKnowledgeOptions(detail.enterpriseId || undefined)
+  projectDialog.visible = true
+}
+
+async function onProjectEnterpriseChange(value) {
+  projectForm.knowledgeIds = []
+  await loadKnowledgeOptions(value || undefined)
+
+  const enterprise = enterprises.value.find((item) => String(item.id) === String(value))
+  if (enterprise && !projectForm.bidderName) {
+    projectForm.bidderName = enterprise.enterpriseName
+  }
+}
+
+async function submitProject() {
+  await projectFormRef.value?.validate()
+
+  const payload = {
+    enterpriseId: projectForm.enterpriseId || null,
+    projectName: projectForm.projectName,
+    projectType: projectForm.projectType || null,
+    clientName: projectForm.clientName || null,
+    bidderName: projectForm.bidderName || null,
+    budgetAmount: projectForm.budgetAmount === '' ? null : projectForm.budgetAmount,
+    tenderDeadline: projectForm.tenderDeadline || null,
+    bidOpenTime: projectForm.bidOpenTime || null,
+    periodDays: projectForm.periodDays === '' ? null : projectForm.periodDays,
+    ownerUserId: projectForm.ownerUserId || null,
+    knowledgeIds: Array.isArray(projectForm.knowledgeIds)
+      ? projectForm.knowledgeIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
+      : [],
+    remark: projectForm.remark || null
+  }
+
+  let savedId = projectDialog.id
+
+  if (projectDialog.isEdit) {
+    payload.status = String(projectForm.status || 'DRAFT').toUpperCase()
+    await updateBidProject(projectDialog.id, payload)
+    ElMessage.success('项目已修改')
+  } else {
+    savedId = await createBidProject(payload)
+    ElMessage.success('项目已创建')
+  }
+
+  projectDialog.visible = false
+  await loadProjects(savedId)
+}
+
+async function archiveProject(row) {
+  await ElMessageBox.confirm(`确认归档项目「${row.projectName}」吗？`, '提示', {
+    type: 'warning'
+  })
+
+  await updateBidProjectStatus(row.id, { status: 'ARCHIVED' })
+  ElMessage.success('项目已归档')
+  await loadProjects(row.id)
+}
+
+async function deleteProjectRow(row) {
+  await ElMessageBox.confirm(`确认删除项目「${row.projectName}」吗？如果项目下已有资料，后端会拒绝删除。`, '删除确认', {
+    type: 'warning'
+  })
+
+  await deleteBidProject(row.id)
+  ElMessage.success('项目已删除')
+
+  if (selectedProject.value?.id === row.id) {
+    selectedProject.value = null
+    materials.value = []
+  }
+
+  await loadProjects()
+}
+
+function openUploadMaterial() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
     return
   }
-  if (formDialog.isEdit) {
-    await projectApi.update(form.id, payload)
-    ElMessage.success('修改成功')
-  } else {
-    await projectApi.create(payload)
-    ElMessage.success('新增成功')
+
+  materialForm.materialType = materials.value.some((item) => item.materialType === 'TENDER_DOC')
+    ? 'BUSINESS_DOC'
+    : 'TENDER_DOC'
+
+  materialDialog.visible = true
+}
+
+async function onMaterialUploaded(file) {
+  const fileId = file?.id || file?.fileId
+  if (!fileId) {
+    ElMessage.error('上传成功但没有返回文件ID')
+    return
   }
-  formDialog.visible = false
-  loadData()
-}
 
-async function deleteRow(row) {
-  await ElMessageBox.confirm(`确定删除项目「${row.projectName}」吗？`, '删除确认', { type: 'warning' })
-  await projectApi.remove(row.id)
-  ElMessage.success('删除成功')
-  loadData()
-}
-
-function resetGenerateForm(row) {
-  for (const key of Object.keys(generateForm)) delete generateForm[key]
-  for (const key of Object.keys(generateResult)) delete generateResult[key]
-  Object.assign(generateForm, {
-    bizType: 'bid',
-    promptTemplateId: row.promptTemplateId || '',
-    modelProvider: '',
-    modelName: '',
-    knowledgeIds: normalizeIdList(row.knowledgeIds),
-    variables: '{}',
-    extraRequirement: '',
-    temperature: 0.7,
-    maxTokens: 8192
+  await createProjectMaterial({
+    projectId: selectedProject.value.id,
+    fileId,
+    materialType: materialForm.materialType
   })
-  lastResultId.value = null
+
+  ElMessage.success('项目资料已添加')
+  materialDialog.visible = false
+
+  await loadMaterials()
+  await loadProjects(selectedProject.value.id)
 }
 
-function openGenerate(row) {
-  currentRow.value = row
-  resetGenerateForm(row)
-  generateDrawer.visible = true
-}
-
-async function submitGenerate() {
-  if (!currentRow.value?.id) return
-  generating.value = true
-  try {
-    const payload = {
-      ...generateForm,
-      promptTemplateId: generateForm.promptTemplateId || undefined,
-      knowledgeIds: normalizeIdList(generateForm.knowledgeIds),
-      variables: parseJsonLoose(generateForm.variables, {}),
-      modelProvider: generateForm.modelProvider || undefined,
-      modelName: generateForm.modelName || undefined,
-      temperature: toNumberOrUndefined(generateForm.temperature),
-      maxTokens: toNumberOrUndefined(generateForm.maxTokens)
-    }
-    const res = await generateBidProject(currentRow.value.id, payload)
-    Object.assign(generateResult, res || {})
-    lastResultId.value = res?.resultId || null
-    ElMessage.success('AI生成完成')
-    loadData()
-  } finally {
-    generating.value = false
+function openFile(row) {
+  if (!row.fileUrl) {
+    ElMessage.warning('文件访问地址为空')
+    return
   }
+
+  window.open(row.fileUrl, '_blank')
 }
 
-function openContent(row) {
-  currentRow.value = row
-  contentForm.contentMarkdown = row.contentMarkdown || ''
-  contentDialog.visible = true
-}
-
-async function saveContent() {
-  if (!currentRow.value?.id) return
-  await projectApi.update(currentRow.value.id, {
-    ...currentRow.value,
-    contentMarkdown: contentForm.contentMarkdown
+async function deleteMaterialRow(row) {
+  await ElMessageBox.confirm(`确认删除资料「${row.fileName || row.originalName || row.id}」吗？`, '删除确认', {
+    type: 'warning'
   })
-  ElMessage.success('内容已保存')
-  contentDialog.visible = false
-  loadData()
+
+  await deleteProjectMaterial(row.id)
+  ElMessage.success('资料已删除')
+
+  await loadMaterials()
+  await loadProjects(selectedProject.value?.id)
 }
 
-function openUpload(row) {
-  currentRow.value = row
-  uploadedFiles.value = []
-  uploadDialog.visible = true
+function openAddToKnowledge(row) {
+  if (!knowledgeOptions.value.length) {
+    ElMessage.warning('当前没有可用知识库，请先创建知识库')
+    return
+  }
+
+  knowledgeDialog.material = row
+  knowledgeDialog.knowledgeBaseId = ''
+  knowledgeDialog.visible = true
 }
 
-function onUploadSuccess(file) {
-  uploadedFiles.value.unshift(file)
+async function submitAddToKnowledge() {
+  if (!knowledgeDialog.material?.id) {
+    ElMessage.warning('请选择项目资料')
+    return
+  }
+
+  if (!knowledgeDialog.knowledgeBaseId) {
+    ElMessage.warning('请选择知识库')
+    return
+  }
+
+  await addProjectMaterialToKnowledge(knowledgeDialog.material.id, {
+    knowledgeBaseId: knowledgeDialog.knowledgeBaseId
+  })
+
+  ElMessage.success('资料已加入知识库')
+  knowledgeDialog.visible = false
 }
 
-async function doExportWord() {
-  if (!lastResultId.value) return
-  const file = await exportWord(lastResultId.value)
-  ElMessage.success('Word导出成功')
-  if (file?.fileUrl) window.open(file.fileUrl, '_blank')
+function projectTypeLabel(value) {
+  const map = {
+    CONSTRUCTION: '工程施工',
+    GOODS: '货物采购',
+    SERVICE: '服务采购',
+    IT: '信息化项目',
+    OTHER: '其他'
+  }
+  return map[value] || value || '-'
 }
 
-async function doExportMarkdown() {
-  if (!lastResultId.value) return
-  const file = await exportMarkdown(lastResultId.value)
-  ElMessage.success('Markdown导出成功')
-  if (file?.fileUrl) window.open(file.fileUrl, '_blank')
+function materialTypeLabel(value) {
+  const map = {
+    TENDER_DOC: '招标文件',
+    BUSINESS_DOC: '商务资料',
+    TECH_DOC: '技术资料',
+    QUOTE_DOC: '报价资料',
+    DRAWING: '图纸/CAD',
+    CONTRACT_DOC: '合同资料',
+    OTHER: '其他资料'
+  }
+  return map[value] || value || '-'
+}
+
+function kbTypeLabel(value) {
+  const map = {
+    company_profile: '企业资料',
+    qualification: '企业资质',
+    case_study: '案例业绩',
+    tech_standard: '技术标准',
+    laws: '法律法规',
+    other: '其他'
+  }
+  return map[value] || value || '-'
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === '') {
+    return '-'
+  }
+
+  const number = Number(value)
+  if (Number.isNaN(number)) {
+    return value
+  }
+
+  return number.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
+function formatFileSize(size) {
+  const value = Number(size || 0)
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(2)} KB`
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+function toDateTimePickerValue(value) {
+  if (!value) return ''
+  return String(value).replace(' ', 'T')
 }
 </script>
 
 <style scoped>
-.number-input {
-  width: 100%;
+.project-page {
+  display: grid;
+  grid-template-columns: minmax(620px, 1fr) minmax(0, 1fr);
+  gap: 16px;
 }
 
-:deep(.number-input input[type='number']::-webkit-outer-spin-button),
-:deep(.number-input input[type='number']::-webkit-inner-spin-button) {
-  -webkit-appearance: none;
-  margin: 0;
+.project-left,
+.project-right {
+  min-width: 0;
 }
 
-:deep(.number-input input[type='number']) {
-  -moz-appearance: textfield;
+.project-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.project-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.project-sub {
+  margin-top: 6px;
+  color: var(--text-sub);
+  line-height: 1.5;
+}
+
+.project-tabs {
+  min-height: 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.section-desc {
+  margin-top: 4px;
+  color: var(--text-sub);
+  line-height: 1.5;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.form-tip {
+  color: var(--text-sub);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1280px) {
+  .project-page {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
