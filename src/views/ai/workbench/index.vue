@@ -6,7 +6,7 @@
           <div>
             <div class="section-title">AI生成工作台</div>
             <div class="section-desc">
-              当前工作台按业务流程生成标书：先选择标书项目，系统自动带出项目资料，再选择模板和生成要求。
+              按标书业务生成：选择项目 → 选择生成类型 → 自动匹配模板 → 补充缺失信息 → 生成。
             </div>
           </div>
           <el-button class="table-icon-btn" text :icon="Refresh" @click="reloadAllOptions" />
@@ -14,7 +14,8 @@
 
         <el-steps :active="activeStep" finish-status="success" class="flow-steps">
           <el-step title="选择项目" />
-          <el-step title="确认模板" />
+          <el-step title="选择类型" />
+          <el-step title="补充信息" />
           <el-step title="生成查看" />
         </el-steps>
 
@@ -79,24 +80,54 @@
             </div>
           </div>
 
+          <el-form-item label="生成类型" required>
+            <div class="generate-type-grid">
+              <div
+                v-for="item in generateTypes"
+                :key="item.value"
+                class="generate-type-card"
+                :class="{ active: generateForm.generateType === item.value }"
+                @click="selectGenerateType(item.value)"
+              >
+                <div class="generate-type-icon">
+                  <el-icon><component :is="item.icon" /></el-icon>
+                </div>
+                <div class="generate-type-main">
+                  <div class="generate-type-title">{{ item.label }}</div>
+                  <div class="generate-type-desc">{{ item.desc }}</div>
+                  <div class="generate-type-scene">{{ item.sceneText }}</div>
+                </div>
+              </div>
+            </div>
+          </el-form-item>
+
           <el-form-item label="Prompt模板">
             <el-select
               v-model="generateForm.promptTemplateId"
               clearable
               filterable
-              placeholder="不选则使用项目绑定模板或系统默认模板"
+              :placeholder="templatePlaceholder"
               style="width: 100%"
+              @change="onTemplateChange"
             >
               <el-option
-                v-for="item in bidPromptTemplates"
+                v-for="item in matchedPromptTemplates"
                 :key="item.id"
                 :label="promptOptionLabel(item)"
                 :value="item.id"
               />
             </el-select>
             <div class="form-tip">
-              这里只展示标书相关模板。项目本身绑定了模板时，会自动默认选中。
+              已根据生成类型自动筛选模板；如果不选择，后端会使用该类型的默认模板。
             </div>
+            <el-alert
+              v-if="selectedProject && !matchedPromptTemplates.length"
+              title="当前生成类型暂无启用模板，可以先不选模板生成；建议后续在 Prompt模板 中新增对应场景模板。"
+              type="warning"
+              show-icon
+              :closable="false"
+              style="margin-top: 10px"
+            />
           </el-form-item>
 
           <el-form-item label="引用知识库">
@@ -112,19 +143,66 @@
                 clearable
                 filterable
                 :disabled="!generateForm.useKnowledge"
-                placeholder="请选择要引用的知识库"
+                :placeholder="selectedProject ? '请选择当前项目所属企业的知识库' : '请先选择标书项目'"
                 style="width: 100%; margin-top: 10px"
               >
                 <el-option
                   v-for="item in knowledgeBases"
                   :key="item.id"
-                  :label="item.kbName"
+                  :label="knowledgeOptionLabel(item)"
                   :value="item.id"
                 />
               </el-select>
               <div class="form-tip">
-                当前你还没接完整向量检索时，建议保持“不引用”。后面向量检索接好后再打开。
+                这里只显示当前项目所属企业的知识库。当前你还没接完整向量检索时，建议保持“不引用”。
               </div>
+              <el-alert
+                v-if="generateForm.useKnowledge && selectedProject && !knowledgeBases.length"
+                title="当前项目所属企业暂无可用知识库，请先到知识库管理中新建并上传资料，或关闭引用知识库。"
+                type="warning"
+                show-icon
+                :closable="false"
+                style="margin-top: 10px"
+              />
+            </div>
+          </el-form-item>
+
+          <el-form-item v-if="selectedTemplateVariables.length" label="模板变量">
+            <div class="variable-check-box">
+              <div class="variable-check-head">
+                <span>当前模板识别到 {{ selectedTemplateVariables.length }} 个变量</span>
+                <el-tag v-if="emptyTemplateVariables.length" type="warning" effect="light">
+                  {{ emptyTemplateVariables.length }} 个待补充
+                </el-tag>
+                <el-tag v-else type="success" effect="light">变量完整</el-tag>
+              </div>
+
+              <div v-if="emptyTemplateVariables.length" class="variable-form-grid">
+                <el-form-item
+                  v-for="key in emptyTemplateVariables"
+                  :key="key"
+                  :label="variableLabel(key)"
+                  label-width="108px"
+                  class="inline-variable-item"
+                >
+                  <el-input
+                    v-model="extraVariables[key]"
+                    :placeholder="`请输入${variableLabel(key)}`"
+                    clearable
+                  />
+                </el-form-item>
+              </div>
+
+              <el-collapse v-if="filledTemplateVariables.length" class="filled-collapse">
+                <el-collapse-item title="已自动带入的信息" name="filled">
+                  <div class="filled-variable-list">
+                    <div v-for="key in filledTemplateVariables" :key="key" class="filled-variable-item">
+                      <span>{{ variableLabel(key) }}</span>
+                      <strong>{{ displayVariableValue(key) }}</strong>
+                    </div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
             </div>
           </el-form-item>
 
@@ -177,7 +255,7 @@
               :disabled="!canGenerate"
               @click="submitGenerate"
             >
-              开始生成
+              开始生成{{ currentGenerateTypeLabel }}
             </el-button>
             <el-button @click="resetGenerateForm">重置参数</el-button>
             <el-button v-if="lastResultId" type="success" plain @click="goResultPage">查看完整结果</el-button>
@@ -222,10 +300,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, markRaw, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { CopyDocument, Download, Loading, MagicStick, Refresh, View } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Collection,
+  CopyDocument,
+  Download,
+  Files,
+  Loading,
+  MagicStick,
+  Notebook,
+  Refresh,
+  View
+} from '@element-plus/icons-vue'
 import { createCrudApi } from '@/api/crud'
 import { downloadExportFile, exportMarkdown, exportWord, generateBidProject } from '@/api/ai'
 import { getBidProject, pageBidProjects } from '@/api/bidProject'
@@ -245,8 +333,40 @@ const selectedProjectId = ref(null)
 const selectedProject = ref(null)
 const advancedPanels = ref([])
 const result = reactive({})
+const extraVariables = reactive({})
+
+const generateTypes = [
+  {
+    value: 'tech',
+    label: '技术标',
+    sceneList: ['BID_TECH'],
+    bizType: 'bid_tech',
+    sceneText: '匹配 BID_TECH',
+    desc: '技术方案、实施计划、质量保障、售后服务',
+    icon: markRaw(Notebook)
+  },
+  {
+    value: 'business',
+    label: '商务标',
+    sceneList: ['BID_BUSINESS'],
+    bizType: 'bid_business',
+    sceneText: '匹配 BID_BUSINESS',
+    desc: '公司介绍、资质响应、业绩、人员、服务承诺',
+    icon: markRaw(Collection)
+  },
+  {
+    value: 'full',
+    label: '完整标书',
+    sceneList: ['BID_FULL', 'BID'],
+    bizType: 'bid_full',
+    sceneText: '匹配 BID_FULL / BID',
+    desc: '一次性生成完整标书草稿，后续可拆章节精修',
+    icon: markRaw(Files)
+  }
+]
 
 const generateForm = reactive({
+  generateType: 'tech',
   promptTemplateId: null,
   useKnowledge: false,
   knowledgeIds: [],
@@ -255,25 +375,133 @@ const generateForm = reactive({
   maxTokens: 8192
 })
 
-const bidPromptTemplates = computed(() => {
+const currentGenerateType = computed(() => {
+  return generateTypes.find((item) => item.value === generateForm.generateType) || generateTypes[0]
+})
+
+const currentGenerateTypeLabel = computed(() => {
+  return currentGenerateType.value?.label ? `（${currentGenerateType.value.label}）` : ''
+})
+
+const matchedPromptTemplates = computed(() => {
+  const scenes = currentGenerateType.value.sceneList || []
   return promptTemplates.value.filter((item) => {
     if (Number(item.status) === 0) return false
     const scene = String(item.scene || '').toUpperCase()
-    return !scene || scene.includes('BID')
+    return scenes.includes(scene)
   })
 })
 
+const selectedPromptTemplate = computed(() => {
+  return promptTemplates.value.find((item) => String(item.id) === String(generateForm.promptTemplateId)) || null
+})
+
+const selectedTemplateVariables = computed(() => {
+  if (!selectedPromptTemplate.value?.content) return []
+  const content = selectedPromptTemplate.value.content
+  const pattern = /\{\{\s*([a-zA-Z0-9_.-]+)\s*}}/g
+  const result = new Set()
+  let match
+
+  while ((match = pattern.exec(content)) !== null) {
+    const key = match[1]
+    if (!ignoredVariableKeys.has(key)) {
+      result.add(key)
+    }
+  }
+
+  return Array.from(result)
+})
+
+const knownVariables = computed(() => {
+  const project = selectedProject.value || {}
+  const vars = {
+    project_name: project.projectName,
+    project_code: project.projectCode,
+    project_type: project.projectType,
+    client_name: project.clientName,
+    tender_name: project.clientName,
+    tender_company: project.clientName,
+    bidder_name: project.bidderName,
+    budget_amount: project.budgetAmount,
+    period_days: project.periodDays,
+    tender_deadline: project.tenderDeadline,
+    bid_open_time: project.bidOpenTime,
+    remark: project.remark,
+    generate_type: currentGenerateType.value.value,
+    generate_type_label: currentGenerateType.value.label
+  }
+
+  Object.keys(extraVariables).forEach((key) => {
+    vars[key] = extraVariables[key]
+  })
+
+  return vars
+})
+
+const emptyTemplateVariables = computed(() => {
+  return selectedTemplateVariables.value.filter((key) => isBlank(knownVariables.value[key]))
+})
+
+const filledTemplateVariables = computed(() => {
+  return selectedTemplateVariables.value.filter((key) => !isBlank(knownVariables.value[key]))
+})
+
 const activeStep = computed(() => {
-  if (result.resultId) return 3
-  if (selectedProject.value) return 2
-  return 1
+  if (result.resultId) return 4
+  if (selectedProject.value && generateForm.generateType && !emptyTemplateVariables.value.length) return 3
+  if (selectedProject.value && generateForm.generateType) return 2
+  if (selectedProject.value) return 1
+  return 0
 })
 
 const canGenerate = computed(() => {
-  return Boolean(selectedProjectId.value && !generating.value)
+  return Boolean(selectedProjectId.value && generateForm.generateType && !generating.value)
 })
 
 const lastResultId = computed(() => result.resultId || null)
+
+const templatePlaceholder = computed(() => {
+  if (!selectedProject.value) return '请先选择标书项目'
+  if (!matchedPromptTemplates.value.length) return '当前类型暂无模板，可不选使用默认模板'
+  return '请选择Prompt模板'
+})
+
+const ignoredVariableKeys = new Set([
+  'knowledge_text',
+  'extra_requirement',
+  'system_prompt',
+  'current_date',
+  'current_time'
+])
+
+const variableLabelMap = {
+  project_name: '项目名称',
+  project_code: '项目编号',
+  project_type: '项目类型',
+  client_name: '招标单位',
+  tender_name: '招标单位',
+  tender_company: '招标单位',
+  bidder_name: '投标单位',
+  budget_amount: '预算金额',
+  period_days: '工期天数',
+  tender_deadline: '投标截止时间',
+  bid_open_time: '开标时间',
+  project_location: '项目地点',
+  project_scale: '建设规模',
+  service_period: '服务期限',
+  quality_target: '质量目标',
+  warranty_period: '质保期限',
+  project_manager: '项目负责人',
+  company_name: '公司名称',
+  company_profile: '公司简介',
+  qualification_desc: '资质说明',
+  case_desc: '业绩案例',
+  after_sale_plan: '售后方案',
+  implementation_plan: '实施计划',
+  generate_type: '生成类型',
+  generate_type_label: '生成类型'
+}
 
 onMounted(async () => {
   await reloadAllOptions()
@@ -284,12 +512,36 @@ onMounted(async () => {
   }
 })
 
+watch(
+  () => generateForm.generateType,
+  () => {
+    autoSelectPromptTemplate()
+    initExtraVariables()
+    clearResult()
+  }
+)
+
+watch(
+  () => generateForm.promptTemplateId,
+  () => {
+    initExtraVariables()
+  }
+)
+
 async function reloadAllOptions() {
   await Promise.all([
     loadProjects(''),
-    loadPromptTemplates(),
-    loadKnowledgeBases()
+    loadPromptTemplates()
   ])
+
+  if (selectedProject.value?.enterpriseId) {
+    await loadKnowledgeBases(selectedProject.value.enterpriseId)
+  } else {
+    knowledgeBases.value = []
+  }
+
+  autoSelectPromptTemplate()
+  initExtraVariables()
 }
 
 async function loadProjects(keyword = '') {
@@ -320,16 +572,36 @@ async function loadPromptTemplates() {
   }
 }
 
-async function loadKnowledgeBases() {
+async function loadKnowledgeBases(enterpriseId) {
+  if (!enterpriseId) {
+    knowledgeBases.value = []
+    generateForm.knowledgeIds = []
+    generateForm.useKnowledge = false
+    return
+  }
+
   try {
-    knowledgeBases.value = await listKnowledgeBases({ status: 1 })
+    knowledgeBases.value = await listKnowledgeBases({
+      status: 1,
+      enterpriseId
+    })
+
+    const allowIds = new Set(knowledgeBases.value.map((item) => Number(item.id)))
+    generateForm.knowledgeIds = generateForm.knowledgeIds.filter((id) => allowIds.has(Number(id)))
+
+    if (!knowledgeBases.value.length) {
+      generateForm.useKnowledge = false
+    }
   } catch (e) {
     knowledgeBases.value = []
+    generateForm.knowledgeIds = []
+    generateForm.useKnowledge = false
   }
 }
 
 async function onProjectChange(projectId) {
   clearResult()
+  clearExtraVariables()
 
   if (!projectId) {
     selectedProject.value = null
@@ -344,10 +616,54 @@ async function onProjectChange(projectId) {
     projectOptions.value.unshift(detail)
   }
 
-  generateForm.promptTemplateId = detail.promptTemplateId || null
   generateForm.knowledgeIds = parseKnowledgeIds(detail)
   generateForm.useKnowledge = false
   generateForm.extraRequirement = buildDefaultRequirement(detail)
+  generateForm.temperature = 0.7
+  generateForm.maxTokens = 8192
+
+  await loadKnowledgeBases(detail.enterpriseId)
+  autoSelectPromptTemplate()
+  initExtraVariables()
+}
+
+function selectGenerateType(value) {
+  if (generateForm.generateType === value) return
+  generateForm.generateType = value
+}
+
+function autoSelectPromptTemplate() {
+  const selected = selectedPromptTemplate.value
+  if (selected && matchedPromptTemplates.value.some((item) => String(item.id) === String(selected.id))) {
+    return
+  }
+
+  const projectTemplateId = selectedProject.value?.promptTemplateId
+  const projectTemplate = matchedPromptTemplates.value.find((item) => String(item.id) === String(projectTemplateId))
+  if (projectTemplate) {
+    generateForm.promptTemplateId = projectTemplate.id
+    return
+  }
+
+  generateForm.promptTemplateId = matchedPromptTemplates.value[0]?.id || null
+}
+
+function onTemplateChange() {
+  initExtraVariables()
+}
+
+function initExtraVariables() {
+  selectedTemplateVariables.value.forEach((key) => {
+    if (!(key in extraVariables)) {
+      extraVariables[key] = ''
+    }
+  })
+}
+
+function clearExtraVariables() {
+  Object.keys(extraVariables).forEach((key) => {
+    delete extraVariables[key]
+  })
 }
 
 function parseKnowledgeIds(project) {
@@ -374,8 +690,9 @@ function parseKnowledgeIds(project) {
 
 function buildDefaultRequirement(project) {
   const name = project?.projectName || ''
+  const type = currentGenerateType.value.label
   if (!name) return ''
-  return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的投标文件草稿。重点突出项目理解、技术方案、实施计划、质量保障、售后服务和企业优势。`
+  return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的${type}草稿。对缺失信息使用“待补充”，不要编造资质证书编号、金额、业绩合同编号等敏感信息。`
 }
 
 async function submitGenerate() {
@@ -384,9 +701,28 @@ async function submitGenerate() {
     return
   }
 
+  if (!generateForm.generateType) {
+    ElMessage.warning('请选择生成类型')
+    return
+  }
+
   if (generateForm.useKnowledge && !generateForm.knowledgeIds.length) {
     ElMessage.warning('已开启引用知识库，请至少选择一个知识库')
     return
+  }
+
+  const stillEmpty = emptyTemplateVariables.value.filter((key) => isBlank(extraVariables[key]))
+  if (stillEmpty.length) {
+    const names = stillEmpty.map((key) => variableLabel(key)).join('、')
+    await ElMessageBox.confirm(
+      `以下模板变量未补充：${names}。继续生成时会按“待补充”处理，是否继续？`,
+      '模板变量未完整',
+      {
+        type: 'warning',
+        confirmButtonText: '继续生成',
+        cancelButtonText: '返回补充'
+      }
+    )
   }
 
   generating.value = true
@@ -394,10 +730,11 @@ async function submitGenerate() {
 
   try {
     const payload = {
+      bizType: currentGenerateType.value.bizType,
       promptTemplateId: generateForm.promptTemplateId || undefined,
       useKnowledge: Boolean(generateForm.useKnowledge),
       knowledgeIds: generateForm.useKnowledge ? generateForm.knowledgeIds : [],
-      variables: {},
+      variables: buildPayloadVariables(),
       extraRequirement: generateForm.extraRequirement || undefined,
       temperature: toNumberOrUndefined(generateForm.temperature),
       maxTokens: toNumberOrUndefined(generateForm.maxTokens)
@@ -411,13 +748,33 @@ async function submitGenerate() {
   }
 }
 
+function buildPayloadVariables() {
+  const variables = {}
+
+  Object.entries(knownVariables.value).forEach(([key, value]) => {
+    if (!isBlank(value)) {
+      variables[key] = value
+    }
+  })
+
+  selectedTemplateVariables.value.forEach((key) => {
+    if (isBlank(variables[key])) {
+      variables[key] = isBlank(extraVariables[key]) ? '待补充' : extraVariables[key]
+    }
+  })
+
+  return variables
+}
+
 function resetGenerateForm() {
-  generateForm.promptTemplateId = selectedProject.value?.promptTemplateId || null
+  generateForm.generateType = 'tech'
   generateForm.useKnowledge = false
   generateForm.knowledgeIds = selectedProject.value ? parseKnowledgeIds(selectedProject.value) : []
   generateForm.extraRequirement = selectedProject.value ? buildDefaultRequirement(selectedProject.value) : ''
   generateForm.temperature = 0.7
   generateForm.maxTokens = 8192
+  autoSelectPromptTemplate()
+  initExtraVariables()
 }
 
 function clearResult() {
@@ -518,6 +875,21 @@ function promptOptionLabel(item) {
   return `${item.name || `模板#${item.id}`}${scene}`
 }
 
+function knowledgeOptionLabel(item) {
+  const enterprise = item.enterpriseName ? ` - ${item.enterpriseName}` : ''
+  return `${item.kbName || `知识库#${item.id}`}${enterprise}`
+}
+
+function variableLabel(key) {
+  return variableLabelMap[key] || key
+}
+
+function displayVariableValue(key) {
+  const value = knownVariables.value[key]
+  if (isBlank(value)) return '-'
+  return String(value)
+}
+
 function projectStatusLabel(value) {
   const map = {
     DRAFT: '草稿',
@@ -549,12 +921,16 @@ function formatMoney(value) {
   if (Number.isNaN(number)) return value
   return `¥ ${number.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+function isBlank(value) {
+  return value === null || value === undefined || String(value).trim() === ''
+}
 </script>
 
 <style scoped>
 .workbench-layout {
   display: grid;
-  grid-template-columns: minmax(520px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(560px, 0.92fr) minmax(0, 1.08fr);
   gap: 16px;
 }
 
@@ -623,8 +999,132 @@ function formatMoney(value) {
   font-size: 14px;
 }
 
-.knowledge-box {
+.generate-type-grid {
   width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.generate-type-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.generate-type-card:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+}
+
+.generate-type-card.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.generate-type-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #e0ecff;
+  color: #2563eb;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.generate-type-main {
+  min-width: 0;
+}
+
+.generate-type-title {
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.generate-type-desc {
+  margin-top: 4px;
+  color: var(--text-sub);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.generate-type-scene {
+  margin-top: 6px;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.knowledge-box,
+.variable-check-box {
+  width: 100%;
+}
+
+.variable-check-box {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.variable-check-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-main);
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.variable-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.inline-variable-item {
+  margin-bottom: 0;
+}
+
+.filled-collapse {
+  margin-top: 10px;
+}
+
+.filled-variable-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.filled-variable-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  min-width: 0;
+}
+
+.filled-variable-item span {
+  display: block;
+  color: var(--text-sub);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.filled-variable-item strong {
+  display: block;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .advanced-collapse {
@@ -683,7 +1183,8 @@ function formatMoney(value) {
 }
 
 @media (max-width: 720px) {
-  .project-summary {
+  .project-summary,
+  .filled-variable-list {
     grid-template-columns: 1fr;
   }
 
