@@ -12,7 +12,7 @@
         <div class="brand-name">AI标书</div>
       </header>
 
-      <h1 class="welcome-title">欢迎使用AI标书后台管理系统</h1>
+      <h1 class="welcome-title">欢迎使用AI标书系统</h1>
 
       <div class="login-tabs">
         <button
