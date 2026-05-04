@@ -41,3 +41,15 @@ export function downloadExportFile(fileId) {
     responseType: 'blob'
   })
 }
+
+export function pageDocumentExports(params) {
+  return request.get('/document-export/page', { params })
+}
+
+export function getDocumentExport(id) {
+  return request.get(`/document-export/${id}`)
+}
+
+export function deleteDocumentExport(id) {
+  return request.delete(`/document-export/${id}`)
+}
