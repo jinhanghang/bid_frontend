@@ -72,7 +72,7 @@
         />
       </div>
 
-      <!-- 右侧：项目详情 / 资料 / 知识库 -->
+      <!-- 右侧：项目详情 / 资料 / 知识库 / 生成记录 -->
       <div class="card card--table project-right">
         <template v-if="selectedProject">
           <div class="project-header">
@@ -234,6 +234,60 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="createTime" label="创建时间" width="170" />
+              </el-table>
+            </el-tab-pane>
+
+            <el-tab-pane label="生成记录" name="generateRecords">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">生成记录</div>
+                  <div class="section-desc">
+                    当前项目下的技术标、商务标、完整标书生成历史。
+                  </div>
+                </div>
+                <div class="section-actions">
+                  <el-button :icon="Refresh" @click="loadGenerateRecords">刷新</el-button>
+                  <el-button type="success" :icon="MagicStick" @click="goGenerateWorkbench(selectedProject)">
+                    继续生成
+                  </el-button>
+                </div>
+              </div>
+
+              <el-table
+                class="ui-table"
+                :data="generateRecords"
+                border
+                stripe
+                height="calc(100vh - 352px)"
+                v-loading="generateRecordLoading"
+                empty-text="当前项目暂无生成记录，请点击右上角“AI生成”"
+              >
+                <el-table-column label="生成类型" width="110">
+                  <template #default="{ row }">
+                    <el-tag :type="generateTypeTag(row.bizType)" effect="light">
+                      {{ generateTypeLabel(row.bizType) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="title" label="结果标题" min-width="230" show-overflow-tooltip />
+                <el-table-column prop="auditStatus" label="状态" width="100">
+                  <template #default="{ row }">
+                    <el-tag :type="resultStatusTag(row.auditStatus)" effect="light">
+                      {{ resultStatusLabel(row.auditStatus) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createTime" label="生成时间" width="170" />
+                <el-table-column label="操作" width="330" fixed="right">
+                  <template #default="{ row }">
+                    <div class="table-actions">
+                      <el-button link type="primary" :icon="View" @click="openGenerateResult(row)">查看</el-button>
+                      <el-button link type="primary" :icon="CopyDocument" @click="copyGenerateMarkdown(row)">复制</el-button>
+                      <el-button link type="success" :icon="Download" @click="exportGenerateWord(row)">导出Word</el-button>
+                      <el-button link type="success" :icon="Download" @click="exportGenerateMarkdown(row)">导出Markdown</el-button>
+                    </div>
+                  </template>
+                </el-table-column>
               </el-table>
             </el-tab-pane>
           </el-tabs>
@@ -446,6 +500,61 @@
         <el-button type="primary" @click="submitAddToKnowledge">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 查看生成结果 -->
+    <el-dialog
+      v-model="generateResultDialog.visible"
+      :title="generateResultDialog.result?.title || '生成结果'"
+      width="980px"
+      destroy-on-close
+    >
+      <template v-if="generateResultDialog.result">
+        <div class="result-dialog-head">
+          <div>
+            <el-tag :type="generateTypeTag(generateResultDialog.result.bizType)" effect="light">
+              {{ generateTypeLabel(generateResultDialog.result.bizType) }}
+            </el-tag>
+            <span class="result-dialog-time">{{ generateResultDialog.result.createTime || '-' }}</span>
+          </div>
+          <div class="result-dialog-actions">
+            <el-button :icon="CopyDocument" @click="copyGenerateMarkdown(generateResultDialog.result)">
+              复制Markdown
+            </el-button>
+            <el-button :icon="Download" :loading="exportingWord" @click="exportGenerateWord(generateResultDialog.result)">
+              导出Word
+            </el-button>
+            <el-button :icon="Download" :loading="exportingMarkdown" @click="exportGenerateMarkdown(generateResultDialog.result)">
+              导出Markdown
+            </el-button>
+            <el-button type="primary" plain @click="goFullResultPage(generateResultDialog.result)">
+              完整页面
+            </el-button>
+          </div>
+        </div>
+
+        <el-tabs v-model="generateResultDialog.activeTab">
+          <el-tab-pane label="预览" name="preview">
+            <div
+              v-if="generateResultDialog.result.contentHtml"
+              class="markdown-box result-preview"
+              v-html="generateResultDialog.result.contentHtml"
+            ></div>
+            <div v-else class="markdown-box result-preview">
+              {{ generateResultDialog.result.contentMarkdown || '暂无内容' }}
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label="Markdown源码" name="markdown">
+            <el-input
+              :model-value="generateResultDialog.result.contentMarkdown || ''"
+              type="textarea"
+              :rows="22"
+              readonly
+              resize="none"
+            />
+          </el-tab-pane>
+        </el-tabs>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -453,10 +562,17 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { CopyDocument, Download, Edit, MagicStick, Plus, Refresh, Upload, View } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import { listKnowledgeBases } from '@/api/knowledge'
+import {
+  downloadExportFile,
+  exportMarkdown,
+  exportWord,
+  getAiGenerateResult,
+  pageAiGenerateResults
+} from '@/api/ai'
 import {
   addProjectMaterialToKnowledge,
   createBidProject,
@@ -480,8 +596,12 @@ const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 
 const projectLoading = ref(false)
 const materialLoading = ref(false)
+const generateRecordLoading = ref(false)
+const exportingWord = ref(false)
+const exportingMarkdown = ref(false)
 const projects = ref([])
 const materials = ref([])
+const generateRecords = ref([])
 const enterprises = ref([])
 const knowledgeOptions = ref([])
 const keyword = ref('')
@@ -530,6 +650,12 @@ const knowledgeDialog = reactive({
   visible: false,
   material: null,
   knowledgeBaseId: ''
+})
+
+const generateResultDialog = reactive({
+  visible: false,
+  activeTab: 'preview',
+  result: null
 })
 
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
@@ -664,6 +790,7 @@ async function selectProject(row) {
   }
 
   await loadMaterials()
+  await loadGenerateRecords()
 }
 
 async function loadMaterials() {
@@ -683,6 +810,134 @@ async function loadMaterials() {
   } finally {
     materialLoading.value = false
   }
+}
+
+async function loadGenerateRecords() {
+  if (!selectedProject.value?.id) {
+    generateRecords.value = []
+    return
+  }
+
+  generateRecordLoading.value = true
+  try {
+    const res = await pageAiGenerateResults({
+      current: 1,
+      size: 200,
+      pageNum: 1,
+      pageSize: 200,
+      bizId: selectedProject.value.id,
+      bizTypes: 'bid,bid_tech,bid_business,bid_full'
+    })
+
+    generateRecords.value = res?.records || []
+  } finally {
+    generateRecordLoading.value = false
+  }
+}
+
+async function openGenerateResult(row) {
+  if (!row?.id) {
+    ElMessage.warning('生成结果ID为空')
+    return
+  }
+
+  const detail = await getAiGenerateResult(row.id)
+  generateResultDialog.result = detail
+  generateResultDialog.activeTab = 'preview'
+  generateResultDialog.visible = true
+}
+
+async function copyGenerateMarkdown(row) {
+  let markdown = row?.contentMarkdown
+  if (!markdown && row?.id) {
+    const detail = await getAiGenerateResult(row.id)
+    markdown = detail?.contentMarkdown
+  }
+
+  if (!markdown) {
+    ElMessage.warning('暂无可复制内容')
+    return
+  }
+
+  await navigator.clipboard.writeText(markdown)
+  ElMessage.success('已复制Markdown内容')
+}
+
+async function exportGenerateWord(row) {
+  if (!row?.id) {
+    ElMessage.warning('生成结果ID为空')
+    return
+  }
+
+  exportingWord.value = true
+  try {
+    const file = await exportWord(row.id)
+    await downloadExportedFile(file)
+    ElMessage.success('Word已开始下载')
+    await loadGenerateRecords()
+  } finally {
+    exportingWord.value = false
+  }
+}
+
+async function exportGenerateMarkdown(row) {
+  if (!row?.id) {
+    ElMessage.warning('生成结果ID为空')
+    return
+  }
+
+  exportingMarkdown.value = true
+  try {
+    const file = await exportMarkdown(row.id)
+    await downloadExportedFile(file)
+    ElMessage.success('Markdown已开始下载')
+    await loadGenerateRecords()
+  } finally {
+    exportingMarkdown.value = false
+  }
+}
+
+async function downloadExportedFile(file) {
+  if (!file?.id) {
+    ElMessage.error('导出成功但没有返回文件ID，无法下载')
+    return
+  }
+
+  const blob = await downloadExportFile(file.id)
+  downloadBlob(blob, file.originalName || file.fileName || '导出文件')
+}
+
+function downloadBlob(blob, fileName) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = sanitizeFileName(fileName)
+  link.style.display = 'none'
+
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  window.URL.revokeObjectURL(url)
+}
+
+function sanitizeFileName(fileName) {
+  return String(fileName || '导出文件')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim() || '导出文件'
+}
+
+function goFullResultPage(row) {
+  if (!row?.id) {
+    router.push('/ai/results')
+    return
+  }
+
+  router.push({
+    path: '/ai/results',
+    query: { resultId: row.id }
+  })
 }
 
 function resetProjectForm(row = {}) {
@@ -790,6 +1045,7 @@ async function deleteProjectRow(row) {
   if (selectedProject.value?.id === row.id) {
     selectedProject.value = null
     materials.value = []
+    generateRecords.value = []
   }
 
   await loadProjects()
@@ -891,6 +1147,45 @@ function goGenerateWorkbench(row) {
   })
 }
 
+
+function generateTypeLabel(value) {
+  const map = {
+    bid_tech: '技术标',
+    bid_business: '商务标',
+    bid_full: '完整标书',
+    bid: '标书'
+  }
+  return map[String(value || '').toLowerCase()] || value || '-'
+}
+
+function generateTypeTag(value) {
+  const map = {
+    bid_tech: 'primary',
+    bid_business: 'success',
+    bid_full: 'warning',
+    bid: 'info'
+  }
+  return map[String(value || '').toLowerCase()] || 'info'
+}
+
+function resultStatusLabel(value) {
+  const map = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已驳回'
+  }
+  return map[String(value || '').toLowerCase()] || value || '-'
+}
+
+function resultStatusTag(value) {
+  const map = {
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger'
+  }
+  return map[String(value || '').toLowerCase()] || 'info'
+}
+
 function projectTypeLabel(value) {
   const map = {
     CONSTRUCTION: '工程施工',
@@ -981,6 +1276,8 @@ function toDateTimePickerValue(value) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .project-title {
@@ -1024,6 +1321,37 @@ function toDateTimePickerValue(value) {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.result-dialog-time {
+  margin-left: 8px;
+  color: var(--text-sub);
+}
+
+.result-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.result-preview {
+  height: 520px;
+  overflow: auto;
 }
 
 .form-tip {
