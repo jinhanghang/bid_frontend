@@ -1,7 +1,7 @@
-
 <template>
   <div class="page">
     <div class="page-body kb-page">
+      <!-- 左侧：知识库列表 -->
       <div class="card card--table kb-left">
         <div class="list-head">
           <div class="list-head__left">
@@ -36,21 +36,21 @@
               {{ kbTypeLabel(row.kbType) }}
             </template>
           </el-table-column>
-          <el-table-column prop="fileCount" label="文件" width="70" />
-          <el-table-column prop="chunkCount" label="切片" width="70" />
-          <el-table-column prop="embeddingStatus" label="入库" width="90">
+          <el-table-column prop="fileCount" label="文件" width="70" align="center" />
+          <el-table-column prop="chunkCount" label="切片" width="70" align="center" />
+          <el-table-column prop="embeddingStatus" label="入库" width="90" align="center">
             <template #default="{ row }">
               <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light">
                 {{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="status" label="状态" width="90">
+          <el-table-column prop="status" label="状态" width="90" align="center">
             <template #default="{ row }">
               <StatusTag :value="row.status" :map="enableMap" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="190" fixed="right">
+          <el-table-column label="操作" width="180" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="openEditBase(row)">编辑</el-button>
@@ -71,10 +71,11 @@
         />
       </div>
 
+      <!-- 右侧：知识库详情和文件列表 -->
       <div class="card card--table kb-right">
         <template v-if="selectedBase">
           <div class="kb-header">
-            <div>
+            <div class="kb-header__main">
               <div class="kb-title">{{ selectedBase.kbName }}</div>
               <div class="kb-sub">
                 {{ kbTypeLabel(selectedBase.kbType) }}
@@ -82,6 +83,7 @@
                 <span> · {{ selectedBase.description || '暂无描述' }}</span>
               </div>
             </div>
+
             <div class="kb-header-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
@@ -90,46 +92,68 @@
           </div>
 
           <el-alert
+            class="kb-tip"
             title="文件加入知识库后会自动触发：OSS存储 → 文档解析 → 文本切片 → Embedding向量化 → 可检索问答。解析失败时可点击“重新入库”。"
             type="success"
             show-icon
             :closable="false"
-            style="margin-bottom: 12px"
           />
 
           <el-table
-            class="ui-table"
+            class="ui-table kb-file-table"
             :data="files"
             border
             stripe
-            height="calc(100vh - 286px)"
+            height="calc(100vh - 336px)"
             v-loading="fileLoading"
+            empty-text="当前知识库还没有文件，请点击右上角“添加文件”"
           >
-            <el-table-column prop="fileName" label="文件名" min-width="260" show-overflow-tooltip />
-            <el-table-column prop="fileType" label="类型" width="90" />
-            <el-table-column prop="fileSize" label="大小" width="110">
+            <el-table-column prop="fileName" label="文件名" min-width="260" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div class="file-name-cell">
+                  <span class="file-icon">文</span>
+                  <span class="file-name-text">{{ row.fileName || '-' }}</span>
+                </div>
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="fileType" label="类型" width="80" align="center">
+              <template #default="{ row }">
+                {{ row.fileType || '-' }}
+              </template>
+            </el-table-column>
+
+            <el-table-column prop="fileSize" label="大小" width="110" align="center">
               <template #default="{ row }">
                 {{ formatFileSize(row.fileSize) }}
               </template>
             </el-table-column>
-            <el-table-column prop="parseStatus" label="解析" width="100">
+
+            <el-table-column label="文件状态" width="190">
               <template #default="{ row }">
-                <el-tag :type="parseStatusMap[Number(row.parseStatus)]?.type || 'info'" effect="light">
-                  {{ parseStatusMap[Number(row.parseStatus)]?.label || '未知' }}
-                </el-tag>
+                <div class="status-group">
+                  <el-tag :type="parseStatusMap[Number(row.parseStatus)]?.type || 'info'" effect="light" size="small">
+                    解析：{{ parseStatusMap[Number(row.parseStatus)]?.label || '未知' }}
+                  </el-tag>
+                  <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light" size="small">
+                    向量：{{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
+                  </el-tag>
+                  <el-tooltip v-if="row.errorMsg" :content="row.errorMsg" placement="top">
+                    <el-tag type="danger" effect="light" size="small">错误</el-tag>
+                  </el-tooltip>
+                </div>
               </template>
             </el-table-column>
-            <el-table-column prop="embeddingStatus" label="向量化" width="100">
+
+            <el-table-column prop="chunkCount" label="切片" width="80" align="center">
               <template #default="{ row }">
-                <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light">
-                  {{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
-                </el-tag>
+                {{ row.chunkCount || 0 }}
               </template>
             </el-table-column>
-            <el-table-column prop="chunkCount" label="切片数" width="90" />
-            <el-table-column prop="errorMsg" label="错误信息" min-width="180" show-overflow-tooltip />
-            <el-table-column prop="createTime" label="添加时间" width="170" />
-            <el-table-column label="操作" width="210" fixed="right">
+
+            <el-table-column prop="createTime" label="添加时间" width="170" show-overflow-tooltip />
+
+            <el-table-column label="操作" width="180" fixed="right">
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
@@ -147,7 +171,13 @@
       </div>
     </div>
 
-    <el-dialog v-model="baseDialog.visible" :title="baseDialog.isEdit ? '编辑知识库' : '新建知识库'" width="680px" destroy-on-close>
+    <!-- 新建 / 编辑知识库 -->
+    <el-dialog
+      v-model="baseDialog.visible"
+      :title="baseDialog.isEdit ? '编辑知识库' : '新建知识库'"
+      width="680px"
+      destroy-on-close
+    >
       <el-form ref="baseFormRef" :model="baseForm" :rules="baseRules" label-width="110px">
         <el-form-item v-if="canManagePlatform" label="所属企业" prop="enterpriseId">
           <el-select v-model="baseForm.enterpriseId" clearable filterable placeholder="请选择企业" style="width: 100%">
@@ -188,12 +218,21 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialog.visible" :title="`给「${selectedBase?.kbName || ''}」添加文件`" width="680px" destroy-on-close>
+    <!-- 添加文件：保留你现在这个上传方式，只是入口放在右上角 -->
+    <el-dialog
+      v-model="uploadDialog.visible"
+      :title="`给「${selectedBase?.kbName || ''}」添加文件`"
+      width="680px"
+      destroy-on-close
+    >
       <FileUploadBox
         v-if="selectedBase"
         module-type="knowledge_base"
         :biz-id="selectedBase.id"
         :private-flag="true"
+        accept=".doc,.docx,.pdf,.xls,.xlsx,.txt"
+        :max-size-mb="100"
+        :max-count="5"
         @success="onKnowledgeFileUploaded"
       />
 
@@ -202,6 +241,7 @@
       </div>
     </el-dialog>
 
+    <!-- 知识库检索测试 -->
     <el-dialog v-model="searchDialog.visible" title="知识库检索测试" width="820px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="检索问题">
@@ -234,6 +274,7 @@
       <el-empty v-else description="暂无检索结果" />
     </el-dialog>
 
+    <!-- 知识库问答 -->
     <el-dialog v-model="askDialog.visible" title="知识库问答" width="860px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="问题">
@@ -711,7 +752,7 @@ function formatScore(score) {
 <style scoped>
 .kb-page {
   display: grid;
-  grid-template-columns: minmax(520px, 0.95fr) minmax(0, 1.05fr);
+  grid-template-columns: minmax(560px, 0.95fr) minmax(720px, 1.05fr);
   gap: 16px;
 }
 
@@ -724,27 +765,73 @@ function formatScore(score) {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 12px;
+}
+
+.kb-header__main {
+  min-width: 0;
+  flex: 1;
 }
 
 .kb-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .kb-title {
   font-size: 18px;
   font-weight: 800;
+  line-height: 1.3;
 }
 
 .kb-sub {
   margin-top: 6px;
   color: var(--text-sub);
   line-height: 1.5;
+  word-break: break-all;
+}
+
+.kb-tip {
+  margin-bottom: 12px;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #e8f1ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.file-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .table-actions {
@@ -806,6 +893,21 @@ function formatScore(score) {
 .answer-content {
   line-height: 1.8;
   white-space: pre-wrap;
+}
+
+@media (max-width: 1380px) {
+  .kb-page {
+    grid-template-columns: minmax(500px, 0.9fr) minmax(640px, 1.1fr);
+  }
+
+  .kb-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kb-header-actions {
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 1180px) {
