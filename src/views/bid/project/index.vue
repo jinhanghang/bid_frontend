@@ -57,8 +57,8 @@
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="selectProject(row)">详情</el-button>
                 <el-button link type="primary" @click.stop="openEditProject(row)">编辑</el-button>
-                <el-button link type="warning" @click.stop="archiveProject(row)">归档</el-button>
-                <el-button link type="danger" @click.stop="deleteProjectRow(row)">删除</el-button>
+                <el-button link type="warning" :disabled="row.status === 'GENERATING'" @click.stop="archiveProject(row)">归档</el-button>
+                <el-button link type="danger" :disabled="row.status === 'GENERATING'" @click.stop="deleteProjectRow(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
@@ -88,6 +88,7 @@
             </div>
             <div class="project-header__actions">
               <el-button :icon="Edit" @click="openEditProject(selectedProject)">编辑项目</el-button>
+              <el-button type="success" :icon="MagicStick" @click="goGenerateWorkbench(selectedProject)">AI生成</el-button>
               <el-button type="primary" :icon="Upload" @click="openUploadMaterial">上传资料</el-button>
             </div>
           </div>
@@ -145,7 +146,7 @@
               </el-descriptions>
 
               <el-alert
-                title="当前阶段只做项目基础信息、项目资料、知识库绑定。AI 章节生成和 Word 导出后面单独接入。"
+                title="项目资料和知识库绑定完成后，可点击右上角“AI生成”进入生成工作台。当前没有向量检索时，生成时建议先不引用知识库。"
                 type="success"
                 show-icon
                 :closable="false"
@@ -450,8 +451,9 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Edit, Plus, Refresh, Upload } from '@element-plus/icons-vue'
+import { Edit, MagicStick, Plus, Refresh, Upload } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import { listKnowledgeBases } from '@/api/knowledge'
@@ -471,6 +473,7 @@ import FileUploadBox from '@/components/FileUploadBox.vue'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 
 const auth = useAuthStore()
+const router = useRouter()
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -558,7 +561,8 @@ const projectStatusMap = {
   GENERATED: { label: '已生成', type: 'success' },
   EXPORTED: { label: '已导出', type: 'success' },
   ARCHIVED: { label: '已归档', type: 'info' },
-  CANCELLED: { label: '已取消', type: 'danger' }
+  CANCELLED: { label: '已取消', type: 'danger' },
+  FAILED: { label: '生成失败', type: 'danger' }
 }
 
 onMounted(() => {
@@ -873,6 +877,18 @@ async function submitAddToKnowledge() {
 
   ElMessage.success('资料已加入知识库')
   knowledgeDialog.visible = false
+}
+
+function goGenerateWorkbench(row) {
+  if (!row?.id) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+
+  router.push({
+    path: '/ai/workbench',
+    query: { projectId: row.id }
+  })
 }
 
 function projectTypeLabel(value) {

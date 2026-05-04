@@ -8,6 +8,7 @@ const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
+const AiResultManage = () => import('@/views/ai/results/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
 const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
@@ -36,7 +37,7 @@ const routes = [
       { path: 'ai/prompts', component: GenericCrudView, meta: { title: 'Prompt模板', configKey: 'promptTemplate', requiresBusiness: true } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/tasks', component: GenericCrudView, meta: { title: '生成任务', configKey: 'aiTask', requiresBusiness: true } },
-      { path: 'ai/results', component: GenericCrudView, meta: { title: '生成结果', configKey: 'aiResult', requiresBusiness: true } },
+      { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
       { path: 'ai/exports', component: GenericCrudView, meta: { title: '导出记录', configKey: 'documentExport', requiresBusiness: true } },
 
       { path: 'tender/sources', component: GenericCrudView, meta: { title: '招标数据源', configKey: 'tenderSource', requiresBusiness: true } },
