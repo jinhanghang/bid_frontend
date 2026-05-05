@@ -36,11 +36,13 @@ export function exportMarkdown(resultId) {
   return request.post(`/ai/export/markdown/${resultId}`)
 }
 
+
 export function downloadExportFile(fileId) {
   return request.get(`/ai/export/download/${fileId}`, {
     responseType: 'blob'
   })
 }
+
 
 export function pageDocumentExports(params) {
   return request.get('/document-export/page', { params })
@@ -52,4 +54,9 @@ export function getDocumentExport(id) {
 
 export function deleteDocumentExport(id) {
   return request.delete(`/document-export/${id}`)
+}
+
+
+export function deleteAiGenerateTask(id) {
+  return request.delete(`/ai-generate-task/${id}`)
 }

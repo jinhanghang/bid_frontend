@@ -57,8 +57,8 @@
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="selectProject(row)">详情</el-button>
                 <el-button link type="primary" @click.stop="openEditProject(row)">编辑</el-button>
-                <el-button link type="warning" :disabled="row.status === 'GENERATING'" @click.stop="archiveProject(row)">归档</el-button>
-                <el-button link type="danger" :disabled="row.status === 'GENERATING'" @click.stop="deleteProjectRow(row)">删除</el-button>
+                <el-button link type="warning" :disabled="!canArchiveProject(row)" @click.stop="archiveProject(row)">归档</el-button>
+                <el-button link type="danger" :disabled="!canDeleteProject(row)" @click.stop="deleteProjectRow(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
@@ -87,11 +87,39 @@
               </div>
             </div>
             <div class="project-header__actions">
-              <el-button :icon="Edit" @click="openEditProject(selectedProject)">编辑项目</el-button>
-              <el-button type="success" :icon="MagicStick" @click="goGenerateWorkbench(selectedProject)">AI生成</el-button>
-              <el-button type="primary" :icon="Upload" @click="openUploadMaterial">上传资料</el-button>
+              <el-button :icon="Edit" :disabled="!canEditProject(selectedProject)" @click="openEditProject(selectedProject)">编辑项目</el-button>
+              <el-button type="success" :icon="MagicStick" :disabled="!canGenerateProject(selectedProject)" @click="goGenerateWorkbench(selectedProject)">AI生成</el-button>
+              <el-button type="primary" :icon="Upload" :disabled="!canUploadMaterial(selectedProject)" @click="openUploadMaterial">上传资料</el-button>
             </div>
           </div>
+
+          <div class="project-flow">
+            <div
+              v-for="(step, index) in flowSteps"
+              :key="step.key"
+              class="flow-item"
+              :class="{
+                active: index === currentFlowIndex,
+                done: index < currentFlowIndex,
+                disabled: selectedProject.status === 'CANCELLED'
+              }"
+            >
+              <div class="flow-dot">{{ index + 1 }}</div>
+              <div class="flow-text">
+                <strong>{{ step.title }}</strong>
+                <span>{{ step.desc }}</span>
+              </div>
+            </div>
+          </div>
+
+          <el-alert
+            v-if="projectFlowTip"
+            class="flow-tip"
+            :title="projectFlowTip"
+            :type="projectFlowTipType"
+            show-icon
+            :closable="false"
+          />
 
           <el-tabs v-model="activeTab" class="project-tabs">
             <el-tab-pane label="基础信息" name="info">
@@ -157,7 +185,7 @@
             <el-tab-pane label="项目资料" name="materials">
               <div class="section-head">
                 <div class="section-title">项目资料</div>
-                <el-button type="primary" :icon="Upload" @click="openUploadMaterial">上传资料</el-button>
+                <el-button type="primary" :icon="Upload" :disabled="!canUploadMaterial(selectedProject)" @click="openUploadMaterial">上传资料</el-button>
               </div>
 
               <el-table
@@ -191,7 +219,7 @@
                     <div class="table-actions">
                       <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
                       <el-button link type="success" @click="openAddToKnowledge(row)">加入知识库</el-button>
-                      <el-button link type="danger" @click="deleteMaterialRow(row)">删除</el-button>
+                      <el-button link type="danger" :disabled="!canUploadMaterial(selectedProject)" @click="deleteMaterialRow(row)">删除</el-button>
                     </div>
                   </template>
                 </el-table-column>
@@ -206,7 +234,7 @@
                     后续 AI 章节生成时，会优先从这里绑定的知识库中检索资料。
                   </div>
                 </div>
-                <el-button type="primary" :icon="Edit" @click="openEditProject(selectedProject)">
+                <el-button type="primary" :icon="Edit" :disabled="!canEditProject(selectedProject)" @click="openEditProject(selectedProject)">
                   调整绑定
                 </el-button>
               </div>
@@ -247,7 +275,7 @@
                 </div>
                 <div class="section-actions">
                   <el-button :icon="Refresh" @click="loadGenerateRecords">刷新</el-button>
-                  <el-button type="success" :icon="MagicStick" @click="goGenerateWorkbench(selectedProject)">
+                  <el-button type="success" :icon="MagicStick" :disabled="!canGenerateProject(selectedProject)" @click="goGenerateWorkbench(selectedProject)">
                     继续生成
                   </el-button>
                 </div>
@@ -415,6 +443,7 @@
             <el-option label="已导出" value="EXPORTED" />
             <el-option label="已归档" value="ARCHIVED" />
             <el-option label="已取消" value="CANCELLED" />
+            <el-option label="生成失败" value="FAILED" />
           </el-select>
         </el-form-item>
 
@@ -560,7 +589,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CopyDocument, Download, Edit, MagicStick, Plus, Refresh, Upload, View } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -590,6 +619,7 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -668,6 +698,40 @@ const selectedKnowledgeBases = computed(() => {
   return knowledgeOptions.value.filter((item) => ids.map(String).includes(String(item.id)))
 })
 
+
+const flowSteps = [
+  { key: 'info', title: '项目信息', desc: '完善基础信息' },
+  { key: 'material', title: '资料准备', desc: '上传项目资料' },
+  { key: 'generate', title: 'AI生成', desc: '生成标书内容' },
+  { key: 'export', title: '文件导出', desc: '导出Word/Markdown' },
+  { key: 'archive', title: '项目归档', desc: '完成归档' }
+]
+
+const currentFlowIndex = computed(() => resolveFlowIndex(selectedProject.value?.status))
+
+const projectFlowTip = computed(() => {
+  const status = selectedProject.value?.status
+  const map = {
+    DRAFT: '当前项目处于草稿状态。建议先上传招标文件或项目资料，再进行 AI 生成。',
+    MATERIAL_READY: '项目资料已准备，可以进入 AI 生成工作台生成技术标、商务标或完整标书。',
+    GENERATING: '项目正在生成中，请等待生成完成。生成中不允许编辑、删除或归档。',
+    GENERATED: '项目已生成标书内容，可以在“生成记录”中查看并导出文件。',
+    EXPORTED: '项目已导出文件，可以在“导出记录”或“文件资源”中下载和管理文件。',
+    ARCHIVED: '项目已归档，当前为只读状态。',
+    FAILED: '项目生成失败，可以重新进入 AI 生成工作台再次生成。',
+    CANCELLED: '项目已取消，建议仅保留查看。'
+  }
+  return map[status] || ''
+})
+
+const projectFlowTipType = computed(() => {
+  const status = selectedProject.value?.status
+  if (status === 'FAILED' || status === 'CANCELLED') return 'error'
+  if (status === 'GENERATING') return 'warning'
+  if (status === 'ARCHIVED' || status === 'EXPORTED' || status === 'GENERATED') return 'success'
+  return 'info'
+})
+
 const projectRules = computed(() => {
   const rules = {
     projectName: [{ required: true, message: '请输入项目名称', trigger: 'blur' }]
@@ -691,10 +755,16 @@ const projectStatusMap = {
   FAILED: { label: '生成失败', type: 'danger' }
 }
 
-onMounted(() => {
-  loadEnterprises()
-  loadKnowledgeOptions()
-  loadProjects()
+onMounted(async () => {
+  await loadEnterprises()
+  await loadKnowledgeOptions()
+
+  const queryProjectId = route.query.projectId ? Number(route.query.projectId) : null
+  if (route.query.tab) {
+    activeTab.value = String(route.query.tab)
+  }
+
+  await loadProjects(queryProjectId || undefined)
 })
 
 function normalizeRoleCode(value = '') {
@@ -711,6 +781,45 @@ function normalizeRoleList(values = []) {
     if (typeof item === 'string') return normalizeRoleCode(item)
     return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
   }).filter(Boolean)
+}
+
+function resolveFlowIndex(status) {
+  const map = {
+    DRAFT: 0,
+    MATERIAL_READY: 1,
+    GENERATING: 2,
+    GENERATED: 2,
+    FAILED: 2,
+    EXPORTED: 3,
+    ARCHIVED: 4,
+    CANCELLED: 0
+  }
+  return map[status] ?? 0
+}
+
+function canEditProject(row) {
+  if (!row) return false
+  return !['GENERATING', 'ARCHIVED', 'CANCELLED'].includes(String(row.status || '').toUpperCase())
+}
+
+function canUploadMaterial(row) {
+  if (!row) return false
+  return !['GENERATING', 'ARCHIVED', 'CANCELLED'].includes(String(row.status || '').toUpperCase())
+}
+
+function canGenerateProject(row) {
+  if (!row) return false
+  return !['GENERATING', 'ARCHIVED', 'CANCELLED'].includes(String(row.status || '').toUpperCase())
+}
+
+function canArchiveProject(row) {
+  if (!row) return false
+  return ['GENERATED', 'EXPORTED'].includes(String(row.status || '').toUpperCase())
+}
+
+function canDeleteProject(row) {
+  if (!row) return false
+  return !['GENERATING', 'ARCHIVED'].includes(String(row.status || '').toUpperCase())
 }
 
 function onKeywordInput() {
@@ -768,9 +877,19 @@ async function loadProjects(selectId) {
 
     if (next) {
       await selectProject(next)
+    } else if (selectId) {
+      try {
+        const detail = await getBidProject(selectId)
+        await selectProject(detail)
+      } catch (e) {
+        selectedProject.value = null
+        materials.value = []
+        generateRecords.value = []
+      }
     } else {
       selectedProject.value = null
       materials.value = []
+      generateRecords.value = []
     }
   } finally {
     projectLoading.value = false
@@ -781,7 +900,7 @@ async function selectProject(row) {
   if (!row) return
 
   selectedProject.value = await getBidProject(row.id)
-  activeTab.value = 'info'
+  activeTab.value = route.query.tab ? String(route.query.tab) : 'info'
 
   if (selectedProject.value?.enterpriseId) {
     await loadKnowledgeOptions(selectedProject.value.enterpriseId)
@@ -875,6 +994,7 @@ async function exportGenerateWord(row) {
     await downloadExportedFile(file)
     ElMessage.success('Word已开始下载')
     await loadGenerateRecords()
+    await loadProjects(selectedProject.value?.id)
   } finally {
     exportingWord.value = false
   }
@@ -892,6 +1012,7 @@ async function exportGenerateMarkdown(row) {
     await downloadExportedFile(file)
     ElMessage.success('Markdown已开始下载')
     await loadGenerateRecords()
+    await loadProjects(selectedProject.value?.id)
   } finally {
     exportingMarkdown.value = false
   }
@@ -970,6 +1091,11 @@ async function openCreateProject() {
 }
 
 async function openEditProject(row) {
+  if (!canEditProject(row)) {
+    ElMessage.warning('当前项目状态不允许编辑')
+    return
+  }
+
   const detail = await getBidProject(row.id)
   projectDialog.isEdit = true
   projectDialog.id = detail.id
@@ -1025,6 +1151,11 @@ async function submitProject() {
 }
 
 async function archiveProject(row) {
+  if (!canArchiveProject(row)) {
+    ElMessage.warning('项目生成或导出后才能归档')
+    return
+  }
+
   await ElMessageBox.confirm(`确认归档项目「${row.projectName}」吗？`, '提示', {
     type: 'warning'
   })
@@ -1035,6 +1166,11 @@ async function archiveProject(row) {
 }
 
 async function deleteProjectRow(row) {
+  if (!canDeleteProject(row)) {
+    ElMessage.warning('当前项目状态不允许删除')
+    return
+  }
+
   await ElMessageBox.confirm(`确认删除项目「${row.projectName}」吗？如果项目下已有资料，后端会拒绝删除。`, '删除确认', {
     type: 'warning'
   })
@@ -1054,6 +1190,10 @@ async function deleteProjectRow(row) {
 function openUploadMaterial() {
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
+    return
+  }
+  if (!canUploadMaterial(selectedProject.value)) {
+    ElMessage.warning('当前项目状态不允许上传资料')
     return
   }
 
@@ -1094,6 +1234,11 @@ function openFile(row) {
 }
 
 async function deleteMaterialRow(row) {
+  if (!canUploadMaterial(selectedProject.value)) {
+    ElMessage.warning('当前项目状态不允许删除资料')
+    return
+  }
+
   await ElMessageBox.confirm(`确认删除资料「${row.fileName || row.originalName || row.id}」吗？`, '删除确认', {
     type: 'warning'
   })
@@ -1138,6 +1283,10 @@ async function submitAddToKnowledge() {
 function goGenerateWorkbench(row) {
   if (!row?.id) {
     ElMessage.warning('请先选择项目')
+    return
+  }
+  if (!canGenerateProject(row)) {
+    ElMessage.warning('当前项目状态不允许发起 AI 生成')
     return
   }
 
@@ -1292,6 +1441,81 @@ function toDateTimePickerValue(value) {
   line-height: 1.5;
 }
 
+.project-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.flow-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  transition: all 0.18s ease;
+}
+
+.flow-item.done {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.flow-item.active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+}
+
+.flow-item.disabled {
+  opacity: 0.65;
+}
+
+.flow-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #4b5563;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.flow-item.done .flow-dot,
+.flow-item.active .flow-dot {
+  background: #2563eb;
+  color: #fff;
+}
+
+.flow-text {
+  min-width: 0;
+}
+
+.flow-text strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.flow-text span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.flow-tip {
+  margin-bottom: 12px;
+}
+
 .project-tabs {
   min-height: 0;
 }
@@ -1362,6 +1586,12 @@ function toDateTimePickerValue(value) {
 
 @media (max-width: 1280px) {
   .project-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 920px) {
+  .project-flow {
     grid-template-columns: 1fr;
   }
 }

@@ -259,6 +259,7 @@
             </el-button>
             <el-button @click="resetGenerateForm">重置参数</el-button>
             <el-button v-if="lastResultId" type="success" plain @click="goResultPage">查看完整结果</el-button>
+            <el-button v-if="selectedProjectId" plain @click="goProjectGenerateRecords">返回项目生成记录</el-button>
           </div>
         </el-form>
       </div>
@@ -273,6 +274,7 @@
           </div>
           <div class="result-actions">
             <el-button :icon="View" :disabled="!lastResultId" @click="goResultPage">结果详情</el-button>
+            <el-button :icon="View" :disabled="!selectedProjectId" @click="goProjectGenerateRecords">项目记录</el-button>
             <el-button :icon="CopyDocument" :disabled="!result.contentMarkdown" @click="copyMarkdown">复制Markdown</el-button>
             <el-button :icon="Download" :disabled="!lastResultId" :loading="exportingWord" @click="handleExportWord">导出Word</el-button>
             <el-button :icon="Download" :disabled="!lastResultId" :loading="exportingMarkdown" @click="handleExportMarkdown">导出Markdown</el-button>
@@ -318,6 +320,7 @@ import { createCrudApi } from '@/api/crud'
 import { downloadExportFile, exportMarkdown, exportWord, generateBidProject } from '@/api/ai'
 import { getBidProject, pageBidProjects } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { listEnabledTemplateVariables } from '@/api/templateVariable'
 
 const route = useRoute()
 const router = useRouter()
@@ -329,6 +332,7 @@ const exportingMarkdown = ref(false)
 const projectOptions = ref([])
 const promptTemplates = ref([])
 const knowledgeBases = ref([])
+const variableDictionary = ref([])
 const selectedProjectId = ref(null)
 const selectedProject = ref(null)
 const advancedPanels = ref([])
@@ -475,7 +479,7 @@ const ignoredVariableKeys = new Set([
   'current_time'
 ])
 
-const variableLabelMap = {
+const fallbackVariableLabelMap = {
   project_name: '项目名称',
   project_code: '项目编号',
   project_type: '项目类型',
@@ -503,6 +507,16 @@ const variableLabelMap = {
   generate_type_label: '生成类型'
 }
 
+const variableLabelMap = computed(() => {
+  const map = { ...fallbackVariableLabelMap }
+  variableDictionary.value.forEach((item) => {
+    if (item.variableKey) {
+      map[item.variableKey] = item.variableLabel || item.variableKey
+    }
+  })
+  return map
+})
+
 onMounted(async () => {
   await reloadAllOptions()
   const queryProjectId = route.query.projectId
@@ -514,8 +528,9 @@ onMounted(async () => {
 
 watch(
   () => generateForm.generateType,
-  () => {
+  async () => {
     autoSelectPromptTemplate()
+    await loadTemplateVariables()
     initExtraVariables()
     clearResult()
   }
@@ -531,7 +546,8 @@ watch(
 async function reloadAllOptions() {
   await Promise.all([
     loadProjects(''),
-    loadPromptTemplates()
+    loadPromptTemplates(),
+    loadTemplateVariables()
   ])
 
   if (selectedProject.value?.enterpriseId) {
@@ -542,6 +558,17 @@ async function reloadAllOptions() {
 
   autoSelectPromptTemplate()
   initExtraVariables()
+}
+
+async function loadTemplateVariables() {
+  try {
+    const scene = currentGenerateType.value?.sceneList?.[0]
+    variableDictionary.value = await listEnabledTemplateVariables({
+      scene
+    })
+  } catch (e) {
+    variableDictionary.value = []
+  }
 }
 
 async function loadProjects(keyword = '') {
@@ -655,7 +682,7 @@ function onTemplateChange() {
 function initExtraVariables() {
   selectedTemplateVariables.value.forEach((key) => {
     if (!(key in extraVariables)) {
-      extraVariables[key] = ''
+      extraVariables[key] = templateVariableDefaultValue(key) || ''
     }
   })
 }
@@ -664,6 +691,11 @@ function clearExtraVariables() {
   Object.keys(extraVariables).forEach((key) => {
     delete extraVariables[key]
   })
+}
+
+function templateVariableDefaultValue(key) {
+  const item = variableDictionary.value.find((variable) => variable.variableKey === key)
+  return item?.defaultValue || ''
 }
 
 function parseKnowledgeIds(project) {
@@ -742,7 +774,7 @@ async function submitGenerate() {
 
     const res = await generateBidProject(selectedProjectId.value, payload)
     Object.assign(result, res || {})
-    ElMessage.success('生成完成')
+    ElMessage.success('生成完成，可返回项目详情的“生成记录”查看')
   } finally {
     generating.value = false
   }
@@ -864,6 +896,21 @@ function goResultPage() {
   }
 }
 
+function goProjectGenerateRecords() {
+  if (!selectedProjectId.value) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+
+  router.push({
+    path: '/bid/projects',
+    query: {
+      projectId: selectedProjectId.value,
+      tab: 'generateRecords'
+    }
+  })
+}
+
 function projectOptionLabel(item) {
   const code = item.projectCode ? `【${item.projectCode}】` : ''
   const client = item.clientName ? ` - ${item.clientName}` : ''
@@ -881,7 +928,7 @@ function knowledgeOptionLabel(item) {
 }
 
 function variableLabel(key) {
-  return variableLabelMap[key] || key
+  return variableLabelMap.value[key] || key
 }
 
 function displayVariableValue(key) {
