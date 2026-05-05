@@ -121,6 +121,54 @@
             :closable="false"
           />
 
+          <div class="generate-check-card" v-loading="projectGenerateCheckLoading">
+            <div class="generate-check-head">
+              <div>
+                <div class="section-title">生成前检查</div>
+                <div class="section-desc">
+                  {{ projectGenerateCheck ? `准备度 ${projectGenerateCheck.percent || 0}% · ${projectGenerateCheck.passedCount || 0}/${projectGenerateCheck.totalCount || 0} 项通过` : '正在检查当前项目生成条件' }}
+                </div>
+              </div>
+              <div class="generate-check-actions">
+                <el-progress
+                  :percentage="projectGenerateCheck?.percent || 0"
+                  :status="readinessProgressStatus(projectGenerateCheck)"
+                  style="width: 160px"
+                />
+                <el-button :icon="Refresh" @click="loadProjectGenerateCheck">重新检查</el-button>
+              </div>
+            </div>
+
+            <div v-if="projectGenerateCheck?.items?.length" class="generate-check-grid">
+              <div
+                v-for="item in projectGenerateCheck.items"
+                :key="item.key"
+                class="generate-check-item"
+                :class="`is-${item.level || 'info'}`"
+              >
+                <div class="check-main">
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.message }}</span>
+                </div>
+                <el-tag :type="readinessTagType(item)" effect="light">
+                  {{ item.passed ? '通过' : '待处理' }}
+                </el-tag>
+              </div>
+            </div>
+
+            <el-alert
+              v-if="projectGenerateCheck?.suggestions?.length"
+              class="check-alert"
+              type="warning"
+              show-icon
+              :closable="false"
+            >
+              <template #title>
+                {{ projectGenerateCheck.suggestions.join('；') }}
+              </template>
+            </el-alert>
+          </div>
+
           <el-tabs v-model="activeTab" class="project-tabs">
             <el-tab-pane label="基础信息" name="info">
               <el-descriptions :column="2" border>
@@ -137,6 +185,23 @@
                 </el-descriptions-item>
                 <el-descriptions-item label="项目类型">
                   {{ projectTypeLabel(selectedProject.projectType) }}
+                </el-descriptions-item>
+                <el-descriptions-item label="标书模板">
+                  <div v-if="selectedProject.bidTemplateId">
+                    <el-tag :type="bidTemplateTypeTag(selectedProject.bidTemplateType)" effect="light">
+                      {{ bidTemplateTypeLabel(selectedProject.bidTemplateType) }}
+                    </el-tag>
+                    <span class="template-name">{{ selectedProject.bidTemplateName || `模板ID：${selectedProject.bidTemplateId}` }}</span>
+                    <el-tag
+                      v-if="Number(selectedProject.bidTemplateFileExists) !== 1"
+                      type="danger"
+                      effect="light"
+                      size="small"
+                    >
+                      文件丢失
+                    </el-tag>
+                  </div>
+                  <span v-else>未指定，导出时使用默认模板</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="所属企业">
                   {{ selectedProject.enterpriseName || '-' }}
@@ -416,6 +481,34 @@
           />
         </el-form-item>
 
+        <el-form-item label="标书模板">
+          <el-select
+            v-model="projectForm.bidTemplateId"
+            filterable
+            clearable
+            placeholder="请选择标书模板；不选则导出时自动使用默认模板"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in bidTemplateOptions"
+              :key="item.id"
+              :label="bidTemplateOptionLabel(item)"
+              :value="item.id"
+            >
+              <div class="template-option">
+                <span>{{ item.templateName }}</span>
+                <span class="template-option__meta">
+                  {{ bidTemplateTypeLabel(item.templateType) }} · {{ bidTemplateScopeLabel(item.templateScope) }}
+                  <template v-if="Number(item.defaultFlag) === 1"> · 默认</template>
+                </span>
+              </div>
+            </el-option>
+          </el-select>
+          <div class="form-tip">
+            当前仅显示启用且 Word 文件存在的模板；不选择时导出 Word 会按企业默认模板、平台默认模板自动匹配。
+          </div>
+        </el-form-item>
+
         <el-form-item label="绑定知识库">
           <el-select
             v-model="projectForm.knowledgeIds"
@@ -584,6 +677,12 @@
         </el-tabs>
       </template>
     </el-dialog>
+
+    <WordExportTemplateDialog
+      v-model="wordExportDialog.visible"
+      :result="wordExportDialog.result"
+      @success="onWordExportSuccess"
+    />
   </div>
 </template>
 
@@ -595,10 +694,10 @@ import { CopyDocument, Download, Edit, MagicStick, Plus, Refresh, Upload, View }
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { listBidTemplates } from '@/api/bidTemplate'
 import {
   downloadExportFile,
   exportMarkdown,
-  exportWord,
   getAiGenerateResult,
   pageAiGenerateResults
 } from '@/api/ai'
@@ -609,6 +708,7 @@ import {
   deleteBidProject,
   deleteProjectMaterial,
   getBidProject,
+  getBidProjectGenerateCheck,
   pageBidProjects,
   pageProjectMaterials,
   updateBidProject,
@@ -616,6 +716,7 @@ import {
 } from '@/api/bidProject'
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import PageFooterPager from '@/components/PageFooterPager.vue'
+import WordExportTemplateDialog from '@/components/WordExportTemplateDialog.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -634,8 +735,11 @@ const materials = ref([])
 const generateRecords = ref([])
 const enterprises = ref([])
 const knowledgeOptions = ref([])
+const bidTemplateOptions = ref([])
 const keyword = ref('')
 const selectedProject = ref(null)
+const projectGenerateCheck = ref(null)
+const projectGenerateCheckLoading = ref(false)
 const activeTab = ref('info')
 const projectFormRef = ref()
 const timer = ref(null)
@@ -663,6 +767,7 @@ const projectForm = reactive({
   bidOpenTime: '',
   periodDays: null,
   ownerUserId: null,
+  bidTemplateId: null,
   knowledgeIds: [],
   status: 'DRAFT',
   remark: ''
@@ -685,6 +790,11 @@ const knowledgeDialog = reactive({
 const generateResultDialog = reactive({
   visible: false,
   activeTab: 'preview',
+  result: null
+})
+
+const wordExportDialog = reactive({
+  visible: false,
   result: null
 })
 
@@ -757,7 +867,8 @@ const projectStatusMap = {
 
 onMounted(async () => {
   await loadEnterprises()
-  await loadKnowledgeOptions()
+  await loadKnowledgeOptions(auth.user?.enterpriseId || undefined)
+  await loadBidTemplateOptions(auth.user?.enterpriseId || undefined)
 
   const queryProjectId = route.query.projectId ? Number(route.query.projectId) : null
   if (route.query.tab) {
@@ -855,6 +966,33 @@ async function loadKnowledgeOptions(enterpriseId) {
   }
 }
 
+async function loadBidTemplateOptions(enterpriseId) {
+  try {
+    const [platformTemplates, enterpriseTemplates] = await Promise.all([
+      listBidTemplates({
+        status: 1,
+        templateScope: 'PLATFORM',
+        pageNum: 1,
+        pageSize: 200
+      }),
+      enterpriseId
+        ? listBidTemplates({
+          status: 1,
+          templateScope: 'ENTERPRISE',
+          enterpriseId,
+          pageNum: 1,
+          pageSize: 200
+        })
+        : Promise.resolve([])
+    ])
+
+    const merged = [...(enterpriseTemplates || []), ...(platformTemplates || [])]
+    bidTemplateOptions.value = merged.filter((item) => Number(item.fileExists) === 1)
+  } catch (e) {
+    bidTemplateOptions.value = []
+  }
+}
+
 async function loadProjects(selectId) {
   projectLoading.value = true
   try {
@@ -904,12 +1042,46 @@ async function selectProject(row) {
 
   if (selectedProject.value?.enterpriseId) {
     await loadKnowledgeOptions(selectedProject.value.enterpriseId)
+    await loadBidTemplateOptions(selectedProject.value.enterpriseId)
   } else {
     await loadKnowledgeOptions()
+    await loadBidTemplateOptions()
   }
 
   await loadMaterials()
   await loadGenerateRecords()
+  await loadProjectGenerateCheck()
+}
+
+async function loadProjectGenerateCheck() {
+  if (!selectedProject.value?.id) {
+    projectGenerateCheck.value = null
+    return
+  }
+
+  projectGenerateCheckLoading.value = true
+  try {
+    projectGenerateCheck.value = await getBidProjectGenerateCheck(selectedProject.value.id)
+  } catch (e) {
+    projectGenerateCheck.value = null
+  } finally {
+    projectGenerateCheckLoading.value = false
+  }
+}
+
+function readinessTagType(item) {
+  if (item?.passed) return 'success'
+  if (item?.level === 'error') return 'danger'
+  if (item?.level === 'warning') return 'warning'
+  return 'info'
+}
+
+function readinessProgressStatus(check) {
+  if (!check) return undefined
+  if (check.canGenerate === false) return 'exception'
+  if ((check.percent || 0) >= 85) return 'success'
+  if ((check.percent || 0) < 50) return 'warning'
+  return undefined
 }
 
 async function loadMaterials() {
@@ -982,22 +1154,25 @@ async function copyGenerateMarkdown(row) {
   ElMessage.success('已复制Markdown内容')
 }
 
-async function exportGenerateWord(row) {
+function exportGenerateWord(row) {
   if (!row?.id) {
     ElMessage.warning('生成结果ID为空')
     return
   }
 
-  exportingWord.value = true
-  try {
-    const file = await exportWord(row.id)
-    await downloadExportedFile(file)
-    ElMessage.success('Word已开始下载')
-    await loadGenerateRecords()
-    await loadProjects(selectedProject.value?.id)
-  } finally {
-    exportingWord.value = false
+  wordExportDialog.result = {
+    ...row,
+    projectName: row.projectName || selectedProject.value?.projectName,
+    projectCode: row.projectCode || selectedProject.value?.projectCode,
+    bizId: row.bizId || selectedProject.value?.id
   }
+  wordExportDialog.visible = true
+}
+
+async function onWordExportSuccess(file) {
+  await downloadExportedFile(file)
+  await loadGenerateRecords()
+  await loadProjects(selectedProject.value?.id)
 }
 
 async function exportGenerateMarkdown(row) {
@@ -1062,7 +1237,7 @@ function goFullResultPage(row) {
 }
 
 function resetProjectForm(row = {}) {
-  projectForm.enterpriseId = row.enterpriseId || ''
+  projectForm.enterpriseId = row.enterpriseId || (!canManagePlatform.value ? auth.user?.enterpriseId || '' : '')
   projectForm.projectName = row.projectName || ''
   projectForm.projectType = row.projectType || ''
   projectForm.clientName = row.clientName || ''
@@ -1072,6 +1247,7 @@ function resetProjectForm(row = {}) {
   projectForm.bidOpenTime = toDateTimePickerValue(row.bidOpenTime)
   projectForm.periodDays = row.periodDays ?? null
   projectForm.ownerUserId = row.ownerUserId || null
+  projectForm.bidTemplateId = row.bidTemplateId || null
   projectForm.knowledgeIds = Array.isArray(row.knowledgeIdList) ? row.knowledgeIdList : []
   projectForm.status = String(row.status || 'DRAFT').toUpperCase()
   projectForm.remark = row.remark || ''
@@ -1082,11 +1258,15 @@ async function openCreateProject() {
   projectDialog.id = null
   resetProjectForm({})
 
-  if (!canManagePlatform.value && auth.user?.enterpriseName) {
-    projectForm.bidderName = auth.user.enterpriseName
+  if (!canManagePlatform.value) {
+    projectForm.enterpriseId = auth.user?.enterpriseId || projectForm.enterpriseId
+    if (auth.user?.enterpriseName) {
+      projectForm.bidderName = auth.user.enterpriseName
+    }
   }
 
   await loadKnowledgeOptions(projectForm.enterpriseId || undefined)
+  await loadBidTemplateOptions(projectForm.enterpriseId || undefined)
   projectDialog.visible = true
 }
 
@@ -1102,12 +1282,15 @@ async function openEditProject(row) {
   resetProjectForm(detail)
 
   await loadKnowledgeOptions(detail.enterpriseId || undefined)
+  await loadBidTemplateOptions(detail.enterpriseId || undefined)
   projectDialog.visible = true
 }
 
 async function onProjectEnterpriseChange(value) {
   projectForm.knowledgeIds = []
+  projectForm.bidTemplateId = null
   await loadKnowledgeOptions(value || undefined)
+  await loadBidTemplateOptions(value || undefined)
 
   const enterprise = enterprises.value.find((item) => String(item.id) === String(value))
   if (enterprise && !projectForm.bidderName) {
@@ -1129,6 +1312,7 @@ async function submitProject() {
     bidOpenTime: projectForm.bidOpenTime || null,
     periodDays: projectForm.periodDays === '' ? null : projectForm.periodDays,
     ownerUserId: projectForm.ownerUserId || null,
+    bidTemplateId: projectForm.bidTemplateId || null,
     knowledgeIds: Array.isArray(projectForm.knowledgeIds)
       ? projectForm.knowledgeIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
       : [],
@@ -1247,6 +1431,7 @@ async function deleteMaterialRow(row) {
   ElMessage.success('资料已删除')
 
   await loadMaterials()
+  await loadProjectGenerateCheck()
   await loadProjects(selectedProject.value?.id)
 }
 
@@ -1287,6 +1472,11 @@ function goGenerateWorkbench(row) {
   }
   if (!canGenerateProject(row)) {
     ElMessage.warning('当前项目状态不允许发起 AI 生成')
+    return
+  }
+
+  if (projectGenerateCheck.value && projectGenerateCheck.value.canGenerate === false) {
+    ElMessage.warning('项目基础信息未通过生成前检查，请先处理后再生成')
     return
   }
 
@@ -1357,6 +1547,42 @@ function materialTypeLabel(value) {
     OTHER: '其他资料'
   }
   return map[value] || value || '-'
+}
+
+function bidTemplateOptionLabel(item) {
+  if (!item) return ''
+  const tags = [
+    bidTemplateTypeLabel(item.templateType),
+    bidTemplateScopeLabel(item.templateScope)
+  ]
+  if (Number(item.defaultFlag) === 1) {
+    tags.push('默认')
+  }
+  return `${item.templateName}（${tags.filter(Boolean).join(' / ')}）`
+}
+
+function bidTemplateTypeLabel(value) {
+  const map = {
+    TECH: '技术标',
+    BUSINESS: '商务标',
+    FULL: '完整标书',
+    COMMON: '通用标书'
+  }
+  return map[value] || value || '-'
+}
+
+function bidTemplateTypeTag(value) {
+  const map = {
+    TECH: 'primary',
+    BUSINESS: 'success',
+    FULL: 'warning',
+    COMMON: 'info'
+  }
+  return map[value] || 'info'
+}
+
+function bidTemplateScopeLabel(value) {
+  return value === 'PLATFORM' ? '平台模板' : '企业模板'
 }
 
 function kbTypeLabel(value) {
@@ -1516,6 +1742,83 @@ function toDateTimePickerValue(value) {
   margin-bottom: 12px;
 }
 
+
+.generate-check-card {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.generate-check-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.generate-check-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.generate-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.generate-check-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.generate-check-item.is-error {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.generate-check-item.is-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.check-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.check-main strong {
+  color: var(--text-main);
+}
+
+.check-main span {
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.check-alert {
+  margin-top: 12px;
+}
+
+@media (max-width: 1180px) {
+  .generate-check-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .project-tabs {
   min-height: 0;
 }
@@ -1576,6 +1879,25 @@ function toDateTimePickerValue(value) {
 .result-preview {
   height: 520px;
   overflow: auto;
+}
+
+
+.template-name {
+  margin-left: 8px;
+  margin-right: 8px;
+}
+
+.template-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.template-option__meta {
+  color: var(--text-sub);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .form-tip {

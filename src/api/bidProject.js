@@ -15,6 +15,13 @@ export function getBidProject(id) {
 }
 
 /**
+ * 标书项目生成前检查
+ */
+export function getBidProjectGenerateCheck(id) {
+  return request.get(`/bid-project/${id}/generate-check`)
+}
+
+/**
  * 新增标书项目
  */
 export function createBidProject(data) {

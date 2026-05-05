@@ -76,6 +76,13 @@
             </template>
           </el-table-column>
 
+          <el-table-column label="套用模板" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.templateName">{{ row.templateName }}</span>
+              <span v-else class="empty-text">普通导出</span>
+            </template>
+          </el-table-column>
+
           <el-table-column label="文件状态" width="150">
             <template #default="{ row }">
               <el-tag :type="fileStateTag(row)" effect="light">
@@ -115,6 +122,12 @@
         />
       </div>
     </div>
+
+    <WordExportTemplateDialog
+      v-model="wordExportDialog.visible"
+      :result="wordExportDialog.result"
+      @success="onWordExportSuccess"
+    />
   </div>
 </template>
 
@@ -127,10 +140,10 @@ import {
   deleteDocumentExport,
   downloadExportFile,
   exportMarkdown,
-  exportWord,
   pageDocumentExports
 } from '@/api/ai'
 import PageFooterPager from '@/components/PageFooterPager.vue'
+import WordExportTemplateDialog from '@/components/WordExportTemplateDialog.vue'
 
 const router = useRouter()
 
@@ -142,6 +155,11 @@ const filters = reactive({
   keyword: '',
   exportType: '',
   fileState: ''
+})
+
+const wordExportDialog = reactive({
+  visible: false,
+  result: null
 })
 
 const pager = reactive({
@@ -219,14 +237,26 @@ async function reExportRow(row) {
 
   if (type === 'markdown') {
     file = await exportMarkdown(row.resultId)
+    ElMessage.success('已重新导出，开始下载')
+    await downloadExportedFile(file)
+    await loadExports()
   } else if (type === 'word') {
-    file = await exportWord(row.resultId)
+    wordExportDialog.result = {
+      id: row.resultId,
+      resultId: row.resultId,
+      title: row.resultTitle,
+      projectName: row.projectName,
+      projectCode: row.projectCode,
+      bizType: row.bizType,
+      bizId: row.bizId
+    }
+    wordExportDialog.visible = true
   } else {
     ElMessage.warning('当前导出类型暂不支持重新导出')
-    return
   }
+}
 
-  ElMessage.success('已重新导出，开始下载')
+async function onWordExportSuccess(file) {
   await downloadExportedFile(file)
   await loadExports()
 }
@@ -379,7 +409,8 @@ function fileStateTag(row) {
 }
 
 .project-code,
-.result-sub {
+.result-sub,
+.empty-text {
   margin-top: 4px;
   color: var(--text-sub);
   font-size: 12px;

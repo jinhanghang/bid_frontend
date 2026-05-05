@@ -80,6 +80,52 @@
             </div>
           </div>
 
+          <div v-if="selectedProject" class="readiness-card" v-loading="readinessLoading">
+            <div class="readiness-head">
+              <div>
+                <div class="readiness-title">生成准备度</div>
+                <div class="readiness-desc">
+                  {{ readinessCheck ? `已完成 ${readinessCheck.passedCount || 0} / ${readinessCheck.totalCount || 0} 项检查` : '正在检查项目生成条件' }}
+                </div>
+              </div>
+              <el-progress
+                type="circle"
+                :width="62"
+                :percentage="readinessCheck?.percent || 0"
+                :status="readinessProgressStatus(readinessCheck)"
+              />
+            </div>
+
+            <div v-if="readinessCheck?.items?.length" class="readiness-items">
+              <div
+                v-for="item in readinessCheck.items"
+                :key="item.key"
+                class="readiness-item"
+                :class="`is-${item.level || 'info'}`"
+              >
+                <div class="readiness-item__main">
+                  <strong>{{ item.name }}</strong>
+                  <span>{{ item.message }}</span>
+                </div>
+                <el-tag :type="readinessTagType(item)" effect="light">
+                  {{ item.passed ? '已完成' : '需处理' }}
+                </el-tag>
+              </div>
+            </div>
+
+            <el-alert
+              v-if="readinessCheck?.warnings?.length"
+              class="readiness-alert"
+              type="warning"
+              show-icon
+              :closable="false"
+            >
+              <template #title>
+                {{ readinessCheck.warnings.join('；') }}
+              </template>
+            </el-alert>
+          </div>
+
           <el-form-item label="生成类型" required>
             <div class="generate-type-grid">
               <div
@@ -164,6 +210,73 @@
                 :closable="false"
                 style="margin-top: 10px"
               />
+            </div>
+          </el-form-item>
+
+          <el-form-item label="引用企业资料">
+            <div class="knowledge-box">
+              <el-switch
+                v-model="generateForm.useCompanyMaterials"
+                active-text="引用"
+                inactive-text="不引用"
+                :disabled="!selectedProject"
+              />
+              <el-select
+                v-model="generateForm.companyMaterialIds"
+                multiple
+                clearable
+                filterable
+                collapse-tags
+                collapse-tags-tooltip
+                :disabled="!generateForm.useCompanyMaterials"
+                :placeholder="selectedProject ? '请选择当前项目所属企业的资料' : '请先选择标书项目'"
+                style="width: 100%; margin-top: 10px"
+              >
+                <el-option-group
+                  v-for="group in companyMaterialGroups"
+                  :key="group.type"
+                  :label="group.label"
+                >
+                  <el-option
+                    v-for="item in group.items"
+                    :key="item.id"
+                    :label="companyMaterialOptionLabel(item)"
+                    :value="item.id"
+                  >
+                    <div class="material-option">
+                      <span>{{ item.title }}</span>
+                      <span class="material-option__meta">
+                        {{ materialTypeLabel(item.materialType) }}
+                        <template v-if="Number(item.fileExists) === 1"> · 有附件</template>
+                      </span>
+                    </div>
+                  </el-option>
+                </el-option-group>
+              </el-select>
+              <div class="form-tip">
+                建议商务标引用公司简介、资质证书、项目业绩；技术标可引用实施团队、售后服务、项目业绩。
+              </div>
+              <el-alert
+                v-if="generateForm.useCompanyMaterials && selectedProject && !companyMaterials.length"
+                title="当前项目所属企业暂无启用企业资料，可以先到 企业资料库 中维护。"
+                type="warning"
+                show-icon
+                :closable="false"
+                style="margin-top: 10px"
+              />
+              <div v-if="selectedCompanyMaterials.length" class="company-material-preview">
+                <div class="preview-title">已选择 {{ selectedCompanyMaterials.length }} 条企业资料</div>
+                <div class="preview-tags">
+                  <el-tag
+                    v-for="item in selectedCompanyMaterials"
+                    :key="item.id"
+                    type="success"
+                    effect="light"
+                  >
+                    {{ materialTypeLabel(item.materialType) }}：{{ item.title }}
+                  </el-tag>
+                </div>
+              </div>
             </div>
           </el-form-item>
 
@@ -318,8 +431,9 @@ import {
 } from '@element-plus/icons-vue'
 import { createCrudApi } from '@/api/crud'
 import { downloadExportFile, exportMarkdown, exportWord, generateBidProject } from '@/api/ai'
-import { getBidProject, pageBidProjects } from '@/api/bidProject'
+import { getBidProject, getBidProjectGenerateCheck, pageBidProjects } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { listCompanyMaterials } from '@/api/companyMaterial'
 import { listEnabledTemplateVariables } from '@/api/templateVariable'
 
 const route = useRoute()
@@ -332,9 +446,12 @@ const exportingMarkdown = ref(false)
 const projectOptions = ref([])
 const promptTemplates = ref([])
 const knowledgeBases = ref([])
+const companyMaterials = ref([])
 const variableDictionary = ref([])
 const selectedProjectId = ref(null)
 const selectedProject = ref(null)
+const readinessCheck = ref(null)
+const readinessLoading = ref(false)
 const advancedPanels = ref([])
 const result = reactive({})
 const extraVariables = reactive({})
@@ -369,11 +486,24 @@ const generateTypes = [
   }
 ]
 
+const materialTypes = [
+  { label: '公司简介', value: 'COMPANY_PROFILE' },
+  { label: '资质证书', value: 'QUALIFICATION' },
+  { label: '人员证书', value: 'PERSON_CERT' },
+  { label: '项目业绩', value: 'CASE' },
+  { label: '荣誉奖项', value: 'HONOR' },
+  { label: '售后服务', value: 'AFTER_SALE' },
+  { label: '实施团队', value: 'TEAM' },
+  { label: '其他资料', value: 'OTHER' }
+]
+
 const generateForm = reactive({
   generateType: 'tech',
   promptTemplateId: null,
   useKnowledge: false,
   knowledgeIds: [],
+  useCompanyMaterials: false,
+  companyMaterialIds: [],
   extraRequirement: '',
   temperature: 0.7,
   maxTokens: 8192
@@ -394,6 +524,58 @@ const matchedPromptTemplates = computed(() => {
     const scene = String(item.scene || '').toUpperCase()
     return scenes.includes(scene)
   })
+})
+
+const selectedCompanyMaterials = computed(() => {
+  const ids = new Set(generateForm.companyMaterialIds.map((id) => String(id)))
+  return companyMaterials.value.filter((item) => ids.has(String(item.id)))
+})
+
+const companyMaterialGroups = computed(() => {
+  return materialTypes
+    .map((type) => ({
+      ...type,
+      items: companyMaterials.value.filter((item) => item.materialType === type.value)
+    }))
+    .filter((group) => group.items.length)
+})
+
+const companyMaterialVariables = computed(() => {
+  const map = {
+    company_material_text: '',
+    company_profile: '',
+    qualification_desc: '',
+    person_cert_desc: '',
+    case_desc: '',
+    honor_desc: '',
+    after_sale_plan: '',
+    implementation_team: '',
+    team_desc: ''
+  }
+
+  selectedCompanyMaterials.value.forEach((item) => {
+    const section = buildCompanyMaterialSection(item)
+    map.company_material_text = appendText(map.company_material_text, section)
+
+    if (item.materialType === 'COMPANY_PROFILE') {
+      map.company_profile = appendText(map.company_profile, section)
+    } else if (item.materialType === 'QUALIFICATION') {
+      map.qualification_desc = appendText(map.qualification_desc, section)
+    } else if (item.materialType === 'PERSON_CERT') {
+      map.person_cert_desc = appendText(map.person_cert_desc, section)
+    } else if (item.materialType === 'CASE') {
+      map.case_desc = appendText(map.case_desc, section)
+    } else if (item.materialType === 'HONOR') {
+      map.honor_desc = appendText(map.honor_desc, section)
+    } else if (item.materialType === 'AFTER_SALE') {
+      map.after_sale_plan = appendText(map.after_sale_plan, section)
+    } else if (item.materialType === 'TEAM') {
+      map.implementation_team = appendText(map.implementation_team, section)
+      map.team_desc = appendText(map.team_desc, section)
+    }
+  })
+
+  return map
 })
 
 const selectedPromptTemplate = computed(() => {
@@ -436,6 +618,12 @@ const knownVariables = computed(() => {
     generate_type_label: currentGenerateType.value.label
   }
 
+  Object.entries(companyMaterialVariables.value).forEach(([key, value]) => {
+    if (!isBlank(value)) {
+      vars[key] = value
+    }
+  })
+
   Object.keys(extraVariables).forEach((key) => {
     vars[key] = extraVariables[key]
   })
@@ -460,7 +648,8 @@ const activeStep = computed(() => {
 })
 
 const canGenerate = computed(() => {
-  return Boolean(selectedProjectId.value && generateForm.generateType && !generating.value)
+  const checkPass = !readinessCheck.value || readinessCheck.value.canGenerate !== false
+  return Boolean(selectedProjectId.value && generateForm.generateType && !generating.value && checkPass)
 })
 
 const lastResultId = computed(() => result.resultId || null)
@@ -473,6 +662,7 @@ const templatePlaceholder = computed(() => {
 
 const ignoredVariableKeys = new Set([
   'knowledge_text',
+  'company_material_text',
   'extra_requirement',
   'system_prompt',
   'current_date',
@@ -503,6 +693,11 @@ const fallbackVariableLabelMap = {
   case_desc: '业绩案例',
   after_sale_plan: '售后方案',
   implementation_plan: '实施计划',
+  company_material_text: '企业资料库',
+  person_cert_desc: '人员证书',
+  honor_desc: '荣誉奖项',
+  implementation_team: '实施团队',
+  team_desc: '实施团队',
   generate_type: '生成类型',
   generate_type_label: '生成类型'
 }
@@ -531,6 +726,9 @@ watch(
   async () => {
     autoSelectPromptTemplate()
     await loadTemplateVariables()
+    if (selectedProject.value && companyMaterials.value.length) {
+      autoRecommendCompanyMaterials()
+    }
     initExtraVariables()
     clearResult()
   }
@@ -552,8 +750,10 @@ async function reloadAllOptions() {
 
   if (selectedProject.value?.enterpriseId) {
     await loadKnowledgeBases(selectedProject.value.enterpriseId)
+    await loadCompanyMaterials(selectedProject.value.enterpriseId)
   } else {
     knowledgeBases.value = []
+    companyMaterials.value = []
   }
 
   autoSelectPromptTemplate()
@@ -626,18 +826,78 @@ async function loadKnowledgeBases(enterpriseId) {
   }
 }
 
+async function loadCompanyMaterials(enterpriseId) {
+  if (!enterpriseId) {
+    companyMaterials.value = []
+    generateForm.companyMaterialIds = []
+    generateForm.useCompanyMaterials = false
+    return
+  }
+
+  try {
+    companyMaterials.value = await listCompanyMaterials({
+      enterpriseId,
+      status: 1
+    })
+
+    const allowIds = new Set(companyMaterials.value.map((item) => Number(item.id)))
+    generateForm.companyMaterialIds = generateForm.companyMaterialIds.filter((id) => allowIds.has(Number(id)))
+
+    if (!companyMaterials.value.length) {
+      generateForm.useCompanyMaterials = false
+    }
+  } catch (e) {
+    companyMaterials.value = []
+    generateForm.companyMaterialIds = []
+    generateForm.useCompanyMaterials = false
+  }
+}
+
+async function loadReadinessCheck(projectId) {
+  if (!projectId) {
+    readinessCheck.value = null
+    return
+  }
+
+  readinessLoading.value = true
+  try {
+    readinessCheck.value = await getBidProjectGenerateCheck(projectId)
+  } catch (e) {
+    readinessCheck.value = null
+  } finally {
+    readinessLoading.value = false
+  }
+}
+
+function readinessTagType(item) {
+  if (item?.passed) return 'success'
+  if (item?.level === 'error') return 'danger'
+  if (item?.level === 'warning') return 'warning'
+  return 'info'
+}
+
+function readinessProgressStatus(check) {
+  if (!check) return undefined
+  if (check.canGenerate === false) return 'exception'
+  if ((check.percent || 0) >= 85) return 'success'
+  if ((check.percent || 0) < 50) return 'warning'
+  return undefined
+}
+
 async function onProjectChange(projectId) {
   clearResult()
   clearExtraVariables()
 
   if (!projectId) {
     selectedProject.value = null
+    readinessCheck.value = null
     resetGenerateForm()
     return
   }
 
   const detail = await getBidProject(projectId)
   selectedProject.value = detail
+  await loadReadinessCheck(detail.id)
 
   if (!projectOptions.value.some((item) => String(item.id) === String(detail.id))) {
     projectOptions.value.unshift(detail)
@@ -650,6 +910,8 @@ async function onProjectChange(projectId) {
   generateForm.maxTokens = 8192
 
   await loadKnowledgeBases(detail.enterpriseId)
+  await loadCompanyMaterials(detail.enterpriseId)
+  autoRecommendCompanyMaterials()
   autoSelectPromptTemplate()
   initExtraVariables()
 }
@@ -720,6 +982,51 @@ function parseKnowledgeIds(project) {
   return []
 }
 
+function autoRecommendCompanyMaterials() {
+  if (!companyMaterials.value.length) {
+    generateForm.useCompanyMaterials = false
+    generateForm.companyMaterialIds = []
+    return
+  }
+
+  const recommendTypes = currentGenerateType.value.value === 'business'
+    ? ['COMPANY_PROFILE', 'QUALIFICATION', 'CASE', 'HONOR', 'PERSON_CERT']
+    : ['COMPANY_PROFILE', 'CASE', 'AFTER_SALE', 'TEAM', 'QUALIFICATION']
+
+  const selected = companyMaterials.value
+    .filter((item) => recommendTypes.includes(item.materialType))
+    .slice(0, 8)
+    .map((item) => item.id)
+
+  generateForm.companyMaterialIds = selected
+  generateForm.useCompanyMaterials = selected.length > 0
+}
+
+function buildCompanyMaterialSection(item) {
+  const lines = [`【${materialTypeLabel(item.materialType)}】${item.title || ''}`]
+  if (item.content) {
+    lines.push(item.content)
+  }
+  if (item.validStartDate || item.validEndDate) {
+    lines.push(`有效期：${item.validStartDate || '开始不限'} 至 ${item.validEndDate || '长期有效'}`)
+  }
+  return lines.filter(Boolean).join('\n')
+}
+
+function appendText(oldValue, text) {
+  if (isBlank(text)) return oldValue || ''
+  if (isBlank(oldValue)) return text
+  return `${oldValue}\n\n${text}`
+}
+
+function materialTypeLabel(value) {
+  return materialTypes.find((item) => item.value === value)?.label || value || '-'
+}
+
+function companyMaterialOptionLabel(item) {
+  return `${materialTypeLabel(item.materialType)}：${item.title || `资料#${item.id}`}`
+}
+
 function buildDefaultRequirement(project) {
   const name = project?.projectName || ''
   const type = currentGenerateType.value.label
@@ -740,6 +1047,11 @@ async function submitGenerate() {
 
   if (generateForm.useKnowledge && !generateForm.knowledgeIds.length) {
     ElMessage.warning('已开启引用知识库，请至少选择一个知识库')
+    return
+  }
+
+  if (generateForm.useCompanyMaterials && !generateForm.companyMaterialIds.length) {
+    ElMessage.warning('已开启引用企业资料，请至少选择一条企业资料')
     return
   }
 
@@ -766,6 +1078,8 @@ async function submitGenerate() {
       promptTemplateId: generateForm.promptTemplateId || undefined,
       useKnowledge: Boolean(generateForm.useKnowledge),
       knowledgeIds: generateForm.useKnowledge ? generateForm.knowledgeIds : [],
+      useCompanyMaterials: Boolean(generateForm.useCompanyMaterials),
+      companyMaterialIds: generateForm.useCompanyMaterials ? generateForm.companyMaterialIds : [],
       variables: buildPayloadVariables(),
       extraRequirement: generateForm.extraRequirement || undefined,
       temperature: toNumberOrUndefined(generateForm.temperature),
@@ -802,6 +1116,8 @@ function resetGenerateForm() {
   generateForm.generateType = 'tech'
   generateForm.useKnowledge = false
   generateForm.knowledgeIds = selectedProject.value ? parseKnowledgeIds(selectedProject.value) : []
+  generateForm.useCompanyMaterials = false
+  generateForm.companyMaterialIds = []
   generateForm.extraRequirement = selectedProject.value ? buildDefaultRequirement(selectedProject.value) : ''
   generateForm.temperature = 0.7
   generateForm.maxTokens = 8192
@@ -1107,6 +1423,116 @@ function isBlank(value) {
   margin-top: 6px;
   color: #2563eb;
   font-size: 12px;
+}
+
+
+.material-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.material-option__meta {
+  color: var(--text-sub);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.company-material-preview {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.preview-title {
+  color: var(--text-main);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+
+.readiness-card {
+  margin: 10px 0 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.readiness-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.readiness-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.readiness-desc {
+  margin-top: 5px;
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.readiness-items {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.readiness-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}
+
+.readiness-item.is-error {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.readiness-item.is-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.readiness-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.readiness-item__main strong {
+  color: var(--text-main);
+}
+
+.readiness-item__main span {
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.readiness-alert {
+  margin-top: 10px;
 }
 
 .knowledge-box,

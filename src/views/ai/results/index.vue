@@ -189,6 +189,12 @@
         <el-empty v-else description="请选择左侧生成结果" />
       </div>
     </div>
+
+    <WordExportTemplateDialog
+      v-model="wordExportDialog.visible"
+      :result="wordExportDialog.result"
+      @success="onWordExportSuccess"
+    />
   </div>
 </template>
 
@@ -200,11 +206,11 @@ import { Back, CopyDocument, Download, Refresh } from '@element-plus/icons-vue'
 import {
   downloadExportFile,
   exportMarkdown,
-  exportWord,
   getAiGenerateResult,
   pageAiGenerateResults
 } from '@/api/ai'
 import PageFooterPager from '@/components/PageFooterPager.vue'
+import WordExportTemplateDialog from '@/components/WordExportTemplateDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -221,6 +227,11 @@ const filters = reactive({
   keyword: '',
   bizType: '',
   exportState: ''
+})
+
+const wordExportDialog = reactive({
+  visible: false,
+  result: null
 })
 
 const pager = reactive({
@@ -317,18 +328,20 @@ async function copyMarkdown() {
   ElMessage.success('已复制Markdown内容')
 }
 
-async function handleExportWord() {
+function handleExportWord() {
   if (!current.value?.id) return
+  openWordExportDialog(current.value)
+}
 
-  exportingWord.value = true
-  try {
-    const file = await exportWord(current.value.id)
-    await downloadExportedFile(file)
-    ElMessage.success('Word已开始下载')
-    await refreshCurrent()
-  } finally {
-    exportingWord.value = false
-  }
+function openWordExportDialog(row) {
+  wordExportDialog.result = row
+  wordExportDialog.visible = true
+}
+
+async function onWordExportSuccess(file) {
+  await downloadExportedFile(file)
+  await refreshCurrent()
+  await loadResults(wordExportDialog.result?.id)
 }
 
 async function handleExportMarkdown() {
@@ -345,13 +358,9 @@ async function handleExportMarkdown() {
   }
 }
 
-async function exportResultWord(row) {
+function exportResultWord(row) {
   if (!row?.id) return
-
-  const file = await exportWord(row.id)
-  await downloadExportedFile(file)
-  ElMessage.success('Word已开始下载')
-  await loadResults(row.id)
+  openWordExportDialog(row)
 }
 
 async function downloadLatestExport() {
