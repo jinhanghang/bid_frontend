@@ -7,7 +7,10 @@ const Login = () => import('@/views/login/index.vue')
 const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
+const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
+const AiPromptManage = () => import('@/views/ai/prompts/index.vue')
+const AiTaskManage = () => import('@/views/ai/tasks/index.vue')
 const AiResultManage = () => import('@/views/ai/results/index.vue')
 const AiExportManage = () => import('@/views/ai/exports/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
@@ -32,12 +35,12 @@ const routes = [
 
       { path: 'bid/projects', component: BidProject, meta: { title: '标书项目', requiresBusiness: true } },
       { path: 'bid/templates', component: GenericCrudView, meta: { title: '标书模板', configKey: 'bidTemplate', requiresBusiness: true } },
-      { path: 'bid/template-variables', component: GenericCrudView, meta: { title: '模板变量', configKey: 'templateVariable', requiresBusiness: true } },
+      { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', requiresBusiness: true } },
 
       { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
-      { path: 'ai/prompts', component: GenericCrudView, meta: { title: 'Prompt模板', configKey: 'promptTemplate', requiresBusiness: true } },
+      { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', requiresBusiness: true } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
-      { path: 'ai/tasks', component: GenericCrudView, meta: { title: '生成任务', configKey: 'aiTask', requiresBusiness: true } },
+      { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },
       { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
       { path: 'ai/exports', component: AiExportManage, meta: { title: '导出记录', requiresBusiness: true } },
 

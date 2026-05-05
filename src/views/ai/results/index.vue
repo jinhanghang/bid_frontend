@@ -1,47 +1,101 @@
 <template>
   <div class="page">
     <div class="page-body result-page">
+      <!-- 左侧：生成结果列表 -->
       <div class="card card--table result-left">
         <div class="list-head">
           <div class="list-head__left">
             <el-input
-              v-model="keyword"
+              v-model="filters.keyword"
               class="filter-input"
-              placeholder="按结果标题 / 业务类型 / 审核状态自动查询"
+              placeholder="按项目名称 / 项目编号 / 结果标题自动查询"
               clearable
               @input="onKeywordInput"
             />
           </div>
-          <div class="list-head__right">
+
+          <div class="list-head__right result-filters">
+            <el-select v-model="filters.bizType" clearable placeholder="生成类型" style="width: 140px" @change="reloadFirstPage">
+              <el-option label="技术标" value="bid_tech" />
+              <el-option label="商务标" value="bid_business" />
+              <el-option label="完整标书" value="bid_full" />
+              <el-option label="通用标书" value="bid" />
+            </el-select>
+
+            <el-select v-model="filters.exportState" clearable placeholder="导出状态" style="width: 140px" @change="reloadFirstPage">
+              <el-option label="已导出" value="exported" />
+              <el-option label="未导出" value="not_exported" />
+              <el-option label="文件丢失" value="file_lost" />
+            </el-select>
+
             <el-button class="table-icon-btn" text :icon="Refresh" @click="loadResults" />
+          </div>
+        </div>
+
+        <div class="summary-row">
+          <div class="summary-card">
+            <span>生成结果</span>
+            <strong>{{ pager.total }}</strong>
+          </div>
+          <div class="summary-card">
+            <span>当前页已导出</span>
+            <strong>{{ currentPageExportedCount }}</strong>
+          </div>
+          <div class="summary-card is-warning">
+            <span>当前页未导出</span>
+            <strong>{{ currentPageNotExportedCount }}</strong>
           </div>
         </div>
 
         <el-table
           class="ui-table"
-          :data="results"
+          :data="rows"
           border
           stripe
           highlight-current-row
-          height="calc(100vh - 224px)"
+          height="calc(100vh - 312px)"
           v-loading="loading"
+          empty-text="暂无生成结果"
           @current-change="selectResult"
           @row-dblclick="selectResult"
         >
-          <el-table-column prop="title" label="结果标题" min-width="240" show-overflow-tooltip />
-          <el-table-column prop="bizType" label="业务" width="90" />
-          <el-table-column prop="bizId" label="业务ID" width="90" />
-          <el-table-column prop="auditStatus" label="状态" width="100">
+          <el-table-column label="所属项目" min-width="210" show-overflow-tooltip>
             <template #default="{ row }">
-              <el-tag :type="auditStatusMap[row.auditStatus]?.type || 'info'" effect="light">
-                {{ auditStatusMap[row.auditStatus]?.label || row.auditStatus || '-' }}
+              <div class="project-cell">
+                <div class="project-name">{{ row.projectName || '-' }}</div>
+                <div class="project-code">{{ row.projectCode || `项目ID：${row.bizId || '-'}` }}</div>
+              </div>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="生成类型" width="110">
+            <template #default="{ row }">
+              <el-tag :type="generateTypeTag(row.bizType)" effect="light">
+                {{ generateTypeLabel(row.bizType) }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="createTime" label="创建时间" width="170" />
-          <el-table-column label="操作" width="90" fixed="right">
+
+          <el-table-column prop="title" label="结果标题" min-width="230" show-overflow-tooltip />
+
+          <el-table-column label="导出状态" width="140">
             <template #default="{ row }">
-              <el-button link type="primary" @click.stop="selectResult(row)">查看</el-button>
+              <el-tag :type="exportStateTag(row)" effect="light">
+                {{ exportStateLabel(row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column prop="createTime" label="生成时间" width="170" />
+
+          <el-table-column label="操作" width="250" fixed="right">
+            <template #default="{ row }">
+              <div class="table-actions">
+                <el-button link type="primary" @click.stop="selectResult(row)">查看</el-button>
+                <el-button link type="success" @click.stop="exportResultWord(row)">导出Word</el-button>
+                <el-button link type="primary" @click.stop="goProject(row)">项目</el-button>
+                <el-button link type="warning" @click.stop="goRegenerate(row)">重新生成</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -54,51 +108,102 @@
         />
       </div>
 
+      <!-- 右侧：生成结果详情 -->
       <div class="card result-right">
         <template v-if="current">
           <div class="detail-head">
             <div class="detail-title-wrap">
               <div class="detail-title">{{ current.title || `生成结果 #${current.id}` }}</div>
+              <div class="detail-meta">
+                <el-tag :type="generateTypeTag(current.bizType)" effect="light">
+                  {{ generateTypeLabel(current.bizType) }}
+                </el-tag>
+                <span>{{ current.projectName || '-' }}</span>
+                <span>{{ current.projectCode || '' }}</span>
+                <span>{{ current.createTime || '-' }}</span>
+              </div>
             </div>
 
             <div class="detail-actions">
-              <el-button :icon="Back" @click="goWorkbench">回到工作台</el-button>
               <el-button :icon="CopyDocument" :disabled="!current.contentMarkdown" @click="copyMarkdown">复制Markdown</el-button>
               <el-button :icon="Download" :loading="exportingWord" @click="handleExportWord">导出Word</el-button>
               <el-button :icon="Download" :loading="exportingMarkdown" @click="handleExportMarkdown">导出Markdown</el-button>
+              <el-button :icon="Back" @click="goProject(current)">返回项目</el-button>
+              <el-button type="warning" plain @click="goRegenerate(current)">重新生成</el-button>
             </div>
           </div>
 
-          <el-tabs v-model="activeTab" class="result-tabs">
+          <div class="export-card">
+            <div class="export-card__left">
+              <span class="export-label">导出状态</span>
+              <el-tag :type="exportStateTag(current)" effect="light">
+                {{ exportStateLabel(current) }}
+              </el-tag>
+              <span v-if="current.latestExportTime" class="export-time">
+                最近导出：{{ current.latestExportTime }}
+              </span>
+            </div>
+
+            <div class="export-card__right">
+              <span v-if="current.latestExportFileName" class="export-file">
+                {{ current.latestExportFileName }}
+              </span>
+              <el-button
+                v-if="canDownloadLatest(current)"
+                link
+                type="primary"
+                @click="downloadLatestExport"
+              >
+                下载最新文件
+              </el-button>
+              <span v-else-if="Number(current.exportCount || 0) > 0" class="lost-tip">
+                文件已丢失，请重新导出
+              </span>
+            </div>
+          </div>
+
+          <el-tabs v-model="activeContentTab" class="content-tabs">
             <el-tab-pane label="预览" name="preview">
-              <div v-if="current.contentHtml" class="markdown-box content-view" v-html="current.contentHtml"></div>
-              <div v-else-if="current.contentMarkdown" class="markdown-box content-view">{{ current.contentMarkdown }}</div>
-              <el-empty v-else description="当前结果没有内容" />
+              <div
+                v-if="current.contentHtml"
+                class="markdown-box result-content"
+                v-html="current.contentHtml"
+              ></div>
+              <div v-else class="markdown-box result-content">
+                {{ current.contentMarkdown || '暂无内容' }}
+              </div>
             </el-tab-pane>
+
             <el-tab-pane label="Markdown源码" name="markdown">
               <el-input
                 :model-value="current.contentMarkdown || ''"
                 type="textarea"
-                :rows="22"
                 readonly
                 resize="none"
+                class="markdown-source"
               />
             </el-tab-pane>
           </el-tabs>
         </template>
 
-        <el-empty v-else description="请选择左侧生成结果查看详情" />
+        <el-empty v-else description="请选择左侧生成结果" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, CopyDocument, Download, Refresh } from '@element-plus/icons-vue'
-import { downloadExportFile, exportMarkdown, exportWord, getAiGenerateResult, pageAiGenerateResults } from '@/api/ai'
+import {
+  downloadExportFile,
+  exportMarkdown,
+  exportWord,
+  getAiGenerateResult,
+  pageAiGenerateResults
+} from '@/api/ai'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 
 const route = useRoute()
@@ -107,11 +212,16 @@ const router = useRouter()
 const loading = ref(false)
 const exportingWord = ref(false)
 const exportingMarkdown = ref(false)
-const keyword = ref('')
-const results = ref([])
+const rows = ref([])
 const current = ref(null)
-const activeTab = ref('preview')
+const activeContentTab = ref('preview')
 const timer = ref(null)
+
+const filters = reactive({
+  keyword: '',
+  bizType: '',
+  exportState: ''
+})
 
 const pager = reactive({
   page: 1,
@@ -119,32 +229,35 @@ const pager = reactive({
   total: 0
 })
 
-const auditStatusMap = {
-  pending: { label: '待审核', type: 'warning' },
-  approved: { label: '通过', type: 'success' },
-  rejected: { label: '驳回', type: 'danger' }
-}
+const currentPageExportedCount = computed(() => {
+  return rows.value.filter((row) => Number(row.exportCount || 0) > 0).length
+})
+
+const currentPageNotExportedCount = computed(() => {
+  return rows.value.filter((row) => Number(row.exportCount || 0) === 0).length
+})
 
 onMounted(async () => {
-  await loadResults()
-
-  const resultId = route.query.resultId
-  if (resultId) {
-    await loadResultDetail(resultId)
-  } else if (results.value.length) {
-    selectResult(results.value[0])
+  if (route.query.projectId || route.query.bizId) {
+    filters.bizType = route.query.bizType ? String(route.query.bizType) : ''
   }
+
+  await loadResults(route.query.resultId ? Number(route.query.resultId) : undefined)
 })
 
 function onKeywordInput() {
   clearTimeout(timer.value)
   timer.value = setTimeout(() => {
-    pager.page = 1
-    loadResults()
+    reloadFirstPage()
   }, 300)
 }
 
-async function loadResults() {
+function reloadFirstPage() {
+  pager.page = 1
+  loadResults()
+}
+
+async function loadResults(selectId) {
   loading.value = true
   try {
     const res = await pageAiGenerateResults({
@@ -152,15 +265,35 @@ async function loadResults() {
       size: pager.size,
       pageNum: pager.page,
       pageSize: pager.size,
-      keyword: keyword.value || undefined
+      keyword: filters.keyword || undefined,
+      bizType: filters.bizType || undefined,
+      bizId: route.query.projectId || route.query.bizId || undefined,
+      exportState: filters.exportState || undefined
     })
 
-    results.value = res?.records || []
+    rows.value = res?.records || []
     pager.total = Number(res?.total || 0)
 
-    if (current.value?.id) {
-      const next = results.value.find((item) => String(item.id) === String(current.value.id))
-      if (next) current.value = next
+    if (selectId) {
+      const target = rows.value.find((item) => String(item.id) === String(selectId))
+      if (target) {
+        await selectResult(target)
+      } else {
+        try {
+          const detail = await getAiGenerateResult(selectId)
+          current.value = detail
+          activeContentTab.value = 'preview'
+        } catch (e) {
+          current.value = rows.value[0] || null
+        }
+      }
+    } else if (!current.value && rows.value.length) {
+      await selectResult(rows.value[0])
+    } else if (current.value) {
+      const exists = rows.value.some((item) => String(item.id) === String(current.value.id))
+      if (!exists && rows.value.length) {
+        await selectResult(rows.value[0])
+      }
     }
   } finally {
     loading.value = false
@@ -169,13 +302,9 @@ async function loadResults() {
 
 async function selectResult(row) {
   if (!row?.id) return
-  await loadResultDetail(row.id)
-}
 
-async function loadResultDetail(id) {
-  const detail = await getAiGenerateResult(id)
-  current.value = detail
-  activeTab.value = 'preview'
+  current.value = await getAiGenerateResult(row.id)
+  activeContentTab.value = 'preview'
 }
 
 async function copyMarkdown() {
@@ -194,8 +323,9 @@ async function handleExportWord() {
   exportingWord.value = true
   try {
     const file = await exportWord(current.value.id)
-    ElMessage.success('Word导出成功')
-    await openExportedFile(file)
+    await downloadExportedFile(file)
+    ElMessage.success('Word已开始下载')
+    await refreshCurrent()
   } finally {
     exportingWord.value = false
   }
@@ -207,14 +337,34 @@ async function handleExportMarkdown() {
   exportingMarkdown.value = true
   try {
     const file = await exportMarkdown(current.value.id)
-    ElMessage.success('Markdown导出成功')
-    await openExportedFile(file)
+    await downloadExportedFile(file)
+    ElMessage.success('Markdown已开始下载')
+    await refreshCurrent()
   } finally {
     exportingMarkdown.value = false
   }
 }
 
-async function openExportedFile(file) {
+async function exportResultWord(row) {
+  if (!row?.id) return
+
+  const file = await exportWord(row.id)
+  await downloadExportedFile(file)
+  ElMessage.success('Word已开始下载')
+  await loadResults(row.id)
+}
+
+async function downloadLatestExport() {
+  if (!canDownloadLatest(current.value)) {
+    ElMessage.warning('文件已丢失，请重新导出')
+    return
+  }
+
+  const blob = await downloadExportFile(current.value.latestExportFileId)
+  downloadBlob(blob, current.value.latestExportFileName || '导出文件')
+}
+
+async function downloadExportedFile(file) {
   if (!file?.id) {
     ElMessage.error('导出成功但没有返回文件ID，无法下载')
     return
@@ -245,19 +395,84 @@ function sanitizeFileName(fileName) {
     .trim() || '导出文件'
 }
 
-function goWorkbench() {
-  if (current.value?.bizType === 'bid' && current.value?.bizId) {
-    router.push({ path: '/ai/workbench', query: { projectId: current.value.bizId } })
+async function refreshCurrent() {
+  const currentId = current.value?.id
+  await loadResults(currentId)
+  if (currentId) {
+    current.value = await getAiGenerateResult(currentId)
+  }
+}
+
+function canDownloadLatest(row) {
+  return Boolean(row?.latestExportFileId) && Number(row?.latestExportFileExists) === 1
+}
+
+function goProject(row) {
+  if (!row?.bizId) {
+    ElMessage.warning('当前结果未关联项目')
     return
   }
-  router.push('/ai/workbench')
+
+  router.push({
+    path: '/bid/projects',
+    query: {
+      projectId: row.bizId,
+      tab: 'generateRecords'
+    }
+  })
+}
+
+function goRegenerate(row) {
+  if (!row?.bizId) {
+    ElMessage.warning('当前结果未关联项目')
+    return
+  }
+
+  router.push({
+    path: '/ai/workbench',
+    query: {
+      projectId: row.bizId
+    }
+  })
+}
+
+function generateTypeLabel(value) {
+  const map = {
+    bid_tech: '技术标',
+    bid_business: '商务标',
+    bid_full: '完整标书',
+    bid: '通用标书'
+  }
+  return map[String(value || '').toLowerCase()] || value || '-'
+}
+
+function generateTypeTag(value) {
+  const map = {
+    bid_tech: 'primary',
+    bid_business: 'success',
+    bid_full: 'warning',
+    bid: 'info'
+  }
+  return map[String(value || '').toLowerCase()] || 'info'
+}
+
+function exportStateLabel(row) {
+  if (Number(row?.exportCount || 0) === 0) return '未导出'
+  if (Number(row?.latestExportFileExists) === 1) return '已导出'
+  return '文件已丢失'
+}
+
+function exportStateTag(row) {
+  if (Number(row?.exportCount || 0) === 0) return 'info'
+  if (Number(row?.latestExportFileExists) === 1) return 'success'
+  return 'danger'
 }
 </script>
 
 <style scoped>
 .result-page {
   display: grid;
-  grid-template-columns: minmax(520px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(600px, 0.92fr) minmax(0, 1.08fr);
   gap: 16px;
 }
 
@@ -270,12 +485,75 @@ function goWorkbench() {
   padding: 18px;
 }
 
+.result-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.summary-card {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f8fafc;
+}
+
+.summary-card span {
+  display: block;
+  color: var(--text-sub);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.summary-card strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.summary-card.is-warning strong {
+  color: #d97706;
+}
+
+.project-cell {
+  min-width: 0;
+}
+
+.project-name {
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-code {
+  margin-top: 4px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .detail-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 10px;
+  gap: 14px;
+  margin-bottom: 12px;
 }
 
 .detail-title-wrap {
@@ -283,9 +561,22 @@ function goWorkbench() {
 }
 
 .detail-title {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 800;
-  line-height: 1.4;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--text-sub);
+  font-size: 13px;
 }
 
 .detail-actions {
@@ -293,29 +584,90 @@ function goWorkbench() {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-  flex-shrink: 0;
 }
 
-.result-tabs {
-  margin-top: 8px;
+.export-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+  margin-bottom: 12px;
 }
 
-.content-view {
-  height: calc(100vh - 245px);
+.export-card__left,
+.export-card__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.export-label {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.export-time,
+.export-file {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.export-file {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lost-tip {
+  color: #dc2626;
+  font-size: 13px;
+}
+
+.content-tabs {
+  min-width: 0;
+}
+
+.result-content {
+  height: calc(100vh - 315px);
   overflow: auto;
+}
+
+.markdown-source :deep(.el-textarea__inner) {
+  height: calc(100vh - 315px);
+  font-family: Consolas, Monaco, monospace;
+  line-height: 1.6;
 }
 
 @media (max-width: 1280px) {
   .result-page {
     grid-template-columns: 1fr;
   }
+}
 
-  .detail-head {
+@media (max-width: 920px) {
+  .summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-head,
+  .export-card {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .detail-actions {
     justify-content: flex-start;
+  }
+
+  .result-filters {
+    flex-wrap: wrap;
   }
 }
 </style>
