@@ -28,8 +28,8 @@ export function getAiGenerateTask(id) {
   return request.get(`/ai-generate-task/${id}`)
 }
 
-export function exportWord(resultId) {
-  return request.post(`/ai/export/word/${resultId}`)
+export function exportWord(resultId, data) {
+  return request.post(`/ai/export/word/${resultId}`, data || {})
 }
 
 export function exportMarkdown(resultId) {

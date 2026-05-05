@@ -7,7 +7,9 @@ const Login = () => import('@/views/login/index.vue')
 const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
+const BidTemplateManage = () => import('@/views/bid/templates/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
+const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
 const AiPromptManage = () => import('@/views/ai/prompts/index.vue')
 const AiTaskManage = () => import('@/views/ai/tasks/index.vue')
@@ -34,8 +36,9 @@ const routes = [
       { path: 'dashboard', component: Dashboard, meta: { title: '工作台' } },
 
       { path: 'bid/projects', component: BidProject, meta: { title: '标书项目', requiresBusiness: true } },
-      { path: 'bid/templates', component: GenericCrudView, meta: { title: '标书模板', configKey: 'bidTemplate', requiresBusiness: true } },
+      { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', requiresBusiness: true } },
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', requiresBusiness: true } },
+      { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '企业资料库', requiresBusiness: true } },
 
       { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
       { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', requiresBusiness: true } },

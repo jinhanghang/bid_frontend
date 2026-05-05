@@ -29,6 +29,7 @@
             <el-menu-item index="/bid/projects">标书项目</el-menu-item>
             <el-menu-item index="/bid/templates">标书模板</el-menu-item>
             <el-menu-item index="/bid/template-variables">模板变量</el-menu-item>
+            <el-menu-item index="/bid/company-materials">企业资料库</el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu v-if="canUseBusiness" index="ai">
