@@ -75,7 +75,7 @@
             <el-menu-item v-if="canManageEnterprise" index="/system/enterprises">企业管理</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/roles">角色管理</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/menus">菜单管理</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/files">文件资源</el-menu-item>
+            <el-menu-item v-if="canViewFiles" index="/system/files">文件资源</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/configs">系统配置</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/dict-types">字典类型</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/dict-data">字典数据</el-menu-item>
@@ -139,6 +139,7 @@ const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
 const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 const canManageEnterprise = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const canManageCoreSystem = computed(() => isSuperAdmin.value)
+const canViewFiles = computed(() => canUseBusiness.value)
 const canManageAiModel = computed(() => isSuperAdmin.value)
 const canUseBusiness = computed(() => hasEnterprise.value || canManageEnterprise.value)
 const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManageEnterprise.value)

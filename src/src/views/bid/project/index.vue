@@ -743,7 +743,6 @@ const route = useRoute()
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
-const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
 const projectLoading = ref(false)
 const materialLoading = ref(false)
@@ -822,10 +821,6 @@ const wordExportDialog = reactive({
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
 const canManagePlatform = computed(() => {
   return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
-})
-
-const canLoadEnterpriseUsers = computed(() => {
-  return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
 })
 
 const selectedKnowledgeBases = computed(() => {
@@ -1023,29 +1018,13 @@ async function loadBidTemplateOptions(enterpriseId) {
 }
 
 async function loadOwnerUserOptions(enterpriseId) {
-  const currentUserOption = auth.user?.id
-    ? [{
-      id: auth.user.id,
-      fullName: auth.user.fullName,
-      username: auth.user.username,
-      phone: auth.user.phone
-    }]
-    : []
-
-  // 普通用户没有 /system/user/page 接口权限。
-  // 项目负责人只能是自己时，不要再调用户管理接口，避免页面进入时弹“没有权限访问”。
-  if (!canLoadEnterpriseUsers.value) {
-    ownerUserOptions.value = currentUserOption
-    return
-  }
-
-  // 平台/系统管理员新增项目时必须先选择企业，没选企业前不加载负责人。
-  if (canManagePlatform.value && !enterpriseId) {
-    ownerUserOptions.value = []
-    return
-  }
-
   try {
+    if (!enterpriseId && !canManagePlatform.value) {
+      ownerUserOptions.value = auth.user?.id
+        ? [{ id: auth.user.id, fullName: auth.user.fullName, username: auth.user.username, phone: auth.user.phone }]
+        : []
+      return
+    }
     const res = await pageUsers({
       enterpriseId: enterpriseId || undefined,
       status: 1,
@@ -1054,7 +1033,9 @@ async function loadOwnerUserOptions(enterpriseId) {
     })
     ownerUserOptions.value = res?.records || []
   } catch (e) {
-    ownerUserOptions.value = currentUserOption
+    ownerUserOptions.value = auth.user?.id
+      ? [{ id: auth.user.id, fullName: auth.user.fullName, username: auth.user.username, phone: auth.user.phone }]
+      : []
   }
 }
 

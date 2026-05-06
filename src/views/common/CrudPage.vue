@@ -163,8 +163,8 @@
       </el-form>
 
       <template #footer>
-        <el-button @click="dialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="submitForm">保存</el-button>
+        <el-button :disabled="submitting" @click="dialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitForm">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -191,6 +191,7 @@ const props = defineProps({
 
 const auth = useAuthStore()
 const loading = ref(false)
+const submitting = ref(false)
 const rows = ref([])
 const keyword = ref('')
 const formRef = ref()
@@ -389,24 +390,39 @@ function onFormFileUpload(field, file) {
 }
 
 async function submitForm() {
+  if (submitting.value) return
   if (!formRef.value) return
+
   await formRef.value.validate()
-  const payload = normalizePayload()
-  if (dialog.isEdit) {
-    await api.value.update(dialog.id, payload)
-    ElMessage.success('修改成功')
-  } else {
-    await api.value.create(payload)
-    ElMessage.success('新增成功')
+  submitting.value = true
+
+  try {
+    const payload = normalizePayload()
+    if (dialog.isEdit) {
+      await api.value.update(dialog.id, payload)
+      ElMessage.success('修改成功')
+    } else {
+      await api.value.create(payload)
+      ElMessage.success('新增成功')
+    }
+    dialog.visible = false
+    loadData()
+  } finally {
+    submitting.value = false
   }
-  dialog.visible = false
-  loadData()
 }
 
 async function removeRow(row) {
-  await ElMessageBox.confirm(`确定删除 ID=${row.id} 的记录吗？`, '删除确认', {
+  if (!row?.id) {
+    ElMessage.warning('当前记录缺少ID，不能删除')
+    return
+  }
+
+  const title = row.name || row.title || row.projectName || row.kbName || row.id
+  await ElMessageBox.confirm(`确定删除「${title}」吗？删除后不可恢复。`, '删除确认', {
     type: 'warning'
   })
+
   await api.value.remove(row.id)
   ElMessage.success('删除成功')
   loadData()

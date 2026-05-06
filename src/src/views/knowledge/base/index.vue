@@ -542,7 +542,7 @@ async function loadFiles() {
 }
 
 function resetBaseForm(row = {}) {
-  baseForm.enterpriseId = row.enterpriseId || ''
+  baseForm.enterpriseId = row.enterpriseId || (canManagePlatform.value ? '' : auth.enterpriseId || '')
   baseForm.kbName = row.kbName || ''
   baseForm.kbType = row.kbType || 'company_profile'
   baseForm.description = row.description || ''
@@ -567,7 +567,7 @@ async function submitBase() {
   await baseFormRef.value?.validate()
 
   const payload = {
-    enterpriseId: baseForm.enterpriseId || null,
+    enterpriseId: canManagePlatform.value ? (baseForm.enterpriseId || null) : (auth.enterpriseId || null),
     kbName: baseForm.kbName,
     kbType: baseForm.kbType,
     description: baseForm.description,

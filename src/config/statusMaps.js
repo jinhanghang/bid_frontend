@@ -4,6 +4,14 @@ export const enableMap = {
 }
 
 export const projectStatusMap = {
+  DRAFT: ['草稿', 'info'],
+  MATERIAL_READY: ['资料已准备', 'success'],
+  GENERATING: ['生成中', 'warning'],
+  GENERATED: ['已生成', 'success'],
+  EXPORTED: ['已导出', 'success'],
+  FAILED: ['生成失败', 'danger'],
+  ARCHIVED: ['已归档', 'info'],
+  CANCELLED: ['已取消', 'danger'],
   draft: ['草稿', 'info'],
   generating: ['生成中', 'warning'],
   completed: ['已完成', 'success'],
