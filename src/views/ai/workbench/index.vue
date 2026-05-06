@@ -510,7 +510,7 @@ const generateForm = reactive({
 })
 
 const currentGenerateType = computed(() => {
-  return generateTypes.find((item) => item.value === generateForm.generateType) || generateTypes[0]
+  return findGenerateType(generateForm.generateType)
 })
 
 const currentGenerateTypeLabel = computed(() => {
@@ -660,6 +660,10 @@ const templatePlaceholder = computed(() => {
   return '请选择Prompt模板'
 })
 
+function findGenerateType(value) {
+  return generateTypes.find((item) => item.value === value) || generateTypes[0]
+}
+
 const ignoredVariableKeys = new Set([
   'knowledge_text',
   'company_material_text',
@@ -723,7 +727,8 @@ onMounted(async () => {
 
 watch(
   () => generateForm.generateType,
-  async () => {
+  async (newType, oldType) => {
+    syncDefaultRequirementWhenTypeChanged(newType, oldType)
     autoSelectPromptTemplate()
     await loadTemplateVariables()
     if (selectedProject.value && companyMaterials.value.length) {
@@ -1027,11 +1032,35 @@ function companyMaterialOptionLabel(item) {
   return `${materialTypeLabel(item.materialType)}：${item.title || `资料#${item.id}`}`
 }
 
-function buildDefaultRequirement(project) {
+function syncDefaultRequirementWhenTypeChanged(newType, oldType) {
+  if (!selectedProject.value) return
+
+  const oldDefaultRequirement = buildDefaultRequirement(selectedProject.value, findGenerateType(oldType))
+  const newDefaultRequirement = buildDefaultRequirement(selectedProject.value, findGenerateType(newType))
+  const currentRequirement = String(generateForm.extraRequirement || '').trim()
+
+  // 只有在用户没有手工改过“生成要求”时，才跟随生成类型自动切换；
+  // 如果用户已经自己写了要求，切换类型不覆盖用户输入。
+  if (!currentRequirement || currentRequirement === oldDefaultRequirement) {
+    generateForm.extraRequirement = newDefaultRequirement
+  }
+}
+
+function buildDefaultRequirement(project, typeItem = currentGenerateType.value) {
   const name = project?.projectName || ''
-  const type = currentGenerateType.value.label
   if (!name) return ''
-  return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的${type}草稿。对缺失信息使用“待补充”，不要编造资质证书编号、金额、业绩合同编号等敏感信息。`
+
+  const safeTip = '对缺失信息使用“待补充”，不要编造资质证书编号、金额、业绩合同编号等敏感信息。'
+
+  if (typeItem?.value === 'business') {
+    return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的商务标草稿。重点包含公司介绍、资质响应、业绩案例、人员证书、服务承诺、商务响应偏离说明等内容。${safeTip}`
+  }
+
+  if (typeItem?.value === 'full') {
+    return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的完整标书草稿。请按目录组织技术标、商务标、企业资料响应、实施计划、售后服务等章节。${safeTip}`
+  }
+
+  return `请围绕“${name}”生成一份结构完整、语言正式、可继续编辑的技术标草稿。重点包含技术方案、实施计划、质量保障、安全措施、人员配置、售后服务等内容。${safeTip}`
 }
 
 async function submitGenerate() {
