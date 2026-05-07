@@ -1221,6 +1221,135 @@ function formatMoney(value) {
 function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === ''
 }
+
+async function handleExportMarkdown() {
+  if (!lastResultId.value) return
+
+  exportingMarkdown.value = true
+  try {
+    const file = await exportMarkdown(lastResultId.value)
+    ElMessage.success('Markdown导出成功')
+    await openExportedFile(file)
+  } finally {
+    exportingMarkdown.value = false
+  }
+}
+
+async function openExportedFile(file) {
+  if (!file?.id) {
+    ElMessage.error('导出成功但没有返回文件ID，无法下载')
+    return
+  }
+
+  const blob = await downloadExportFile(file.id)
+  downloadBlob(blob, file.originalName || file.fileName || '导出文件')
+}
+
+function downloadBlob(blob, fileName) {
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = sanitizeFileName(fileName)
+  link.style.display = 'none'
+
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  window.URL.revokeObjectURL(url)
+}
+
+function sanitizeFileName(fileName) {
+  return String(fileName || '导出文件')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim() || '导出文件'
+}
+
+function goResultPage() {
+  if (lastResultId.value) {
+    router.push({ path: '/ai/results', query: { resultId: lastResultId.value } })
+  } else {
+    router.push('/ai/results')
+  }
+}
+
+function goProjectGenerateRecords() {
+  if (!selectedProjectId.value) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+
+  router.push({
+    path: '/bid/projects',
+    query: {
+      projectId: selectedProjectId.value,
+      tab: 'generateRecords'
+    }
+  })
+}
+
+function projectOptionLabel(item) {
+  const code = item.projectCode ? `【${item.projectCode}】` : ''
+  const client = item.clientName ? ` - ${item.clientName}` : ''
+  return `${code}${item.projectName || `项目#${item.id}`}${client}`
+}
+
+function promptOptionLabel(item) {
+  const scene = item.scene ? `（${item.scene}）` : ''
+  return `${item.name || `模板#${item.id}`}${scene}`
+}
+
+function knowledgeOptionLabel(item) {
+  const enterprise = item.enterpriseName ? ` - ${item.enterpriseName}` : ''
+  return `${item.kbName || `知识库#${item.id}`}${enterprise}`
+}
+
+function variableLabel(key) {
+  return variableLabelMap.value[key] || key
+}
+
+function displayVariableValue(key) {
+  const value = knownVariables.value[key]
+  if (isBlank(value)) return '-'
+  return String(value)
+}
+
+function projectStatusLabel(value) {
+  const map = {
+    DRAFT: '草稿',
+    MATERIAL_READY: '资料已准备',
+    GENERATING: '生成中',
+    GENERATED: '已生成',
+    EXPORTED: '已导出',
+    ARCHIVED: '已归档',
+    CANCELLED: '已取消',
+    FAILED: '生成失败'
+  }
+  return map[value] || value || '-'
+}
+
+function projectTypeLabel(value) {
+  const map = {
+    CONSTRUCTION: '工程施工',
+    GOODS: '货物采购',
+    SERVICE: '服务采购',
+    IT: '信息化项目',
+    OTHER: '其他'
+  }
+  return map[value] || value || '-'
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  const number = Number(value)
+  if (Number.isNaN(number)) return value
+  return `¥ ${number.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function isBlank(value) {
+  return value === null || value === undefined || String(value).trim() === ''
+}
 </script>
 
 <style scoped>
