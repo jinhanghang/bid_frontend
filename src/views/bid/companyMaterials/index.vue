@@ -62,7 +62,7 @@
               <el-option label="附件丢失" value="lost" />
               <el-option label="无附件" value="none" />
             </el-select>
-            <el-button type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
+            <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
           </div>
         </div>
 
@@ -138,7 +138,7 @@
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="selectRow(row)">详情</el-button>
                 <el-button link type="success" :disabled="!canOpenFile(row)" @click.stop="openFile(row)">附件</el-button>
-                <el-button link type="danger" @click.stop="removeRow(row)">删除</el-button>
+                <el-button v-if="canManageCompanyMaterial" link type="danger" @click.stop="removeRow(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
@@ -157,19 +157,19 @@
         <template v-if="editMode">
           <div class="editor-head">
             <div>
-              <div class="section-title">{{ form.id ? '编辑企业资料' : '新增企业资料' }}</div>
+              <div class="section-title">{{ canManageCompanyMaterial ? (form.id ? '编辑企业资料' : '新增企业资料') : '查看企业资料' }}</div>
               <div class="section-desc">
                 附件会统一上传到 OSS，并写入文件资源；文件资源删除后，这里会显示无附件。
               </div>
             </div>
-            <div class="editor-actions">
+            <div v-if="canManageCompanyMaterial" class="editor-actions">
               <el-button :icon="Refresh" @click="resetForm">重置</el-button>
               <el-button type="primary" :loading="saving" @click="saveRow">保存资料</el-button>
             </div>
           </div>
 
           <el-alert
-            v-if="!form.id"
+            v-if="canManageCompanyMaterial && !form.id"
             class="detail-alert"
             title="请先保存资料基础信息，再上传附件。"
             type="info"
@@ -177,7 +177,7 @@
             :closable="false"
           />
 
-          <el-form ref="formRef" :model="form" :rules="rules" label-width="112px" class="material-form">
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="112px" class="material-form" :disabled="!canManageCompanyMaterial">
             <el-form-item v-if="canManagePlatform" label="所属企业" prop="enterpriseId">
               <el-select v-model="form.enterpriseId" filterable placeholder="请选择企业" style="width: 100%">
                 <el-option
@@ -275,7 +275,7 @@
             />
 
             <FileUploadBox
-              v-if="form.id"
+              v-if="canManageCompanyMaterial && form.id"
               module-type="company_material"
               :biz-id="form.id"
               :private-flag="true"
@@ -288,8 +288,8 @@
           </div>
         </template>
 
-        <el-empty v-else description="请选择左侧资料，或点击新增资料">
-          <el-button type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
+        <el-empty v-else :description="canManageCompanyMaterial ? '请选择左侧资料，或点击新增资料' : '请选择左侧资料查看详情'">
+          <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
         </el-empty>
       </div>
     </div>
@@ -316,6 +316,7 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 const auth = useAuthStore()
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
+const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -362,6 +363,10 @@ const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || au
 
 const canManagePlatform = computed(() => {
   return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
+})
+
+const canManageCompanyMaterial = computed(() => {
+  return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
 })
 
 const currentPageFileCount = computed(() => rows.value.filter((row) => Number(row.fileExists) === 1).length)
@@ -462,6 +467,11 @@ async function selectRow(row) {
 }
 
 function openCreate() {
+  if (!canManageCompanyMaterial.value) {
+    ElMessage.warning('普通用户只能查看企业资料，不能新增资料')
+    return
+  }
+
   currentDetail.value = null
   fillForm({
     ...defaultForm(),
@@ -507,6 +517,11 @@ function normalizeRoleList(values = []) {
 }
 
 async function saveRow() {
+  if (!canManageCompanyMaterial.value) {
+    ElMessage.warning('普通用户只能查看企业资料，不能保存修改')
+    return
+  }
+
   await formRef.value?.validate()
 
   saving.value = true
@@ -539,6 +554,11 @@ async function saveRow() {
 }
 
 async function onUploadSuccess(file) {
+  if (!canManageCompanyMaterial.value) {
+    ElMessage.warning('普通用户只能查看企业资料，不能上传附件')
+    return
+  }
+
   if (!form.id) {
     ElMessage.warning('请先保存资料基础信息')
     return
@@ -550,6 +570,11 @@ async function onUploadSuccess(file) {
 }
 
 async function removeRow(row) {
+  if (!canManageCompanyMaterial.value) {
+    ElMessage.warning('普通用户只能查看企业资料，不能删除资料')
+    return
+  }
+
   await ElMessageBox.confirm(
     `确认删除企业资料「${row.title}」吗？这只删除资料记录，不会删除文件资源和OSS文件。`,
     '删除确认',

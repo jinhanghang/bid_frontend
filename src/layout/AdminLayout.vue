@@ -27,8 +27,8 @@
               <span>标书业务</span>
             </template>
             <el-menu-item index="/bid/projects">标书项目</el-menu-item>
-            <el-menu-item index="/bid/templates">标书模板</el-menu-item>
-            <el-menu-item index="/bid/template-variables">模板变量</el-menu-item>
+            <el-menu-item v-if="canManageBusinessData" index="/bid/templates">标书模板</el-menu-item>
+            <el-menu-item v-if="canManageBusinessData" index="/bid/template-variables">模板变量</el-menu-item>
             <el-menu-item index="/bid/company-materials">企业资料库</el-menu-item>
           </el-sub-menu>
 
@@ -38,7 +38,7 @@
               <span>AI能力</span>
             </template>
             <el-menu-item index="/ai/workbench">AI生成工作台</el-menu-item>
-            <el-menu-item index="/ai/prompts">Prompt模板</el-menu-item>
+            <el-menu-item v-if="canManagePrompt" index="/ai/prompts">Prompt模板</el-menu-item>
             <el-menu-item v-if="canManageAiModel" index="/ai/models">模型配置</el-menu-item>
             <el-menu-item index="/ai/tasks">生成任务</el-menu-item>
             <el-menu-item index="/ai/results">生成结果</el-menu-item>
@@ -75,7 +75,7 @@
             <el-menu-item v-if="canManageEnterprise" index="/system/enterprises">企业管理</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/roles">角色管理</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/menus">菜单管理</el-menu-item>
-            <el-menu-item v-if="canViewFiles" index="/system/files">文件资源</el-menu-item>
+            <el-menu-item v-if="canManageCoreSystem" index="/system/files">文件资源</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/configs">系统配置</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/dict-types">字典类型</el-menu-item>
             <el-menu-item v-if="canManageCoreSystem" index="/system/dict-data">字典数据</el-menu-item>
@@ -139,8 +139,9 @@ const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
 const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 const canManageEnterprise = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const canManageCoreSystem = computed(() => isSuperAdmin.value)
-const canViewFiles = computed(() => canUseBusiness.value)
 const canManageAiModel = computed(() => isSuperAdmin.value)
+const canManageBusinessData = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
+const canManagePrompt = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const canUseBusiness = computed(() => hasEnterprise.value || canManageEnterprise.value)
 const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManageEnterprise.value)
 const canSubmitEnterpriseApply = computed(() => !hasEnterprise.value && !canManageEnterprise.value)

@@ -92,7 +92,7 @@
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="selectResult(row)">查看</el-button>
-                <el-button link type="success" @click.stop="exportResultWord(row)">导出Word</el-button>
+                <el-button link type="success" :loading="exportingWord && exportingResultId === row.id" @click.stop="exportResultWord(row)">导出Word</el-button>
                 <el-button link type="primary" @click.stop="goProject(row)">项目</el-button>
                 <el-button link type="warning" @click.stop="goRegenerate(row)">重新生成</el-button>
               </div>
@@ -139,6 +139,7 @@
               <el-tag :type="exportStateTag(current)" effect="light">
                 {{ exportStateLabel(current) }}
               </el-tag>
+              <span class="export-time">导出次数：{{ current.exportCount || 0 }}</span>
               <span v-if="current.latestExportTime" class="export-time">
                 最近导出：{{ current.latestExportTime }}
               </span>
@@ -161,6 +162,16 @@
               </span>
             </div>
           </div>
+
+          <el-alert
+            v-if="exportSuccessTip"
+            class="export-success-alert"
+            type="success"
+            show-icon
+            :closable="true"
+            @close="exportSuccessTip = ''"
+            :title="exportSuccessTip"
+          />
 
           <el-tabs v-model="activeContentTab" class="content-tabs">
             <el-tab-pane label="预览" name="preview">
@@ -218,6 +229,8 @@ const router = useRouter()
 const loading = ref(false)
 const exportingWord = ref(false)
 const exportingMarkdown = ref(false)
+const exportingResultId = ref(null)
+const exportSuccessTip = ref('')
 const rows = ref([])
 const current = ref(null)
 const activeContentTab = ref('preview')
@@ -330,18 +343,28 @@ async function copyMarkdown() {
 
 function handleExportWord() {
   if (!current.value?.id) return
+  exportSuccessTip.value = ''
   openWordExportDialog(current.value)
 }
 
 function openWordExportDialog(row) {
+  exportingResultId.value = row?.id || null
   wordExportDialog.result = row
   wordExportDialog.visible = true
 }
 
 async function onWordExportSuccess(file) {
-  await downloadExportedFile(file)
-  await refreshCurrent()
-  await loadResults(wordExportDialog.result?.id)
+  exportingWord.value = true
+  try {
+    await downloadExportedFile(file)
+    exportSuccessTip.value = `已生成 Word 文件：${file?.originalName || file?.fileName || '导出文件'}`
+    ElMessage.success('Word 已生成并开始下载')
+    await refreshCurrent()
+    await loadResults(wordExportDialog.result?.id)
+  } finally {
+    exportingWord.value = false
+    exportingResultId.value = null
+  }
 }
 
 async function handleExportMarkdown() {
@@ -360,6 +383,7 @@ async function handleExportMarkdown() {
 
 function exportResultWord(row) {
   if (!row?.id) return
+  exportSuccessTip.value = ''
   openWordExportDialog(row)
 }
 
@@ -371,6 +395,7 @@ async function downloadLatestExport() {
 
   const blob = await downloadExportFile(current.value.latestExportFileId)
   downloadBlob(blob, current.value.latestExportFileName || '导出文件')
+  ElMessage.success('最新导出文件已开始下载')
 }
 
 async function downloadExportedFile(file) {
@@ -637,6 +662,10 @@ function exportStateTag(row) {
 .lost-tip {
   color: #dc2626;
   font-size: 13px;
+}
+
+.export-success-alert {
+  margin-bottom: 12px;
 }
 
 .content-tabs {

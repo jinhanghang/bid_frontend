@@ -16,7 +16,7 @@
           <el-step title="选择项目" />
           <el-step title="选择类型" />
           <el-step title="补充信息" />
-          <el-step title="生成查看" />
+          <el-step title="提交任务" />
         </el-steps>
 
         <el-form label-width="112px" class="workbench-form">
@@ -284,15 +284,15 @@
             <div class="variable-check-box">
               <div class="variable-check-head">
                 <span>当前模板识别到 {{ selectedTemplateVariables.length }} 个变量</span>
-                <el-tag v-if="emptyTemplateVariables.length" type="warning" effect="light">
-                  {{ emptyTemplateVariables.length }} 个待补充
+                <el-tag v-if="emptyManualTemplateVariables.length" type="warning" effect="light">
+                  {{ emptyManualTemplateVariables.length }} 个待补充
                 </el-tag>
                 <el-tag v-else type="success" effect="light">变量完整</el-tag>
               </div>
 
-              <div v-if="emptyTemplateVariables.length" class="variable-form-grid">
+              <div v-if="manualTemplateVariables.length" class="variable-form-grid">
                 <el-form-item
-                  v-for="key in emptyTemplateVariables"
+                  v-for="key in manualTemplateVariables"
                   :key="key"
                   :label="variableLabel(key)"
                   label-width="108px"
@@ -371,45 +371,12 @@
               开始生成{{ currentGenerateTypeLabel }}
             </el-button>
             <el-button @click="resetGenerateForm">重置参数</el-button>
-            <el-button v-if="lastResultId" type="success" plain @click="goResultPage">查看完整结果</el-button>
+            <el-button v-if="selectedProjectId" type="success" plain @click="goTaskPage">查看生成任务</el-button>
             <el-button v-if="selectedProjectId" plain @click="goProjectGenerateRecords">返回项目生成记录</el-button>
           </div>
         </el-form>
       </div>
 
-      <div class="card result-card">
-        <div class="result-head">
-          <div>
-            <div class="section-title">生成结果</div>
-            <div class="section-desc">
-              生成完成后可在这里预览，也可进入“生成结果”页面查看历史结果。
-            </div>
-          </div>
-          <div class="result-actions">
-            <el-button :icon="View" :disabled="!lastResultId" @click="goResultPage">结果详情</el-button>
-            <el-button :icon="View" :disabled="!selectedProjectId" @click="goProjectGenerateRecords">项目记录</el-button>
-            <el-button :icon="CopyDocument" :disabled="!result.contentMarkdown" @click="copyMarkdown">复制Markdown</el-button>
-            <el-button :icon="Download" :disabled="!lastResultId" :loading="exportingWord" @click="handleExportWord">导出Word</el-button>
-            <el-button :icon="Download" :disabled="!lastResultId" :loading="exportingMarkdown" @click="handleExportMarkdown">导出Markdown</el-button>
-          </div>
-        </div>
-
-        <div v-if="result.resultId" class="result-meta">
-          <span>结果ID：{{ result.resultId }}</span>
-          <span>任务ID：{{ result.taskId || '-' }}</span>
-          <span>状态：{{ result.status || '-' }}</span>
-          <span>模型：{{ result.modelProvider || '-' }} / {{ result.modelName || '-' }}</span>
-        </div>
-
-        <div v-if="generating" class="result-loading">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          <span>AI 正在生成，请稍等...</span>
-        </div>
-
-        <div v-else-if="result.contentHtml" class="markdown-box result-content" v-html="result.contentHtml"></div>
-        <div v-else-if="result.contentMarkdown" class="markdown-box result-content">{{ result.contentMarkdown }}</div>
-        <el-empty v-else description="请选择项目后开始生成" />
-      </div>
     </div>
   </div>
 </template>
@@ -420,17 +387,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Collection,
-  CopyDocument,
-  Download,
   Files,
-  Loading,
   MagicStick,
   Notebook,
-  Refresh,
-  View
+  Refresh
 } from '@element-plus/icons-vue'
 import { createCrudApi } from '@/api/crud'
-import { downloadExportFile, exportMarkdown, exportWord, generateBidProject } from '@/api/ai'
+import { generateBidProject } from '@/api/ai'
 import { getBidProject, getBidProjectGenerateCheck, pageBidProjects } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { listCompanyMaterials } from '@/api/companyMaterial'
@@ -441,8 +404,6 @@ const router = useRouter()
 
 const projectLoading = ref(false)
 const generating = ref(false)
-const exportingWord = ref(false)
-const exportingMarkdown = ref(false)
 const projectOptions = ref([])
 const promptTemplates = ref([])
 const knowledgeBases = ref([])
@@ -453,7 +414,6 @@ const selectedProject = ref(null)
 const readinessCheck = ref(null)
 const readinessLoading = ref(false)
 const advancedPanels = ref([])
-const result = reactive({})
 const extraVariables = reactive({})
 
 const generateTypes = [
@@ -624,15 +584,18 @@ const knownVariables = computed(() => {
     }
   })
 
-  Object.keys(extraVariables).forEach((key) => {
-    vars[key] = extraVariables[key]
-  })
-
   return vars
 })
 
-const emptyTemplateVariables = computed(() => {
+// 需要人工补充的变量：模板里出现了，但项目/企业资料/系统自动变量没有值。
+// 注意：这里不能把 extraVariables 算进 knownVariables，
+// 否则用户输入一个字后，该变量会被认为“已填写”，输入框会从页面消失。
+const manualTemplateVariables = computed(() => {
   return selectedTemplateVariables.value.filter((key) => isBlank(knownVariables.value[key]))
+})
+
+const emptyManualTemplateVariables = computed(() => {
+  return manualTemplateVariables.value.filter((key) => isBlank(extraVariables[key]))
 })
 
 const filledTemplateVariables = computed(() => {
@@ -640,8 +603,8 @@ const filledTemplateVariables = computed(() => {
 })
 
 const activeStep = computed(() => {
-  if (result.resultId) return 4
-  if (selectedProject.value && generateForm.generateType && !emptyTemplateVariables.value.length) return 3
+  if (generating.value) return 4
+  if (selectedProject.value && generateForm.generateType && !emptyManualTemplateVariables.value.length) return 3
   if (selectedProject.value && generateForm.generateType) return 2
   if (selectedProject.value) return 1
   return 0
@@ -651,8 +614,6 @@ const canGenerate = computed(() => {
   const checkPass = !readinessCheck.value || readinessCheck.value.canGenerate !== false
   return Boolean(selectedProjectId.value && generateForm.generateType && !generating.value && checkPass)
 })
-
-const lastResultId = computed(() => result.resultId || null)
 
 const templatePlaceholder = computed(() => {
   if (!selectedProject.value) return '请先选择标书项目'
@@ -735,7 +696,6 @@ watch(
       autoRecommendCompanyMaterials()
     }
     initExtraVariables()
-    clearResult()
   }
 )
 
@@ -890,7 +850,6 @@ function readinessProgressStatus(check) {
 }
 
 async function onProjectChange(projectId) {
-  clearResult()
   clearExtraVariables()
 
   if (!projectId) {
@@ -1084,7 +1043,7 @@ async function submitGenerate() {
     return
   }
 
-  const stillEmpty = emptyTemplateVariables.value.filter((key) => isBlank(extraVariables[key]))
+  const stillEmpty = emptyManualTemplateVariables.value
   if (stillEmpty.length) {
     const names = stillEmpty.map((key) => variableLabel(key)).join('、')
     await ElMessageBox.confirm(
@@ -1099,9 +1058,9 @@ async function submitGenerate() {
   }
 
   generating.value = true
-  clearResult()
 
   try {
+    const projectId = selectedProjectId.value
     const payload = {
       bizType: currentGenerateType.value.bizType,
       promptTemplateId: generateForm.promptTemplateId || undefined,
@@ -1115,9 +1074,19 @@ async function submitGenerate() {
       maxTokens: toNumberOrUndefined(generateForm.maxTokens)
     }
 
-    const res = await generateBidProject(selectedProjectId.value, payload)
-    Object.assign(result, res || {})
-    ElMessage.success('生成完成，可返回项目详情的“生成记录”查看')
+    const task = await generateBidProject(projectId, payload)
+    ElMessage.success('生成任务已提交，正在跳转到生成任务页面')
+
+    router.push({
+      path: '/ai/tasks',
+      query: {
+        projectId,
+        bizId: projectId,
+        taskId: task?.taskId || undefined,
+        bizType: currentGenerateType.value.bizType,
+        autoRefresh: '1'
+      }
+    })
   } finally {
     generating.value = false
   }
@@ -1154,11 +1123,6 @@ function resetGenerateForm() {
   initExtraVariables()
 }
 
-function clearResult() {
-  for (const key of Object.keys(result)) {
-    delete result[key]
-  }
-}
 
 function toNumberOrUndefined(value) {
   if (value === '' || value === null || value === undefined) return undefined
@@ -1166,79 +1130,19 @@ function toNumberOrUndefined(value) {
   return Number.isFinite(numberValue) ? numberValue : undefined
 }
 
-async function copyMarkdown() {
-  if (!result.contentMarkdown) {
-    ElMessage.warning('暂无可复制内容')
-    return
-  }
 
-  await navigator.clipboard.writeText(result.contentMarkdown)
-  ElMessage.success('已复制Markdown内容')
-}
-
-async function handleExportWord() {
-  if (!lastResultId.value) return
-
-  exportingWord.value = true
-  try {
-    const file = await exportWord(lastResultId.value)
-    ElMessage.success('Word导出成功')
-    await openExportedFile(file)
-  } finally {
-    exportingWord.value = false
-  }
-}
-
-async function handleExportMarkdown() {
-  if (!lastResultId.value) return
-
-  exportingMarkdown.value = true
-  try {
-    const file = await exportMarkdown(lastResultId.value)
-    ElMessage.success('Markdown导出成功')
-    await openExportedFile(file)
-  } finally {
-    exportingMarkdown.value = false
-  }
-}
-
-async function openExportedFile(file) {
-  if (!file?.id) {
-    ElMessage.error('导出成功但没有返回文件ID，无法下载')
-    return
-  }
-
-  const blob = await downloadExportFile(file.id)
-  downloadBlob(blob, file.originalName || file.fileName || '导出文件')
-}
-
-function downloadBlob(blob, fileName) {
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-
-  link.href = url
-  link.download = sanitizeFileName(fileName)
-  link.style.display = 'none'
-
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-
-  window.URL.revokeObjectURL(url)
-}
-
-function sanitizeFileName(fileName) {
-  return String(fileName || '导出文件')
-    .replace(/[\\/:*?"<>|]/g, '_')
-    .trim() || '导出文件'
-}
-
-function goResultPage() {
-  if (lastResultId.value) {
-    router.push({ path: '/ai/results', query: { resultId: lastResultId.value } })
-  } else {
-    router.push('/ai/results')
-  }
+function goTaskPage() {
+  router.push({
+    path: '/ai/tasks',
+    query: selectedProjectId.value
+      ? {
+          projectId: selectedProjectId.value,
+          bizId: selectedProjectId.value,
+          bizType: currentGenerateType.value.bizType,
+          autoRefresh: '1'
+        }
+      : {}
+  })
 }
 
 function goProjectGenerateRecords() {
@@ -1321,19 +1225,15 @@ function isBlank(value) {
 
 <style scoped>
 .workbench-layout {
-  display: grid;
-  grid-template-columns: minmax(560px, 0.92fr) minmax(0, 1.08fr);
-  gap: 16px;
+  display: block;
 }
 
-.workbench-card,
-.result-card {
+.workbench-card {
   padding: 18px;
   min-width: 0;
 }
 
-.section-head,
-.result-head {
+.section-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1642,41 +1542,7 @@ function isBlank(value) {
   margin-left: 112px;
 }
 
-.result-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.result-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 12px 0;
-  color: var(--text-sub);
-  font-size: 13px;
-}
-
-.result-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 360px;
-  color: var(--text-sub);
-}
-
-.result-content {
-  height: calc(100vh - 230px);
-  overflow: auto;
-}
-
 @media (max-width: 1180px) {
-  .workbench-layout {
-    grid-template-columns: 1fr;
-  }
-
   .project-summary,
   .advanced-collapse,
   .form-actions {
@@ -1690,13 +1556,8 @@ function isBlank(value) {
     grid-template-columns: 1fr;
   }
 
-  .section-head,
-  .result-head {
+  .section-head {
     flex-direction: column;
-  }
-
-  .result-actions {
-    justify-content: flex-start;
   }
 }
 </style>

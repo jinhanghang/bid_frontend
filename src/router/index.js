@@ -36,12 +36,12 @@ const routes = [
       { path: 'dashboard', component: Dashboard, meta: { title: '工作台' } },
 
       { path: 'bid/projects', component: BidProject, meta: { title: '标书项目', requiresBusiness: true } },
-      { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', requiresBusiness: true } },
-      { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', requiresBusiness: true } },
+      { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
+      { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '企业资料库', requiresBusiness: true } },
 
       { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
-      { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', requiresBusiness: true } },
+      { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN] } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },
       { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
@@ -61,7 +61,7 @@ const routes = [
       { path: 'system/enterprise-profile', component: EnterpriseManage, meta: { title: '企业资料', currentOnly: true, roles: [ROLE_ENTERPRISE_ADMIN] } },
       { path: 'system/enterprise-apply', component: EnterpriseApply, meta: { title: '企业申请' } },
       { path: 'system/enterprise-apply-audit', component: EnterpriseApply, meta: { title: '企业申请审核', audit: true, roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
-      { path: 'system/files', component: FileResourceManage, meta: { title: '文件资源', requiresBusiness: true } },
+      { path: 'system/files', component: FileResourceManage, meta: { title: '文件资源', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'system/configs', component: GenericCrudView, meta: { title: '系统配置', configKey: 'systemConfig', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'system/dict-types', component: GenericCrudView, meta: { title: '字典类型', configKey: 'dictType', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'system/dict-data', component: GenericCrudView, meta: { title: '字典数据', configKey: 'dictData', roles: [ROLE_SUPER_ADMIN] } }
