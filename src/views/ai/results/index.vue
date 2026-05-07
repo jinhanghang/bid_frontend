@@ -357,8 +357,8 @@ async function onWordExportSuccess(file) {
   exportingWord.value = true
   try {
     await downloadExportedFile(file)
-    exportSuccessTip.value = `已生成 Word 文件：${file?.originalName || file?.fileName || '导出文件'}`
-    ElMessage.success('Word 已生成并开始下载')
+    exportSuccessTip.value = `已生成正式 Word 文件：${file?.originalName || file?.fileName || '导出文件'}`
+    ElMessage.success('正式 Word 已生成并开始下载')
     await refreshCurrent()
     await loadResults(wordExportDialog.result?.id)
   } finally {

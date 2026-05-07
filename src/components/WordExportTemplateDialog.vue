@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="innerVisible"
-    title="导出 Word"
+    title="导出正式 Word"
     width="760px"
     destroy-on-close
     @closed="reset"
@@ -25,7 +25,7 @@
       <el-alert
         v-if="!hasAnyTemplate"
         class="dialog-alert"
-        title="当前没有可用标书模板，将使用普通 Word 导出。"
+        title="当前没有可用标书模板，将使用系统正式标书版导出。"
         type="info"
         show-icon
         :closable="false"
@@ -45,7 +45,7 @@
           选择其他模板
         </el-radio-button>
         <el-radio-button label="plain">
-          普通 Word 导出
+          正式标书版导出
         </el-radio-button>
       </el-radio-group>
 
@@ -103,16 +103,21 @@
       </div>
 
       <div class="template-card" v-if="form.mode === 'plain'">
-        <div class="template-card__title">普通 Word 导出</div>
+        <div class="template-card__title">正式标书版导出</div>
         <div class="template-card__body">
-          <strong>不套用标书模板</strong>
-          <span>系统会把 Markdown 内容简单转换为 Word，适合临时导出或没有模板时使用。</span>
+          <strong>不套用上传的 Word 模板，使用系统内置正式标书样式</strong>
+          <span>系统会自动生成封面、目录、章节分页，并统一标题、正文、表格、列表样式。</span>
+        </div>
+        <div class="formal-options">
+          <el-checkbox v-model="form.includeCoverPage">生成封面页</el-checkbox>
+          <el-checkbox v-model="form.includeCatalogPage">生成目录页</el-checkbox>
+          <el-checkbox v-model="form.chapterPageBreak">一级章节自动分页</el-checkbox>
         </div>
       </div>
 
       <el-alert
         class="dialog-alert"
-        title="Word 模板中建议放置 &#123;&#123;content&#125;&#125; 或 &#123;&#123;content_markdown&#125;&#125; 占位符，否则系统会把正文追加到文档末尾。"
+        title="没有上传套版模板时，推荐使用“正式标书版导出”；如使用上传的 Word 模板，模板中建议放置 &#123;&#123;content&#125;&#125; 或 &#123;&#123;content_markdown&#125;&#125; 占位符。"
         type="success"
         show-icon
         :closable="false"
@@ -161,7 +166,10 @@ const result = computed(() => props.result || {})
 
 const form = reactive({
   mode: 'plain',
-  templateId: null
+  templateId: null,
+  includeCoverPage: true,
+  includeCatalogPage: true,
+  chapterPageBreak: true
 })
 
 const resultTitle = computed(() => {
@@ -218,6 +226,9 @@ async function prepare() {
     project.value = null
     templates.value = []
     form.templateId = null
+  form.includeCoverPage = true
+  form.includeCatalogPage = true
+  form.chapterPageBreak = true
 
     if (isBidResult(props.result) && props.result?.bizId) {
       try {
@@ -309,7 +320,11 @@ async function submitExport() {
 function buildPayload() {
   if (form.mode === 'plain') {
     return {
-      plainExport: true
+      plainExport: true,
+      formalExport: true,
+      includeCoverPage: form.includeCoverPage,
+      includeCatalogPage: form.includeCatalogPage,
+      chapterPageBreak: form.chapterPageBreak
     }
   }
 
@@ -339,6 +354,9 @@ function buildPayload() {
 function reset() {
   form.mode = 'plain'
   form.templateId = null
+  form.includeCoverPage = true
+  form.includeCatalogPage = true
+  form.chapterPageBreak = true
   project.value = null
   templates.value = []
 }
@@ -443,6 +461,15 @@ function templateOptionLabel(item) {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+}
+
+.formal-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
 }
 
 .template-option__meta {
