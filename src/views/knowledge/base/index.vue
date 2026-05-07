@@ -15,7 +15,7 @@
           </div>
           <div class="list-head__right">
             <el-button class="table-icon-btn" text :icon="Refresh" @click="loadBases" />
-            <el-button type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
+            <el-button v-if="canManageKnowledge" type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
           </div>
         </div>
 
@@ -50,7 +50,7 @@
               <StatusTag :value="row.status" :map="enableMap" />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column v-if="canManageKnowledge" label="操作" width="180" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click.stop="openEditBase(row)">编辑</el-button>
@@ -87,13 +87,13 @@
             <div class="kb-header-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
-              <el-button type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
+              <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </div>
 
           <el-alert
             class="kb-tip"
-            title="文件加入知识库后会自动触发：OSS存储 → 文档解析 → 文本切片 → Embedding向量化 → 可检索问答。解析失败时可点击“重新入库”。"
+            :title="canManageKnowledge ? '文件加入知识库后会自动触发：OSS存储 → 文档解析 → 文本切片 → Embedding向量化 → 可检索问答。解析失败时可点击“重新入库”。' : '普通用户可查看、检索和问答知识库；上传、删除、重新入库由企业管理员维护。'"
             type="success"
             show-icon
             :closable="false"
@@ -157,8 +157,8 @@
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
-                  <el-button link type="success" @click="rebuildFile(row)">重新入库</el-button>
-                  <el-button link type="danger" @click="deleteFile(row)">删除</el-button>
+                  <el-button v-if="canManageKnowledge" link type="success" @click="rebuildFile(row)">重新入库</el-button>
+                  <el-button v-if="canManageKnowledge" link type="danger" @click="deleteFile(row)">删除</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -166,7 +166,7 @@
         </template>
 
         <el-empty v-else description="请先新建或选择一个知识库">
-          <el-button type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
+          <el-button v-if="canManageKnowledge" type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
         </el-empty>
       </div>
     </div>
@@ -341,6 +341,7 @@ const auth = useAuthStore()
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
+const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
 const baseLoading = ref(false)
 const fileLoading = ref(false)
@@ -403,6 +404,10 @@ const baseForm = reactive({
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
 const canManagePlatform = computed(() => {
   return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
+})
+
+const canManageKnowledge = computed(() => {
+  return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
 })
 
 const baseRules = computed(() => {
@@ -550,6 +555,11 @@ function resetBaseForm(row = {}) {
 }
 
 function openCreateBase() {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能新建知识库')
+    return
+  }
+
   baseDialog.isEdit = false
   baseDialog.id = null
   resetBaseForm({})
@@ -557,6 +567,11 @@ function openCreateBase() {
 }
 
 function openEditBase(row) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能编辑知识库')
+    return
+  }
+
   baseDialog.isEdit = true
   baseDialog.id = row.id
   resetBaseForm(row)
@@ -564,6 +579,11 @@ function openEditBase(row) {
 }
 
 async function submitBase() {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能保存知识库')
+    return
+  }
+
   await baseFormRef.value?.validate()
 
   const payload = {
@@ -589,6 +609,11 @@ async function submitBase() {
 }
 
 async function toggleBaseStatus(row) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能修改状态')
+    return
+  }
+
   const nextStatus = Number(row.status) === 1 ? 0 : 1
   const actionText = nextStatus === 1 ? '启用' : '停用'
 
@@ -602,6 +627,11 @@ async function toggleBaseStatus(row) {
 }
 
 async function deleteBase(row) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能删除知识库')
+    return
+  }
+
   await ElMessageBox.confirm(`确定删除知识库「${row.kbName}」吗？如果下面已有文件，后端会拒绝删除。`, '删除确认', {
     type: 'warning'
   })
@@ -618,6 +648,11 @@ async function deleteBase(row) {
 }
 
 function openUploadDialog() {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能添加文件')
+    return
+  }
+
   if (!selectedBase.value?.id) {
     ElMessage.warning('请先选择知识库')
     return
@@ -627,6 +662,11 @@ function openUploadDialog() {
 }
 
 async function onKnowledgeFileUploaded(file) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能添加文件')
+    return
+  }
+
   if (!selectedBase.value?.id) return
 
   const fileId = file?.id || file?.fileId
@@ -648,6 +688,11 @@ async function onKnowledgeFileUploaded(file) {
 }
 
 async function rebuildFile(row) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能重新入库')
+    return
+  }
+
   await ElMessageBox.confirm(`确定重新解析并向量化「${row.fileName || row.id}」吗？`, '重新入库', {
     type: 'warning'
   })
@@ -724,6 +769,11 @@ function openFile(row) {
 }
 
 async function deleteFile(row) {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能删除文件')
+    return
+  }
+
   await ElMessageBox.confirm(`确定从当前知识库删除文件「${row.fileName || row.id}」吗？`, '删除确认', {
     type: 'warning'
   })

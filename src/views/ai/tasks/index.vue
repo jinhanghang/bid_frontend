@@ -13,6 +13,9 @@
             />
           </div>
           <div class="list-head__right task-filters">
+            <el-tag v-if="autoRefreshing" type="warning" effect="light">自动刷新中</el-tag>
+            <span v-if="lastRefreshTime" class="refresh-time">最近刷新：{{ lastRefreshTime }}</span>
+
             <el-select v-model="filters.bizType" clearable placeholder="生成类型" style="width: 150px" @change="reloadFirstPage">
               <el-option label="技术标" value="bid_tech" />
               <el-option label="商务标" value="bid_business" />
@@ -26,7 +29,9 @@
               <el-option label="失败" value="failed" />
               <el-option label="已取消" value="cancelled" />
             </el-select>
-            <el-button class="table-icon-btn" text :icon="Refresh" @click="loadTasks" />
+            <el-button class="table-icon-btn" text :icon="Refresh" @click="loadTasks()" />
+            <el-button v-if="autoRefreshing" plain @click="stopAutoRefresh(true)">停止刷新</el-button>
+            <el-button v-else-if="hasRunningTask" plain type="primary" @click="startAutoRefresh">开启刷新</el-button>
           </div>
         </div>
 
@@ -34,6 +39,10 @@
           <div class="summary-card">
             <span>当前查询任务</span>
             <strong>{{ pager.total }}</strong>
+          </div>
+          <div class="summary-card is-pending">
+            <span>当前页待生成</span>
+            <strong>{{ statusCount.pending }}</strong>
           </div>
           <div class="summary-card is-running">
             <span>当前页生成中</span>
@@ -49,12 +58,21 @@
           </div>
         </div>
 
+        <el-alert
+          v-if="routeBizId"
+          class="route-alert"
+          type="info"
+          show-icon
+          :closable="false"
+          title="当前仅展示从 AI生成工作台提交的项目任务。"
+        />
+
         <el-table
           class="ui-table"
           :data="rows"
           border
           stripe
-          height="calc(100vh - 326px)"
+          height="calc(100vh - 354px)"
           v-loading="loading"
           empty-text="暂无AI生成任务"
           @row-dblclick="openDetail"
@@ -91,9 +109,11 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="耗时" width="110" align="center">
+          <el-table-column label="耗时" width="130" align="center">
             <template #default="{ row }">
-              {{ formatDuration(row.durationSeconds) }}
+              <span :class="{ 'running-duration': isRunning(row.status) }">
+                {{ formatDuration(row.durationSeconds, row.startTime, row.finishTime, row.status) }}
+              </span>
             </template>
           </el-table-column>
 
@@ -107,21 +127,50 @@
           <el-table-column prop="startTime" label="开始时间" width="170" />
           <el-table-column prop="finishTime" label="结束时间" width="170" />
 
-          <el-table-column label="错误信息" min-width="200" show-overflow-tooltip>
+          <el-table-column label="错误信息" min-width="210" show-overflow-tooltip>
             <template #default="{ row }">
               <span v-if="row.errorMsg" class="error-text">{{ row.errorMsg }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="330" fixed="right">
+          <el-table-column label="操作" width="360" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
                 <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-                <el-button link type="primary" :disabled="!row.resultId" @click="goResult(row)">结果</el-button>
-                <el-button link type="success" :disabled="!row.bizId" @click="goWorkbench(row)">重新生成</el-button>
-                <el-button link type="warning" :disabled="!row.errorMsg" @click="showError(row)">错误</el-button>
+                <el-button
+                  v-if="canViewResult(row)"
+                  link
+                  type="success"
+                  @click="goResult(row)"
+                >
+                  查看结果
+                </el-button>
+                <el-button
+                  v-else-if="isSuccess(row.status)"
+                  link
+                  type="warning"
+                  @click="showResultMissing(row)"
+                >
+                  结果缺失
+                </el-button>
+                <el-button
+                  v-if="canShowError(row)"
+                  link
+                  type="danger"
+                  @click="showError(row)"
+                >
+                  查看错误
+                </el-button>
                 <el-button link type="primary" :disabled="!row.bizId" @click="goProject(row)">项目</el-button>
+                <el-button
+                  link
+                  type="warning"
+                  :disabled="!row.bizId || isRunning(row.status)"
+                  @click="goWorkbench(row)"
+                >
+                  重新生成
+                </el-button>
               </div>
             </template>
           </el-table-column>
@@ -131,7 +180,7 @@
           v-model:page="pager.page"
           v-model:size="pager.size"
           :total="pager.total"
-          @change="loadTasks"
+          @change="loadTasks()"
         />
       </div>
     </div>
@@ -148,9 +197,10 @@
             </div>
           </div>
           <div class="detail-actions">
-            <el-button :disabled="!detailDrawer.task.resultId" @click="goResult(detailDrawer.task)">查看结果</el-button>
-            <el-button :disabled="!detailDrawer.task.bizId" @click="goWorkbench(detailDrawer.task)">重新生成</el-button>
+            <el-button :disabled="!canViewResult(detailDrawer.task)" @click="goResult(detailDrawer.task)">查看结果</el-button>
+            <el-button :disabled="!detailDrawer.task.bizId || isRunning(detailDrawer.task.status)" @click="goWorkbench(detailDrawer.task)">重新生成</el-button>
             <el-button :disabled="!detailDrawer.task.bizId" @click="goProject(detailDrawer.task)">跳转项目</el-button>
+            <el-button @click="refreshDetail">刷新详情</el-button>
           </div>
         </div>
 
@@ -161,7 +211,9 @@
             </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="生成类型">{{ generateTypeLabel(detailDrawer.task.bizType) }}</el-descriptions-item>
-          <el-descriptions-item label="耗时">{{ formatDuration(detailDrawer.task.durationSeconds) }}</el-descriptions-item>
+          <el-descriptions-item label="耗时">
+            {{ formatDuration(detailDrawer.task.durationSeconds, detailDrawer.task.startTime, detailDrawer.task.finishTime, detailDrawer.task.status) }}
+          </el-descriptions-item>
           <el-descriptions-item label="开始时间">{{ detailDrawer.task.startTime || '-' }}</el-descriptions-item>
           <el-descriptions-item label="结束时间">{{ detailDrawer.task.finishTime || '-' }}</el-descriptions-item>
           <el-descriptions-item label="结果ID">{{ detailDrawer.task.resultId || '-' }}</el-descriptions-item>
@@ -175,6 +227,15 @@
           class="detail-alert"
           :title="detailDrawer.task.errorMsg"
           type="error"
+          show-icon
+          :closable="false"
+        />
+
+        <el-alert
+          v-else-if="isSuccess(detailDrawer.task.status) && !detailDrawer.task.resultId"
+          class="detail-alert"
+          title="生成任务已成功，但结果记录不存在，请检查 t_ai_generate_result 或后台生成逻辑。"
+          type="warning"
           show-icon
           :closable="false"
         />
@@ -196,19 +257,24 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { getAiGenerateTask, pageAiGenerateTasks } from '@/api/ai'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 
+const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
 const rows = ref([])
 const keyword = ref('')
 const timer = ref(null)
+const autoRefreshTimer = ref(null)
+const routeBizId = ref(null)
+const lastRefreshTime = ref('')
+const autoRefreshManuallyStopped = ref(false)
 
 const pager = reactive({
   page: 1,
@@ -228,7 +294,7 @@ const detailDrawer = reactive({
 })
 
 const statusCount = computed(() => {
-  const map = { running: 0, success: 0, failed: 0 }
+  const map = { pending: 0, running: 0, success: 0, failed: 0 }
   rows.value.forEach((row) => {
     const status = normalizeStatus(row.status)
     if (status in map) map[status] += 1
@@ -236,9 +302,58 @@ const statusCount = computed(() => {
   return map
 })
 
-onMounted(() => {
-  loadTasks()
+const hasRunningTask = computed(() => rows.value.some((row) => isRunning(row.status)))
+const autoRefreshing = computed(() => Boolean(autoRefreshTimer.value))
+
+onMounted(async () => {
+  initRouteQuery()
+  await loadTasks()
+
+  if (route.query.autoRefresh === '1' || hasRunningTask.value) {
+    startAutoRefresh()
+  }
 })
+
+onBeforeUnmount(() => {
+  stopAutoRefresh()
+})
+
+function initRouteQuery() {
+  const bizId = route.query.bizId || route.query.projectId
+  routeBizId.value = bizId ? Number(bizId) : null
+
+  if (route.query.bizType) {
+    filters.bizType = String(route.query.bizType)
+  }
+
+  if (route.query.status) {
+    filters.status = String(route.query.status)
+  }
+}
+
+function startAutoRefresh() {
+  autoRefreshManuallyStopped.value = false
+  stopAutoRefresh()
+
+  autoRefreshTimer.value = setInterval(async () => {
+    await loadTasks(false)
+
+    if (!hasRunningTask.value) {
+      stopAutoRefresh()
+      ElMessage.success('生成任务已结束，自动刷新已停止')
+    }
+  }, 3000)
+}
+
+function stopAutoRefresh(manual = false) {
+  if (manual) {
+    autoRefreshManuallyStopped.value = true
+  }
+  if (autoRefreshTimer.value) {
+    clearInterval(autoRefreshTimer.value)
+    autoRefreshTimer.value = null
+  }
+}
 
 function onKeywordInput() {
   clearTimeout(timer.value)
@@ -249,11 +364,15 @@ function onKeywordInput() {
 
 function reloadFirstPage() {
   pager.page = 1
+  autoRefreshManuallyStopped.value = false
   loadTasks()
 }
 
-async function loadTasks() {
-  loading.value = true
+async function loadTasks(showLoading = true) {
+  if (showLoading) {
+    loading.value = true
+  }
+
   try {
     const res = await pageAiGenerateTasks({
       current: pager.page,
@@ -262,13 +381,21 @@ async function loadTasks() {
       pageSize: pager.size,
       keyword: keyword.value || undefined,
       bizType: filters.bizType || undefined,
-      status: filters.status || undefined
+      status: filters.status || undefined,
+      bizId: routeBizId.value || undefined
     })
 
     rows.value = res?.records || []
     pager.total = Number(res?.total || 0)
+    lastRefreshTime.value = formatNow()
+
+    if (hasRunningTask.value && !autoRefreshing.value && !autoRefreshManuallyStopped.value) {
+      startAutoRefresh()
+    }
   } finally {
-    loading.value = false
+    if (showLoading) {
+      loading.value = false
+    }
   }
 }
 
@@ -280,12 +407,44 @@ async function openDetail(row) {
   detailDrawer.visible = true
 }
 
+async function refreshDetail() {
+  if (!detailDrawer.task?.id) return
+  detailDrawer.task = await getAiGenerateTask(detailDrawer.task.id)
+  ElMessage.success('任务详情已刷新')
+}
+
+function canViewResult(row) {
+  return isSuccess(row?.status) && Boolean(row?.resultId)
+}
+
+function canShowError(row) {
+  return isFailed(row?.status) || Boolean(row?.errorMsg)
+}
+
 function goResult(row) {
-  if (!row?.resultId) {
-    ElMessage.warning('当前任务暂无生成结果')
+  if (!canViewResult(row)) {
+    showResultMissing(row)
     return
   }
-  router.push({ path: '/ai/results', query: { resultId: row.resultId } })
+  router.push({
+    path: '/ai/results',
+    query: {
+      resultId: row.resultId,
+      projectId: row.bizId || undefined,
+      bizType: row.bizType || undefined
+    }
+  })
+}
+
+function showResultMissing(row) {
+  if (isSuccess(row?.status)) {
+    ElMessageBox.alert('生成任务已成功，但结果记录不存在，请检查生成结果表。', '结果缺失', {
+      type: 'warning',
+      confirmButtonText: '知道了'
+    })
+    return
+  }
+  ElMessage.warning('当前任务暂无生成结果')
 }
 
 function goWorkbench(row) {
@@ -293,7 +452,13 @@ function goWorkbench(row) {
     ElMessage.warning('当前任务未关联项目，不能重新生成')
     return
   }
-  router.push({ path: '/ai/workbench', query: { projectId: row.bizId } })
+  router.push({
+    path: '/ai/workbench',
+    query: {
+      projectId: row.bizId,
+      bizType: row.bizType || undefined
+    }
+  })
 }
 
 function goProject(row) {
@@ -311,7 +476,8 @@ function showError(row) {
   }
   ElMessageBox.alert(row.errorMsg, '错误详情', {
     type: 'error',
-    confirmButtonText: '知道了'
+    confirmButtonText: '知道了',
+    customClass: 'task-error-dialog'
   })
 }
 
@@ -319,12 +485,26 @@ function normalizeStatus(value) {
   return String(value || '').toLowerCase()
 }
 
+function isRunning(value) {
+  return ['pending', 'running', 'processing'].includes(normalizeStatus(value))
+}
+
+function isSuccess(value) {
+  return normalizeStatus(value) === 'success'
+}
+
+function isFailed(value) {
+  return ['failed', 'error'].includes(normalizeStatus(value))
+}
+
 function statusLabel(value) {
   const map = {
     pending: '待生成',
     running: '生成中',
-    success: '成功',
-    failed: '失败',
+    processing: '生成中',
+    success: '生成成功',
+    failed: '生成失败',
+    error: '生成失败',
     cancelled: '已取消'
   }
   return map[normalizeStatus(value)] || value || '-'
@@ -334,8 +514,10 @@ function statusTag(value) {
   const map = {
     pending: 'info',
     running: 'warning',
+    processing: 'warning',
     success: 'success',
     failed: 'danger',
+    error: 'danger',
     cancelled: 'info'
   }
   return map[normalizeStatus(value)] || 'info'
@@ -369,16 +551,30 @@ function generateTypeTag(value) {
   return map[String(value || '').toLowerCase()] || 'info'
 }
 
-function formatDuration(seconds) {
-  if (seconds === null || seconds === undefined || seconds === '') return '-'
-  const value = Number(seconds)
-  if (!Number.isFinite(value)) return '-'
-  if (value < 60) return `${value} 秒`
+function formatDuration(seconds, startTime, finishTime, status) {
+  let value = Number(seconds)
+
+  if ((!Number.isFinite(value) || value <= 0) && startTime) {
+    const start = new Date(startTime).getTime()
+    const end = finishTime ? new Date(finishTime).getTime() : Date.now()
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      value = Math.floor((end - start) / 1000)
+    }
+  }
+
+  if (!Number.isFinite(value) || value < 0) {
+    return isRunning(status) ? '生成中' : '-'
+  }
+
+  const prefix = isRunning(status) ? '已运行 ' : ''
+  if (value < 60) return `${prefix}${value} 秒`
+
   const minute = Math.floor(value / 60)
   const second = value % 60
-  if (minute < 60) return `${minute} 分 ${second} 秒`
+  if (minute < 60) return `${prefix}${minute} 分 ${second} 秒`
+
   const hour = Math.floor(minute / 60)
-  return `${hour} 小时 ${minute % 60} 分`
+  return `${prefix}${hour} 小时 ${minute % 60} 分`
 }
 
 function formatJson(value) {
@@ -388,6 +584,12 @@ function formatJson(value) {
   } catch (e) {
     return value
   }
+}
+
+function formatNow() {
+  const date = new Date()
+  const pad = (num) => String(num).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 </script>
 
@@ -402,9 +604,15 @@ function formatJson(value) {
   gap: 8px;
 }
 
+.refresh-time {
+  color: var(--text-sub);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -430,7 +638,9 @@ function formatJson(value) {
   font-weight: 800;
 }
 
-.summary-card.is-running strong {
+.summary-card.is-pending strong,
+.summary-card.is-running strong,
+.running-duration {
   color: #d97706;
 }
 
@@ -441,6 +651,10 @@ function formatJson(value) {
 .summary-card.is-danger strong,
 .error-text {
   color: #dc2626;
+}
+
+.route-alert {
+  margin-bottom: 12px;
 }
 
 .project-cell,
@@ -501,6 +715,12 @@ function formatJson(value) {
 .detail-desc,
 .detail-alert {
   margin-bottom: 14px;
+}
+
+@media (max-width: 1280px) {
+  .summary-row {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
 }
 
 @media (max-width: 1080px) {

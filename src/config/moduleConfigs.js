@@ -464,7 +464,7 @@ export const moduleConfigs = {
 
   systemConfig: {
     title: '系统配置',
-    baseUrl: '/system-config',
+    baseUrl: '/sys-config',
     keywordPlaceholder: '按配置键 / 分组查询',
     searchFields: ['configKey', 'configGroup', 'remark'],
     columns: [
@@ -487,7 +487,7 @@ export const moduleConfigs = {
 
   dictType: {
     title: '字典类型',
-    baseUrl: '/dict-type',
+    baseUrl: '/sys-dict-type',
     keywordPlaceholder: '按字典名称 / 编码查询',
     searchFields: ['dictCode', 'dictName'],
     columns: [
@@ -507,7 +507,7 @@ export const moduleConfigs = {
 
   dictData: {
     title: '字典数据',
-    baseUrl: '/dict-data',
+    baseUrl: '/sys-dict-data',
     keywordPlaceholder: '按字典编码 / 标签 / 值查询',
     searchFields: ['dictCode', 'dataLabel', 'dataValue'],
     columns: [

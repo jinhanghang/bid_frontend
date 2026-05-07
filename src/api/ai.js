@@ -5,7 +5,11 @@ export function generateAi(data) {
 }
 
 export function generateBidProject(projectId, data) {
-  return request.post(`/ai/bid-project/${projectId}/generate`, data || {})
+  return request.post(`/ai/bid-project/${projectId}/generate`, data || {}, {
+    // 后端已经改为异步提交，但这里仍然取消超时限制，
+    // 避免偶发网络慢或后端创建任务慢时前端先报 timeout。
+    timeout: 0
+  })
 }
 
 export function testAi(data) {
