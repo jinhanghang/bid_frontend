@@ -268,7 +268,7 @@ async function toggleStatus(row) {
 
 async function removeRow(row) {
   await ElMessageBox.confirm(
-    `确认删除文件「${row.originalName}」吗？\n\n删除后将同步删除 OSS 文件，并清理所有依赖该文件的业务记录。\n如果该文件是导出文件，相关页面会提示“文件已丢失，请重新导出”。`,
+    `确认删除文件「${row.originalName}」吗？\n\n删除后将同步删除 OSS 文件、OpenSearch 索引，并清理所有依赖该文件的业务记录。\n如果该文件是导出文件，相关页面会提示“文件已丢失，请重新导出”。`,
     '删除确认',
     {
       type: 'warning',
@@ -278,7 +278,7 @@ async function removeRow(row) {
   )
 
   await deleteFileResource(row.id)
-  ElMessage.success('删除成功，OSS文件和业务依赖已同步清理')
+  ElMessage.success('删除成功，OSS文件、OpenSearch索引和业务依赖已同步清理')
   await loadData()
 }
 
