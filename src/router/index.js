@@ -11,6 +11,7 @@ const BidTemplateManage = () => import('@/views/bid/templates/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
+const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiPromptManage = () => import('@/views/ai/prompts/index.vue')
 const AiTaskManage = () => import('@/views/ai/tasks/index.vue')
 const AiResultManage = () => import('@/views/ai/results/index.vue')
@@ -41,6 +42,7 @@ const routes = [
       { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '企业资料库', requiresBusiness: true } },
 
       { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
+      { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
       { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN] } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },

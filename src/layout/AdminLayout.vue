@@ -38,6 +38,7 @@
               <span>AI能力</span>
             </template>
             <el-menu-item index="/ai/workbench">AI生成工作台</el-menu-item>
+            <el-menu-item index="/ai/solutions">AI方案</el-menu-item>
             <el-menu-item v-if="canManagePrompt" index="/ai/prompts">Prompt模板</el-menu-item>
             <el-menu-item v-if="canManageAiModel" index="/ai/models">模型配置</el-menu-item>
             <el-menu-item index="/ai/tasks">生成任务</el-menu-item>
