@@ -92,6 +92,15 @@ export function exportWord(id) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: 180000 })
 }
 
+export function downloadFileResource(id) {
+  return request({
+    url: `/files/download/${id}`,
+    method: 'get',
+    responseType: 'blob',
+    timeout: 180000
+  })
+}
+
 export async function streamWritingDirection(outlineId, params = {}, handlers = {}) {
   const query = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
