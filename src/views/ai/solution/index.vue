@@ -31,6 +31,14 @@
               <el-tag size="small" type="primary">{{ levelLabel(item.aiLevel) }}</el-tag>
               <el-tag size="small" type="info">{{ statusLabel(item.status) }}</el-tag>
             </div>
+            <div class="solution-card-actions">
+              <el-tooltip content="编辑" placement="top">
+                <el-button circle size="small" type="danger" :icon="EditPen" @click.stop="loadDetail(item.id)" />
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top">
+                <el-button circle size="small" type="info" :icon="Delete" @click.stop="onDeleteSolution(item)" />
+              </el-tooltip>
+            </div>
           </div>
           <div class="no-more">——没有更多方案了——</div>
         </div>
@@ -181,9 +189,7 @@
                 <OutlineTree v-else :nodes="previewOutlines" simple />
               </el-scrollbar>
               <div class="preview-actions">
-                <el-button @click="outlineForm.outlineMode = 'SCORE_ITEM'">精准模式</el-button>
-                <el-button @click="outlineForm.outlineMode = 'REQUIREMENT'">丰富模式</el-button>
-                <el-button type="primary" :loading="outlineGenerating" @click="onGenerateOutline">生成目录</el-button>
+                <el-button type="primary" :loading="outlineGenerating" :disabled="!canClickGenerateOutline" @click="onGenerateOutline">{{ generateOutlineButtonText }}</el-button>
               </div>
             </div>
           </div>
@@ -408,12 +414,14 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
-import { ArrowLeft, Close, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
   applyWordCountPreset,
   batchUpdateOutlineWordCount,
+  createSolution,
   deleteOutlineNodes,
+  deleteSolution,
   exportWord,
   generateFull,
   generateOutline,
@@ -448,6 +456,21 @@ const parseLoading = ref(false)
 const outlineGenerating = ref(false)
 const previewOutlines = computed(() => currentSolution.value?.outlines || [])
 const outlineLeafCount = computed(() => flattenLeaf(previewOutlines.value).length)
+const parseDone = computed(() => parseTask.value?.status === 'SUCCESS')
+const canClickGenerateOutline = computed(() => {
+  return !outlineGenerating.value
+    && !parseLoading.value
+    && parseDone.value
+    && !!createForm.solutionName?.trim()
+    && !!requirementForm.purchaseRequirement?.trim()
+})
+const generateOutlineButtonText = computed(() => {
+  if (outlineGenerating.value) return '生成中'
+  if (!parseTask.value?.id) return '请先上传标书'
+  if (parseTask.value.status === 'FAILED') return '解析失败，无法生成'
+  if (!parseDone.value) return '解析完成后生成目录'
+  return '生成目录'
+})
 const scoreDialogVisible = ref(false)
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
@@ -484,8 +507,6 @@ const requirementForm = reactive({
   otherRequirement: '',
   outlineRequirement: ''
 })
-
-const outlineForm = reactive({ outlineMode: 'SCORE_ITEM', writingStyle: 'GENERAL' })
 
 const sectionForm = reactive({
   title: '',
@@ -556,8 +577,8 @@ async function loadList() {
   loading.value = true
   try {
     const res = await pageSolutions(listQuery)
-    solutions.value = res?.records || []
-    if (!currentSolution.value && solutions.value.length) {
+    solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+    if (!currentSolution.value && mode.value !== 'create' && solutions.value.length) {
       await loadDetail(solutions.value[0].id)
     }
   } finally {
@@ -620,7 +641,7 @@ async function handleTenderFileChange(uploadFile) {
       writingStyle: createForm.writingStyle
     })
     parseTask.value = task
-    currentSolution.value = { id: task.solutionId, outlines: [] }
+    currentSolution.value = null
     pollParseTask(task.id)
   } catch (e) {
     parseLoading.value = false
@@ -645,8 +666,7 @@ function pollParseTask(taskId) {
         clearInterval(parseTimer)
         parseLoading.value = false
         createStep.value = 2
-        await loadDetail(task.solutionId)
-        mode.value = 'create'
+        // 解析完成后仍不创建方案，用户点击“生成目录”时再创建方案并显示到左侧列表。
         ElMessage.success('标书解析完成')
       } else if (task.status === 'FAILED') {
         clearInterval(parseTimer)
@@ -671,20 +691,54 @@ async function reExtractFromParse() {
 }
 
 async function onGenerateOutline() {
-  if (!currentSolution.value?.id) {
-    ElMessage.warning('请先上传招标文件')
+  if (!parseTask.value?.id) {
+    ElMessage.warning('请先上传招标文件并等待解析完成')
     return
   }
+
+  if (parseTask.value.status !== 'SUCCESS') {
+    if (parseTask.value.status === 'FAILED') {
+      ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传或重新解析')
+    } else {
+      ElMessage.warning('标书正在解析中，请等待解析完成后再生成目录')
+    }
+    return
+  }
+
   if (!requirementForm.purchaseRequirement?.trim()) {
     ElMessage.warning('采购需求不能为空')
     return
   }
+  if (!createForm.solutionName?.trim()) {
+    ElMessage.warning('方案名称不能为空')
+    return
+  }
   outlineGenerating.value = true
   try {
-    await saveRequirement(currentSolution.value.id, requirementForm)
-    const data = await generateOutline(currentSolution.value.id, outlineForm)
+    let solutionId = currentSolution.value?.id
+
+    // 正确流程：上传标书只创建解析任务；点击“生成目录”时才真正创建方案，
+    // 创建成功后左侧“我的方案”列表才显示该方案。
+    if (!solutionId) {
+      const created = await createSolution({
+        solutionName: createForm.solutionName,
+        solutionMode: createForm.solutionMode,
+        solutionType: createForm.solutionType,
+        solutionSubType: createForm.solutionSubType,
+        aiLevel: createForm.aiLevel,
+        writingStyle: createForm.writingStyle,
+        parseTaskId: parseTask.value?.id
+      })
+      currentSolution.value = created
+      solutionId = created.id
+      await loadList()
+    }
+
+    await saveRequirement(solutionId, requirementForm)
+    const data = await generateOutline(solutionId, outlineForm)
     currentSolution.value = data
     createStep.value = 3
+    await loadList()
     wordPresetVisible.value = true
     ElMessage.success('目录生成完成，请设置篇幅')
   } finally {
@@ -926,6 +980,24 @@ async function onGenerateSection() {
   }
 }
 
+async function onDeleteSolution(item) {
+  if (!item?.id) return
+  await ElMessageBox.confirm(`确定删除方案“${item.solutionName || ''}”吗？删除后该方案将从列表中移除。`, '确认删除', { type: 'warning' })
+  await deleteSolution(item.id)
+  solutions.value = solutions.value.filter((solution) => solution.id !== item.id)
+  if (currentSolution.value?.id === item.id) {
+    currentSolution.value = null
+    selectedSection.value = null
+    editMode.value = false
+    mode.value = solutions.value.length ? 'detail' : 'home'
+    if (solutions.value.length) {
+      await loadDetail(solutions.value[0].id)
+    }
+  }
+  await loadList()
+  ElMessage.success('删除成功')
+}
+
 async function onExportWord() {
   if (!canExport.value) {
     ElMessage.warning(hasRunningTask.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
@@ -1052,6 +1124,10 @@ const WritingDirectionEditor = defineComponent({
 .list-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
 .solution-search { margin: 18px 0 12px; }
 .solution-list-scroll { flex: 1; }
+.solution-card { position: relative; }
+.solution-card-actions { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none; gap: 8px; }
+.solution-card:hover .solution-card-actions { display: flex; }
+.solution-card-name span { display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .solution-card { padding: 14px 12px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; margin-bottom: 10px; background: rgba(248, 250, 255, .8); }
 .solution-card.active { border-color: #2f6bff; background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%); }
 .solution-card-name { display: flex; align-items: center; gap: 6px; color: #2f6bff; font-weight: 600; }

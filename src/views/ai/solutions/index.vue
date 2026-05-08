@@ -1,5 +1,5 @@
 <template>
-  <div class="solution-shell">
+  <div class="solution-shell" :class="shellClass">
     <aside class="solution-list-card">
       <div class="list-title">
         <el-icon><Menu /></el-icon>
@@ -33,14 +33,10 @@
             </div>
             <div class="solution-card-actions">
               <el-tooltip content="编辑" placement="top">
-                <button class="solution-action-btn edit" type="button" @click.stop="editSolution(item)">
-                  <el-icon><EditPen /></el-icon>
-                </button>
+                <el-button circle size="small" type="danger" :icon="EditPen" @click.stop="loadDetail(item.id)" />
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
-                <button class="solution-action-btn delete" type="button" @click.stop="removeSolution(item)">
-                  <el-icon><Delete /></el-icon>
-                </button>
+                <el-button circle size="small" type="info" :icon="Delete" @click.stop="onDeleteSolution(item)" />
               </el-tooltip>
             </div>
           </div>
@@ -193,9 +189,7 @@
                 <OutlineTree v-else :nodes="previewOutlines" simple />
               </el-scrollbar>
               <div class="preview-actions">
-                <el-button @click="outlineForm.outlineMode = 'SCORE_ITEM'">精准模式</el-button>
-                <el-button @click="outlineForm.outlineMode = 'REQUIREMENT'">丰富模式</el-button>
-                <el-button type="primary" :loading="outlineGenerating" @click="onGenerateOutline">生成目录</el-button>
+                <el-button type="primary" :loading="outlineGenerating" :disabled="!canClickGenerateOutline" @click="onGenerateOutline">{{ generateOutlineButtonText }}</el-button>
               </div>
             </div>
           </div>
@@ -215,7 +209,7 @@
               </div>
               <div class="note">注：页数仅供参考，实际请以导出结果为准</div>
             </div>
-            <el-button :icon="editMode ? Close : EditPen" @click="toggleEditMode">{{ editMode ? '退出编辑' : '编辑' }}</el-button>
+            <el-button :icon="editMode ? Close : EditPen" :disabled="!canEditOutline" @click="toggleEditMode">{{ editMode ? '退出编辑' : '编辑' }}</el-button>
           </div>
 
           <template v-if="editMode">
@@ -273,16 +267,16 @@
               <OutlineTree :nodes="currentSolution.outlines" mode="generate" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
-              <el-button size="large" @click="onRewriteFull" :loading="fullGenerating">重编全文</el-button>
-              <el-button size="large" type="primary" @click="onGenerateFull" :loading="fullGenerating">开始生成</el-button>
-              <el-button size="large" type="success" @click="onExportWord">导出Word</el-button>
+              <el-button size="large" :disabled="!canRewriteAll" @click="onRewriteFull" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
+              <el-button size="large" type="primary" :disabled="!canGenerate" @click="onGenerateFull" :loading="fullGenerating || hasRunningTask">开始生成</el-button>
+              <el-button size="large" type="success" :disabled="!canExport" @click="onExportWord">导出Word</el-button>
             </div>
           </template>
         </div>
       </template>
     </section>
 
-    <section class="right-preview-card">
+    <section v-if="showRightPreview" class="right-preview-card">
       <div v-if="selectedSection?.section?.content" class="section-preview">
         <h3>{{ selectedSection.title }}</h3>
         <pre>{{ selectedSection.section.content }}</pre>
@@ -418,13 +412,14 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
   applyWordCountPreset,
   batchUpdateOutlineWordCount,
+  createSolution,
   deleteOutlineNodes,
   deleteSolution,
   exportWord,
@@ -461,6 +456,21 @@ const parseLoading = ref(false)
 const outlineGenerating = ref(false)
 const previewOutlines = computed(() => currentSolution.value?.outlines || [])
 const outlineLeafCount = computed(() => flattenLeaf(previewOutlines.value).length)
+const parseDone = computed(() => parseTask.value?.status === 'SUCCESS')
+const canClickGenerateOutline = computed(() => {
+  return !outlineGenerating.value
+    && !parseLoading.value
+    && parseDone.value
+    && !!createForm.solutionName?.trim()
+    && !!requirementForm.purchaseRequirement?.trim()
+})
+const generateOutlineButtonText = computed(() => {
+  if (outlineGenerating.value) return '生成中'
+  if (!parseTask.value?.id) return '请先上传标书'
+  if (parseTask.value.status === 'FAILED') return '解析失败，无法生成'
+  if (!parseDone.value) return '解析完成后生成目录'
+  return '生成目录'
+})
 const scoreDialogVisible = ref(false)
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
@@ -497,8 +507,6 @@ const requirementForm = reactive({
   otherRequirement: '',
   outlineRequirement: ''
 })
-
-const outlineForm = reactive({ outlineMode: 'SCORE_ITEM', writingStyle: 'GENERAL' })
 
 const sectionForm = reactive({
   title: '',
@@ -537,6 +545,20 @@ const generatePercent = computed(() => {
   return Math.min(100, Math.round((actual * 100) / target))
 })
 
+const showRightPreview = computed(() => mode.value === 'detail' && !!currentSolution.value)
+const shellClass = computed(() => ({
+  'with-preview': showRightPreview.value,
+  'no-preview': !showRightPreview.value
+}))
+const hasRunningTask = computed(() => {
+  const status = currentSolution.value?.runningTask?.status
+  return status === 'WAITING' || status === 'RUNNING'
+})
+const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !hasRunningTask.value)
+const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !hasRunningTask.value)
+const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !hasRunningTask.value)
+const canExport = computed(() => currentSolution.value?.canExport === true && !hasRunningTask.value)
+
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
 })
@@ -545,12 +567,18 @@ onMounted(async () => {
   await loadList()
 })
 
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer)
+  clearInterval(parseTimer)
+  clearInterval(taskTimer)
+})
+
 async function loadList() {
   loading.value = true
   try {
     const res = await pageSolutions(listQuery)
-    solutions.value = res?.records || []
-    if (!currentSolution.value && solutions.value.length) {
+    solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+    if (!currentSolution.value && mode.value !== 'create' && solutions.value.length) {
       await loadDetail(solutions.value[0].id)
     }
   } finally {
@@ -565,41 +593,22 @@ function onSearchInput() {
 
 async function loadDetail(id) {
   const data = await getSolution(id)
-  currentSolution.value = data
-  overallWritingRequirement.value = data.overallWritingRequirement || ''
+  applySolutionDetail(data)
   selectedSection.value = null
   mode.value = 'detail'
+  resumeRunningTaskIfNeeded()
 }
 
-async function editSolution(item) {
-  if (!item?.id) return
-  await loadDetail(item.id)
-  editMode.value = true
-  editTab.value = 'word'
+function applySolutionDetail(data) {
+  currentSolution.value = data
+  overallWritingRequirement.value = data?.overallWritingRequirement || ''
+  fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
 }
 
-async function removeSolution(item) {
-  if (!item?.id) return
-  await ElMessageBox.confirm(`确定删除方案“${item.solutionName || ''}”吗？删除后该方案不会再出现在我的方案列表。`, '删除方案', {
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消'
-  })
-  await deleteSolution(item.id)
-  ElMessage.success('删除成功')
-
-  const deletedCurrent = currentSolution.value?.id === item.id
-  if (deletedCurrent) {
-    currentSolution.value = null
-    selectedSection.value = null
-    editMode.value = false
-    mode.value = 'home'
-  }
-
-  await loadList()
-
-  if (deletedCurrent && solutions.value.length) {
-    await loadDetail(solutions.value[0].id)
+function resumeRunningTaskIfNeeded() {
+  const task = currentSolution.value?.runningTask
+  if (task?.id && ['WAITING', 'RUNNING'].includes(task.status)) {
+    pollGenerationTask(task.id)
   }
 }
 
@@ -632,7 +641,7 @@ async function handleTenderFileChange(uploadFile) {
       writingStyle: createForm.writingStyle
     })
     parseTask.value = task
-    currentSolution.value = { id: task.solutionId, outlines: [] }
+    currentSolution.value = null
     pollParseTask(task.id)
   } catch (e) {
     parseLoading.value = false
@@ -657,8 +666,7 @@ function pollParseTask(taskId) {
         clearInterval(parseTimer)
         parseLoading.value = false
         createStep.value = 2
-        await loadDetail(task.solutionId)
-        mode.value = 'create'
+        // 解析完成后仍不创建方案，用户点击“生成目录”时再创建方案并显示到左侧列表。
         ElMessage.success('标书解析完成')
       } else if (task.status === 'FAILED') {
         clearInterval(parseTimer)
@@ -683,20 +691,54 @@ async function reExtractFromParse() {
 }
 
 async function onGenerateOutline() {
-  if (!currentSolution.value?.id) {
-    ElMessage.warning('请先上传招标文件')
+  if (!parseTask.value?.id) {
+    ElMessage.warning('请先上传招标文件并等待解析完成')
     return
   }
+
+  if (parseTask.value.status !== 'SUCCESS') {
+    if (parseTask.value.status === 'FAILED') {
+      ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传或重新解析')
+    } else {
+      ElMessage.warning('标书正在解析中，请等待解析完成后再生成目录')
+    }
+    return
+  }
+
   if (!requirementForm.purchaseRequirement?.trim()) {
     ElMessage.warning('采购需求不能为空')
     return
   }
+  if (!createForm.solutionName?.trim()) {
+    ElMessage.warning('方案名称不能为空')
+    return
+  }
   outlineGenerating.value = true
   try {
-    await saveRequirement(currentSolution.value.id, requirementForm)
-    const data = await generateOutline(currentSolution.value.id, outlineForm)
+    let solutionId = currentSolution.value?.id
+
+    // 正确流程：上传标书只创建解析任务；点击“生成目录”时才真正创建方案，
+    // 创建成功后左侧“我的方案”列表才显示该方案。
+    if (!solutionId) {
+      const created = await createSolution({
+        solutionName: createForm.solutionName,
+        solutionMode: createForm.solutionMode,
+        solutionType: createForm.solutionType,
+        solutionSubType: createForm.solutionSubType,
+        aiLevel: createForm.aiLevel,
+        writingStyle: createForm.writingStyle,
+        parseTaskId: parseTask.value?.id
+      })
+      currentSolution.value = created
+      solutionId = created.id
+      await loadList()
+    }
+
+    await saveRequirement(solutionId, requirementForm)
+    const data = await generateOutline(solutionId, outlineForm)
     currentSolution.value = data
     createStep.value = 3
+    await loadList()
     wordPresetVisible.value = true
     ElMessage.success('目录生成完成，请设置篇幅')
   } finally {
@@ -726,12 +768,19 @@ async function onApplyWordPreset() {
 }
 
 function toggleEditMode() {
+  if (!canEditOutline.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前方案有任务正在执行，暂不能编辑')
+    return
+  }
   editMode.value = !editMode.value
   if (editMode.value) editTab.value = 'word'
 }
 
 async function refreshCurrent() {
-  if (currentSolution.value?.id) currentSolution.value = await getSolution(currentSolution.value.id)
+  if (!currentSolution.value?.id) return
+  const data = await getSolution(currentSolution.value.id)
+  applySolutionDetail(data)
+  resumeRunningTaskIfNeeded()
 }
 
 async function onNodeWordChange({ node, value }) {
@@ -824,34 +873,67 @@ async function onGenerateFull() {
     ElMessage.warning('请先生成目录')
     return
   }
+  if (!canGenerate.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前状态暂不能生成')
+    return
+  }
   fullGenerating.value = true
-  const task = await generateFull(currentSolution.value.id)
-  pollGenerationTask(task.id)
+  try {
+    const task = await generateFull(currentSolution.value.id)
+    pollGenerationTask(task.id)
+    await refreshCurrent()
+  } catch (e) {
+    fullGenerating.value = false
+  }
 }
 
 async function onRewriteFull() {
+  if (!canRewriteAll.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前状态暂不能重编')
+    return
+  }
   await ElMessageBox.confirm('重编全文将覆盖已有章节内容，是否继续？', '确认重编', { type: 'warning' })
   fullGenerating.value = true
-  const task = await rewriteFull(currentSolution.value.id)
-  pollGenerationTask(task.id)
+  try {
+    const task = await rewriteFull(currentSolution.value.id)
+    pollGenerationTask(task.id)
+    await refreshCurrent()
+  } catch (e) {
+    fullGenerating.value = false
+  }
 }
 
 function pollGenerationTask(taskId) {
+  if (!taskId) return
   clearInterval(taskTimer)
-  taskTimer = setInterval(async () => {
+
+  const tick = async () => {
     try {
       const task = await getGenerationTask(taskId)
       await refreshCurrent()
-      if (['SUCCESS', 'PARTIAL', 'FAILED'].includes(task.status)) {
-        clearInterval(taskTimer)
-        fullGenerating.value = false
+      if (['WAITING', 'RUNNING'].includes(task.status)) {
+        fullGenerating.value = true
+        return
+      }
+
+      clearInterval(taskTimer)
+      taskTimer = null
+      fullGenerating.value = false
+
+      if (task.status === 'FAILED') {
+        ElMessage.error(task.errorMessage || task.message || '生成失败')
+      } else {
         ElMessage.success(task.message || '生成完成')
       }
     } catch (e) {
       clearInterval(taskTimer)
+      taskTimer = null
       fullGenerating.value = false
     }
-  }, 2000)
+  }
+
+  tick()
+  taskTimer = setInterval(tick, 2000)
 }
 
 function openSectionDialog(node) {
@@ -876,6 +958,10 @@ function openSectionDialog(node) {
 
 async function onGenerateSection() {
   if (!sectionNode.value?.id) return
+  if (hasRunningTask.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前方案有任务正在执行')
+    return
+  }
   sectionGenerating.value = true
   sectionStreamingText.value = ''
   try {
@@ -894,8 +980,31 @@ async function onGenerateSection() {
   }
 }
 
+async function onDeleteSolution(item) {
+  if (!item?.id) return
+  await ElMessageBox.confirm(`确定删除方案“${item.solutionName || ''}”吗？删除后该方案将从列表中移除。`, '确认删除', { type: 'warning' })
+  await deleteSolution(item.id)
+  solutions.value = solutions.value.filter((solution) => solution.id !== item.id)
+  if (currentSolution.value?.id === item.id) {
+    currentSolution.value = null
+    selectedSection.value = null
+    editMode.value = false
+    mode.value = solutions.value.length ? 'detail' : 'home'
+    if (solutions.value.length) {
+      await loadDetail(solutions.value[0].id)
+    }
+  }
+  await loadList()
+  ElMessage.success('删除成功')
+}
+
 async function onExportWord() {
+  if (!canExport.value) {
+    ElMessage.warning(hasRunningTask.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
+    return
+  }
   const file = await exportWord(currentSolution.value.id)
+  await refreshCurrent()
   ElMessage.success('导出成功')
   if (file?.fileUrl) window.open(file.fileUrl, '_blank')
 }
@@ -1007,12 +1116,18 @@ const WritingDirectionEditor = defineComponent({
 </script>
 
 <style scoped>
-.solution-shell { display: grid; grid-template-columns: 270px minmax(520px, 1fr) minmax(420px, 1.35fr); gap: 12px; height: calc(100vh - 82px); background: #eef3fb; }
+.solution-shell { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; height: calc(100vh - 82px); background: #eef3fb; }
+.solution-shell.with-preview { grid-template-columns: 270px minmax(520px, 0.95fr) minmax(420px, 1.25fr); }
+.solution-shell.no-preview .solution-main-card { min-width: 0; }
 .solution-list-card, .solution-main-card, .right-preview-card { background: #fff; border-radius: 12px; overflow: hidden; }
 .solution-list-card { display: flex; flex-direction: column; padding: 14px; }
 .list-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
 .solution-search { margin: 18px 0 12px; }
 .solution-list-scroll { flex: 1; }
+.solution-card { position: relative; }
+.solution-card-actions { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none; gap: 8px; }
+.solution-card:hover .solution-card-actions { display: flex; }
+.solution-card-name span { display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .solution-card { padding: 14px 12px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; margin-bottom: 10px; background: rgba(248, 250, 255, .8); }
 .solution-card.active { border-color: #2f6bff; background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%); }
 .solution-card-name { display: flex; align-items: center; gap: 6px; color: #2f6bff; font-weight: 600; }
@@ -1098,15 +1213,5 @@ const WritingDirectionEditor = defineComponent({
 :deep(.simple-level) { color: #9ca3af; font-size: 12px; }
 :deep(.direction-editor) { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 5px rgba(15, 23, 42, .06); }
 :deep(.title-input) { flex: 1; }
-.solution-card { position: relative; overflow: hidden; }
-.solution-card-actions { position: absolute; right: 12px; top: 50%; display: flex; gap: 8px; transform: translateY(-50%); opacity: 0; pointer-events: none; transition: opacity .16s ease; }
-.solution-card:hover .solution-card-actions, .solution-card.active .solution-card-actions { opacity: 1; pointer-events: auto; }
-.solution-action-btn { width: 34px; height: 34px; border: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; box-shadow: 0 6px 16px rgba(15, 23, 42, .16); transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; }
-.solution-action-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(15, 23, 42, .22); }
-.solution-action-btn.edit { background: linear-gradient(135deg, #ff5b6e, #ff3d57); }
-.solution-action-btn.delete { background: #6b7280; }
-.solution-card:hover .solution-card-name span, .solution-card.active .solution-card-name span { max-width: calc(100% - 88px); }
-.solution-card-name span { display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; vertical-align: bottom; }
-@media (max-width: 1280px) { .solution-shell { grid-template-columns: 260px minmax(520px, 1fr); } .right-preview-card { display: none; } }
+@media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 260px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
 </style>
-
