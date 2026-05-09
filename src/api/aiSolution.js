@@ -76,12 +76,12 @@ export function moveOutlineNode(outlineId, direction) {
   return request({ url: `/ai-solution/outline/${outlineId}/move`, method: 'post', data: { direction } })
 }
 
-export function generateFull(id) {
-  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post' })
+export function generateFull(id, data = {}) {
+  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post', data })
 }
 
-export function rewriteFull(id) {
-  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post' })
+export function rewriteFull(id, data = {}) {
+  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post', data })
 }
 
 export function getGenerationTask(taskId) {

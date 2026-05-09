@@ -267,8 +267,8 @@
               <OutlineTree :nodes="currentSolution.outlines" mode="generate" @preview="selectSectionPreview" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
-              <el-button size="large" :disabled="!canRewriteAll" @click="onRewriteFull" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
-              <el-button size="large" type="primary" :disabled="!canGenerate" @click="onGenerateFull" :loading="fullGenerating || hasRunningTask">开始生成</el-button>
+              <el-button size="large" :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
+              <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">开始生成</el-button>
               <el-button size="large" type="success" :disabled="!canExport" @click="onExportWord">导出Word</el-button>
             </div>
           </template>
@@ -277,7 +277,7 @@
     </section>
 
     <section v-if="showRightPreview" class="right-preview-card">
-      <div v-if="selectedSection?.section?.content" class="section-preview">
+      <div v-if="selectedSectionSolutionId === currentSolution?.id && selectedSection?.section?.content" class="section-preview">
         <h3>{{ selectedSection.title }}</h3>
         <pre>{{ selectedSection.section.content }}</pre>
       </div>
@@ -287,28 +287,74 @@
       </div>
     </section>
 
-    <el-dialog v-model="wordPresetVisible" title="预设篇幅" width="720px" append-to-body>
-      <div class="preset-box">
-        <div class="preset-row">
-          <span>自动分配</span>
-          <el-button :type="wordPreset.mode === 'AUTO' ? 'primary' : 'default'" @click="wordPreset.mode = 'AUTO'">自由发挥</el-button>
+    <el-dialog v-model="wordPresetVisible" title="设置方案篇幅" width="760px" append-to-body class="word-preset-dialog">
+      <div class="word-preset-panel">
+        <div class="preset-tip">
+          <strong>目录已生成完成</strong>
+          <span>请选择每个末级章节的目标字数。后续仍可在“编辑 - 修改字数”里单独调整。</span>
         </div>
-        <div class="preset-row">
-          <span>精致小页数</span>
-          <el-button v-for="n in [300, 600, 900]" :key="n" :type="wordPreset.wordCount === n ? 'primary' : 'default'" @click="setPreset('FIXED', n)">每段{{ n }}字</el-button>
+
+        <div class="preset-auto-card" :class="{ active: wordPreset.mode === 'AUTO' }" @click="wordPreset.mode = 'AUTO'">
+          <div>
+            <strong>自动分配</strong>
+            <span>系统按章节顺序自动错开字数，适合先快速生成一版。</span>
+          </div>
+          <el-tag :type="wordPreset.mode === 'AUTO' ? 'primary' : 'info'" effect="light">自由发挥</el-tag>
         </div>
-        <div class="preset-row">
-          <span>常规中篇幅</span>
-          <el-button v-for="n in [1200, 1800, 2700, 3600, 4500]" :key="n" :type="wordPreset.wordCount === n ? 'primary' : 'default'" @click="setPreset('FIXED', n)">每段{{ n }}字</el-button>
-        </div>
-        <div class="preset-row">
-          <span>丰富大篇幅</span>
-          <el-button v-for="n in [5400, 6300, 7200, 8100, 9000, 9900]" :key="n" :type="wordPreset.wordCount === n ? 'primary' : 'default'" @click="setPreset('FIXED', n)">每段{{ n }}字</el-button>
+
+        <div class="preset-groups">
+          <div class="preset-group-card">
+            <div class="preset-group-title">精简版</div>
+            <div class="preset-group-desc">适合先看结构和表达方向</div>
+            <div class="preset-word-grid small">
+              <button
+                v-for="n in [300, 600, 900]"
+                :key="n"
+                type="button"
+                :class="{ active: wordPreset.mode === 'FIXED' && wordPreset.wordCount === n }"
+                @click="setPreset('FIXED', n)"
+              >
+                {{ n }}字
+              </button>
+            </div>
+          </div>
+
+          <div class="preset-group-card">
+            <div class="preset-group-title">常规版</div>
+            <div class="preset-group-desc">适合正式投标方案初稿</div>
+            <div class="preset-word-grid">
+              <button
+                v-for="n in [1200, 1800, 2700, 3600, 4500]"
+                :key="n"
+                type="button"
+                :class="{ active: wordPreset.mode === 'FIXED' && wordPreset.wordCount === n }"
+                @click="setPreset('FIXED', n)"
+              >
+                {{ n }}字
+              </button>
+            </div>
+          </div>
+
+          <div class="preset-group-card">
+            <div class="preset-group-title">详细版</div>
+            <div class="preset-group-desc">适合需要展开大量实施细节</div>
+            <div class="preset-word-grid">
+              <button
+                v-for="n in [5400, 6300, 7200, 8100, 9000, 9900]"
+                :key="n"
+                type="button"
+                :class="{ active: wordPreset.mode === 'FIXED' && wordPreset.wordCount === n }"
+                @click="setPreset('FIXED', n)"
+              >
+                {{ n }}字
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       <template #footer>
-        <el-button @click="wordPresetVisible = false">取消</el-button>
-        <el-button type="primary" :loading="wordPresetSaving" @click="onApplyWordPreset">确认并完成新建</el-button>
+        <el-button @click="wordPresetVisible = false">稍后设置</el-button>
+        <el-button type="primary" :loading="wordPresetSaving" @click="onApplyWordPreset">确认并进入方案</el-button>
       </template>
     </el-dialog>
 
@@ -362,28 +408,24 @@
             <el-option v-for="n in wordOptions" :key="n" :label="`${n}字`" :value="n" />
           </el-select>
         </el-form-item>
-        <el-form-item label="图表数量">
-          <el-radio-group v-model="sectionForm.chartLevel">
-            <el-radio-button label="NONE">无</el-radio-button>
-            <el-radio-button label="LESS">较少</el-radio-button>
-            <el-radio-button label="NORMAL">一般</el-radio-button>
-            <el-radio-button label="MORE">较多</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="表格数量">
-          <el-radio-group v-model="sectionForm.tableLevel">
-            <el-radio-button label="NONE">无</el-radio-button>
-            <el-radio-button label="LESS">较少</el-radio-button>
-            <el-radio-button label="NORMAL">一般</el-radio-button>
-            <el-radio-button label="MORE">较多</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="图片数量">
-          <el-radio-group v-model="sectionForm.imageLevel">
-            <el-radio-button label="NONE">无</el-radio-button>
-            <el-radio-button label="LESS">较少</el-radio-button>
-            <el-radio-button label="NORMAL">一般</el-radio-button>
-          </el-radio-group>
+        <el-form-item label="知识库：">
+          <div class="knowledge-setting">
+            <div class="knowledge-actions">
+              <el-button @click="goKnowledgeBasePage">上传</el-button>
+              <el-button @click="openKnowledgeSelector('section')">从知识库选择</el-button>
+            </div>
+            <div v-if="selectedSectionKnowledgeBases.length" class="selected-kb-list">
+              <el-tag
+                v-for="kb in selectedSectionKnowledgeBases"
+                :key="kb.id"
+                closable
+                @close="removeSelectedKnowledgeBase(kb.id, 'section')"
+              >
+                {{ kb.kbName }}
+              </el-tag>
+            </div>
+            <div v-else class="selected-kb-empty">未选择知识库，本段生成时不引用知识库资料</div>
+          </div>
         </el-form-item>
         <el-form-item label="编写方向">
           <el-input v-model="sectionForm.writingDirection" type="textarea" :rows="5" maxlength="10000" show-word-limit />
@@ -408,11 +450,108 @@
         <el-button type="primary" :loading="sectionGenerating" @click="onGenerateSection">生成本段</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="fullGenerateSettingVisible" title="方案设置" width="640px" append-to-body>
+      <el-form label-width="90px" class="full-generate-form">
+        <el-form-item label="知识库：">
+          <div class="knowledge-setting">
+            <div class="knowledge-actions">
+              <el-button @click="goKnowledgeBasePage">上传</el-button>
+              <el-button @click="openKnowledgeSelector('full')">从知识库选择</el-button>
+            </div>
+            <div v-if="selectedKnowledgeBases.length" class="selected-kb-list">
+              <el-tag
+                v-for="kb in selectedKnowledgeBases"
+                :key="kb.id"
+                closable
+                @close="removeSelectedKnowledgeBase(kb.id, 'full')"
+              >
+                {{ kb.kbName }}
+              </el-tag>
+            </div>
+            <div v-else class="selected-kb-empty">未选择知识库，生成时不引用知识库资料</div>
+          </div>
+        </el-form-item>
+        <el-form-item label="暗标：">
+          <div class="blind-setting">
+            <el-switch v-model="fullGenerateForm.blindBidEnabled" />
+            <el-input
+              v-if="fullGenerateForm.blindBidEnabled"
+              v-model="fullGenerateForm.blindBidRequirement"
+              class="blind-rule-input"
+              type="textarea"
+              :rows="5"
+              maxlength="2000"
+              show-word-limit
+              placeholder="请输入暗标要求"
+            />
+          </div>
+        </el-form-item>
+        <el-form-item label="写作风格：">
+          <el-radio-group v-model="fullGenerateForm.writingStyle" class="style-radio-grid">
+            <el-radio-button label="GENERAL">通用型</el-radio-button>
+            <el-radio-button label="DATA">数据型</el-radio-button>
+            <el-radio-button label="CONCISE">简约型</el-radio-button>
+            <el-radio-button label="PRACTICAL">实用型</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="fullGenerateSettingVisible = false">取消</el-button>
+        <el-button type="primary" :loading="fullGenerating" @click="confirmFullGenerate">开始生成</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
+      <div class="knowledge-selector">
+        <div class="knowledge-search-row">
+          <el-input
+            v-model="knowledgeKeyword"
+            clearable
+            placeholder="请输入知识库名称"
+            @keyup.enter="loadKnowledgeBases"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" plain @click="loadKnowledgeBases">搜索</el-button>
+        </div>
+
+        <el-checkbox-group v-model="tempSelectedKnowledgeIds" class="knowledge-check-list">
+          <div
+            v-for="kb in knowledgeBaseList"
+            :key="kb.id"
+            class="knowledge-check-card"
+          >
+            <el-checkbox :label="kb.id">
+              <div class="kb-info">
+                <div class="kb-name">{{ kb.kbName }}</div>
+                <div class="kb-meta">
+                  文件 {{ kb.fileCount || 0 }} 个 · 分片 {{ kb.chunkCount || 0 }} 个
+                  <span v-if="kb.description"> · {{ kb.description }}</span>
+                </div>
+              </div>
+            </el-checkbox>
+          </div>
+        </el-checkbox-group>
+
+        <el-empty
+          v-if="!knowledgeLoading && !knowledgeBaseList.length"
+          description="暂无可用知识库，请先上传知识库文件"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="knowledgeSelectorVisible = false">取消</el-button>
+        <el-button type="primary" :loading="knowledgeLoading" @click="confirmKnowledgeSelection">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
@@ -440,16 +579,22 @@ import {
   updateWritingConfig,
   uploadAndParseTenderFile
 } from '@/api/aiSolution'
+import { listKnowledgeBases } from '@/api/knowledge'
 
+const router = useRouter()
 const mode = ref('home')
 const loading = ref(false)
 const solutions = ref([])
 const currentSolution = ref(null)
+const activeSolutionId = ref(null)
+const detailRequestSeq = ref(0)
 const selectedSection = ref(null)
+const selectedSectionSolutionId = ref(null)
 const listQuery = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
 let searchTimer = null
 let parseTimer = null
 let taskTimer = null
+let outlineTimer = null
 const notifiedTaskIds = new Set()
 
 const createStep = ref(0)
@@ -461,16 +606,24 @@ const previewOutlinesLocal = ref([])
 const previewOutlines = computed(() => mode.value === 'create' ? previewOutlinesLocal.value : (currentSolution.value?.outlines || []))
 const outlineLeafCount = computed(() => flattenLeaf(previewOutlines.value).length)
 const parseDone = computed(() => parseTask.value?.status === 'SUCCESS')
+const outlineFinishedStatuses = ['OUTLINE_READY', 'WORD_COUNT_SET', 'CONTENT_GENERATING', 'CONTENT_PARTIAL', 'CONTENT_READY', 'DONE']
+const outlineGeneratingStatuses = ['OUTLINE_GENERATING']
+const hasOutlineFromBackend = computed(() => Array.isArray(currentSolution.value?.outlines) && currentSolution.value.outlines.length > 0)
+const isOutlineGeneratingByBackend = computed(() => outlineGeneratingStatuses.includes(currentSolution.value?.status))
+const isOutlineFinishedByBackend = computed(() => hasOutlineFromBackend.value || outlineFinishedStatuses.includes(currentSolution.value?.status))
 const canClickGenerateOutline = computed(() => {
   return !!currentSolution.value?.id
     && !outlineGenerating.value
     && !parseLoading.value
+    && !isOutlineGeneratingByBackend.value
+    && !isOutlineFinishedByBackend.value
     && parseDone.value
     && !!createForm.solutionName?.trim()
     && !!requirementForm.purchaseRequirement?.trim()
 })
 const generateOutlineButtonText = computed(() => {
-  if (outlineGenerating.value) return '生成中'
+  if (outlineGenerating.value || isOutlineGeneratingByBackend.value) return '目录生成中'
+  if (isOutlineFinishedByBackend.value) return '目录已生成'
   if (!currentSolution.value?.id) return '正在创建草稿'
   if (!parseTask.value?.id) return '请先上传标书'
   if (parseTask.value.status === 'FAILED') return '解析失败，无法生成'
@@ -489,6 +642,28 @@ const addBaseNode = ref(null)
 const addNodeForm = reactive({ title: '', insertType: 'CHILD', targetWordCount: 300 })
 const streamingOutlineId = ref(null)
 const fullGenerating = ref(false)
+const fullGenerateSettingVisible = ref(false)
+const fullGenerateAction = ref('GENERATE')
+const fullGenerateForm = reactive({
+  blindBidEnabled: true,
+  blindBidRequirement: '输出内容中不得出现投标人的名称、企业标识、人员名称、企业独享的符号或图案等任何可识别投标人身份的信息',
+  writingStyle: 'GENERAL',
+  knowledgeIds: [],
+  fileResourceIds: [],
+  chartLevel: 'NONE',
+  tableLevel: 'NONE',
+  imageLevel: 'NONE',
+  autoImageLevel: 'NONE'
+})
+const knowledgeSelectorVisible = ref(false)
+const knowledgeLoading = ref(false)
+const knowledgeKeyword = ref('')
+const knowledgeBaseList = ref([])
+const tempSelectedKnowledgeIds = ref([])
+const knowledgeSelectorTarget = ref('full')
+const selectedKnowledgeBaseCache = ref([])
+const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
+const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
 const sectionNode = ref(null)
@@ -581,6 +756,7 @@ onBeforeUnmount(() => {
   clearTimeout(searchTimer)
   clearInterval(parseTimer)
   clearInterval(taskTimer)
+  clearInterval(outlineTimer)
 })
 
 async function loadList() {
@@ -595,7 +771,9 @@ async function loadList() {
 
     if (!solutions.value.length && mode.value !== 'create') {
       currentSolution.value = null
+      activeSolutionId.value = null
       selectedSection.value = null
+      selectedSectionSolutionId.value = null
       mode.value = 'home'
     }
   } finally {
@@ -609,27 +787,58 @@ function onSearchInput() {
 }
 
 async function loadDetail(id) {
-  try {
-    const data = await getSolution(id)
-    applySolutionDetail(data)
-    selectedSection.value = null
+  const solutionId = Number(id)
+  const seq = ++detailRequestSeq.value
+  activeSolutionId.value = solutionId
+  selectedSection.value = null
+  selectedSectionSolutionId.value = null
+  sectionNode.value = null
+  sectionDialogVisible.value = false
 
-    const hasOutline = Array.isArray(data?.outlines) && data.outlines.length > 0
-    if (!hasOutline && ['DRAFT', 'PARSING', 'PARSE_FAILED', 'INFO_READY'].includes(data?.status)) {
-      mode.value = 'create'
-      editMode.value = false
-    } else {
-      mode.value = 'detail'
-    }
+  try {
+    const data = await getSolution(solutionId)
+    if (seq !== detailRequestSeq.value || activeSolutionId.value !== solutionId) return
+    applySolutionDetail(data)
+    applyModeByBackendState(data)
 
     resumeRunningTaskIfNeeded()
     resumeParseTaskIfNeeded()
+    resumeOutlineTaskIfNeeded()
   } catch (e) {
-    ElMessage.error('方案详情加载失败，请稍后刷新后重试')
+    if (seq === detailRequestSeq.value) {
+      ElMessage.error('方案详情加载失败，请稍后刷新后重试')
+    }
   }
 }
 
+function applyModeByBackendState(data) {
+  const hasOutline = Array.isArray(data?.outlines) && data.outlines.length > 0
+  const status = data?.status
+
+  if (hasOutline || outlineFinishedStatuses.includes(status)) {
+    mode.value = 'detail'
+    editMode.value = false
+    return
+  }
+
+  if (outlineGeneratingStatuses.includes(status)) {
+    mode.value = 'create'
+    editMode.value = false
+    createStep.value = Math.max(createStep.value, 2)
+    return
+  }
+
+  if (['DRAFT', 'FILE_PARSING', 'PARSING', 'PARSE_FAILED', 'INFO_READY'].includes(status)) {
+    mode.value = 'create'
+    editMode.value = false
+    return
+  }
+
+  mode.value = 'detail'
+}
+
 function applySolutionDetail(data) {
+  if (data?.id && !activeSolutionId.value) activeSolutionId.value = Number(data.id)
   currentSolution.value = data
   overallWritingRequirement.value = data?.overallWritingRequirement || ''
   fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
@@ -655,6 +864,8 @@ function applySolutionDetail(data) {
 
     parseTask.value = data.latestParseTask || null
     previewOutlinesLocal.value = data.outlines || []
+    // 详情恢复时，从当前方案节点读取已绑定知识库，避免切换页面后丢失。
+    fullGenerateForm.knowledgeIds = collectSolutionKnowledgeIds(data)
     createStep.value = calcCreateStep(data, parseTask.value)
   }
 }
@@ -676,8 +887,49 @@ function resumeParseTaskIfNeeded() {
   }
 }
 
+function resumeOutlineTaskIfNeeded() {
+  if (currentSolution.value?.id && outlineGeneratingStatuses.includes(currentSolution.value?.status)) {
+    pollOutlineStatus(currentSolution.value.id)
+  } else {
+    clearInterval(outlineTimer)
+    outlineTimer = null
+  }
+}
+
+function pollOutlineStatus(solutionId) {
+  clearInterval(outlineTimer)
+
+  const tick = async () => {
+    try {
+      const data = await getSolution(solutionId)
+      if (activeSolutionId.value && activeSolutionId.value !== Number(solutionId)) return
+      applySolutionDetail(data)
+      applyModeByBackendState(data)
+
+      if (outlineGeneratingStatuses.includes(data?.status)) {
+        return
+      }
+
+      clearInterval(outlineTimer)
+      outlineTimer = null
+      await loadList()
+
+      if ((Array.isArray(data?.outlines) && data.outlines.length > 0) || outlineFinishedStatuses.includes(data?.status)) {
+        ElMessage.success('目录生成完成')
+      }
+    } catch (e) {
+      clearInterval(outlineTimer)
+      outlineTimer = null
+    }
+  }
+
+  tick()
+  outlineTimer = setInterval(tick, 2000)
+}
+
 function calcCreateStep(solution, task) {
-  if (solution?.outlines?.length) return 3
+  if (solution?.outlines?.length || outlineFinishedStatuses.includes(solution?.status)) return 3
+  if (outlineGeneratingStatuses.includes(solution?.status)) return 2
   if (task?.status === 'SUCCESS') return 2
   if (task?.id) return 1
   return 0
@@ -686,8 +938,10 @@ function calcCreateStep(solution, task) {
 async function startCreate(solutionMode = 'QUICK') {
   clearInterval(parseTimer)
   clearInterval(taskTimer)
+  clearInterval(outlineTimer)
   parseTimer = null
   taskTimer = null
+  outlineTimer = null
 
   mode.value = 'create'
   createStep.value = 0
@@ -696,7 +950,9 @@ async function startCreate(solutionMode = 'QUICK') {
   outlineGenerating.value = false
   wordPresetVisible.value = false
   currentSolution.value = null
+  activeSolutionId.value = null
   selectedSection.value = null
+  selectedSectionSolutionId.value = null
   editMode.value = false
   previewOutlinesLocal.value = []
 
@@ -867,6 +1123,21 @@ async function onGenerateOutline() {
     return
   }
 
+  const latest = await getSolution(currentSolution.value.id)
+  applySolutionDetail(latest)
+  applyModeByBackendState(latest)
+  resumeOutlineTaskIfNeeded()
+
+  if (outlineGeneratingStatuses.includes(latest?.status)) {
+    ElMessage.warning('目录正在生成中，请稍后刷新查看')
+    return
+  }
+
+  if ((Array.isArray(latest?.outlines) && latest.outlines.length > 0) || outlineFinishedStatuses.includes(latest?.status)) {
+    ElMessage.warning('目录已经生成，请不要重复生成')
+    return
+  }
+
   if (!parseTask.value?.id) {
     ElMessage.warning('请先上传招标文件并等待解析完成')
     return
@@ -908,6 +1179,8 @@ async function onGenerateOutline() {
     previewOutlinesLocal.value = data?.outlines || []
     createStep.value = 3
     mode.value = 'detail'
+    clearInterval(outlineTimer)
+    outlineTimer = null
 
     await loadList()
 
@@ -948,9 +1221,11 @@ function toggleEditMode() {
   if (editMode.value) editTab.value = 'word'
 }
 
-async function refreshCurrent() {
-  if (!currentSolution.value?.id) return
-  const data = await getSolution(currentSolution.value.id)
+async function refreshCurrent(expectedSolutionId = currentSolution.value?.id) {
+  const solutionId = Number(expectedSolutionId)
+  if (!solutionId) return
+  const data = await getSolution(solutionId)
+  if (activeSolutionId.value && activeSolutionId.value !== solutionId) return
   applySolutionDetail(data)
   resumeRunningTaskIfNeeded()
   resumeParseTaskIfNeeded()
@@ -1001,9 +1276,10 @@ async function onSaveWritingConfig(node) {
     writingDirection: node.writingDirection,
     writingRequirement: node.writingRequirement,
     writingStyle: node.writingStyle,
-    chartLevel: node.chartLevel,
-    tableLevel: node.tableLevel,
-    imageLevel: node.imageLevel
+    // 第一版暂不支持图表、表格、插图，保存编写配置时也固定为 NONE。
+    chartLevel: 'NONE',
+    tableLevel: 'NONE',
+    imageLevel: 'NONE'
   })
   await refreshCurrent()
   ElMessage.success('保存成功')
@@ -1041,34 +1317,182 @@ async function onMoveNode({ node, direction }) {
   await refreshCurrent()
 }
 
-async function onGenerateFull() {
+function parseKnowledgeIds(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((id) => Number(id)).filter(Boolean))]
+  }
+  if (value === undefined || value === null || value === '') return []
+
+  const text = String(value).trim()
+  if (!text) return []
+
+  // 后端会把章节知识库保存为 JSON 字符串，例如：[1,2]。
+  // 这里必须先按 JSON 解析，否则 collectSolutionKnowledgeIds 会读不到历史选择。
+  if (text.startsWith('[')) {
+    try {
+      const arr = JSON.parse(text)
+      if (Array.isArray(arr)) {
+        return [...new Set(arr.map((id) => Number(id)).filter(Boolean))]
+      }
+    } catch (e) {
+      // 解析失败时继续按逗号字符串兜底。
+    }
+  }
+
+  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map((id) => Number(id)).filter(Boolean))]
+}
+
+function stringifyKnowledgeIds(ids = []) {
+  return [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))].join(',')
+}
+
+function buildSelectedKnowledgeBases(ids = []) {
+  const idList = parseKnowledgeIds(ids)
+  const map = new Map()
+  selectedKnowledgeBaseCache.value.forEach((item) => map.set(Number(item.id), item))
+  knowledgeBaseList.value.forEach((item) => map.set(Number(item.id), item))
+  return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
+}
+
+function collectSolutionKnowledgeIds(solution = currentSolution.value) {
+  const ids = []
+  const walk = (nodes = []) => {
+    nodes.forEach((node) => {
+      ids.push(...parseKnowledgeIds(node.knowledgeIds))
+      if (node.children?.length) walk(node.children)
+    })
+  }
+  walk(solution?.outlines || [])
+  return [...new Set(ids.map((id) => Number(id)).filter(Boolean))]
+}
+
+function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
+  return target === 'section'
+    ? parseKnowledgeIds(sectionForm.knowledgeIds)
+    : parseKnowledgeIds(fullGenerateForm.knowledgeIds)
+}
+
+function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
+  const normalized = [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))]
+  if (target === 'section') {
+    sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
+  } else {
+    fullGenerateForm.knowledgeIds = normalized
+  }
+}
+
+function goKnowledgeBasePage() {
+  fullGenerateSettingVisible.value = false
+  sectionDialogVisible.value = false
+  knowledgeSelectorVisible.value = false
+  router.push('/knowledge/bases')
+}
+
+async function openKnowledgeSelector(target = 'full') {
+  knowledgeSelectorTarget.value = target
+  tempSelectedKnowledgeIds.value = getCurrentKnowledgeIdsByTarget(target)
+  knowledgeSelectorVisible.value = true
+  await loadKnowledgeBases()
+}
+
+async function loadKnowledgeBases() {
+  knowledgeLoading.value = true
+  try {
+    const list = await listKnowledgeBases({
+      keyword: knowledgeKeyword.value,
+      status: 1
+    })
+    knowledgeBaseList.value = Array.isArray(list) ? list : []
+  } finally {
+    knowledgeLoading.value = false
+  }
+}
+
+function confirmKnowledgeSelection() {
+  const ids = [...new Set((tempSelectedKnowledgeIds.value || []).map((id) => Number(id)).filter(Boolean))]
+  setCurrentKnowledgeIdsByTarget(ids)
+
+  const cacheMap = new Map()
+  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(Number(item.id), item))
+  knowledgeBaseList.value.forEach((item) => {
+    if (ids.includes(Number(item.id))) {
+      cacheMap.set(Number(item.id), item)
+    }
+  })
+  selectedKnowledgeBaseCache.value = [...new Set([
+    ...parseKnowledgeIds(fullGenerateForm.knowledgeIds),
+    ...parseKnowledgeIds(sectionForm.knowledgeIds)
+  ])].map((id) => cacheMap.get(Number(id))).filter(Boolean)
+
+  knowledgeSelectorVisible.value = false
+}
+
+function removeSelectedKnowledgeBase(id, target = 'full') {
+  const removeId = Number(id)
+  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => Number(item) !== removeId)
+  setCurrentKnowledgeIdsByTarget(next, target)
+  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => Number(item) !== removeId)
+  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => Number(item.id) !== removeId)
+}
+
+function openFullGenerateDialog(action = 'GENERATE') {
   if (!currentSolution.value?.outlines?.length) {
     ElMessage.warning('请先生成目录')
     return
   }
-  if (!canGenerate.value) {
-    ElMessage.warning(currentSolution.value?.runningMessage || '当前状态暂不能生成')
-    return
-  }
-  fullGenerating.value = true
-  try {
-    const task = await generateFull(currentSolution.value.id)
-    pollGenerationTask(task.id)
-    await refreshCurrent()
-  } catch (e) {
-    fullGenerating.value = false
-  }
-}
 
-async function onRewriteFull() {
-  if (!canRewriteAll.value) {
+  if (action === 'REWRITE' && !canRewriteAll.value) {
     ElMessage.warning(currentSolution.value?.runningMessage || '当前状态暂不能重编')
     return
   }
-  await ElMessageBox.confirm('重编全文将覆盖已有章节内容，是否继续？', '确认重编', { type: 'warning' })
+
+  if (action !== 'REWRITE' && !canGenerate.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前状态暂不能生成')
+    return
+  }
+
+  fullGenerateAction.value = action
+  fullGenerateForm.writingStyle = currentSolution.value?.writingStyle || createForm.writingStyle || 'GENERAL'
+  fullGenerateForm.knowledgeIds = collectSolutionKnowledgeIds(currentSolution.value)
+  fullGenerateForm.chartLevel = 'NONE'
+  fullGenerateForm.tableLevel = 'NONE'
+  fullGenerateForm.imageLevel = 'NONE'
+  fullGenerateForm.autoImageLevel = 'NONE'
+  fullGenerateSettingVisible.value = true
+}
+
+async function confirmFullGenerate() {
+  if (fullGenerateAction.value === 'REWRITE') {
+    await ElMessageBox.confirm('重编全文将覆盖已有章节内容，是否继续？', '确认重编', { type: 'warning' })
+  }
+
+  fullGenerateSettingVisible.value = false
+  await startFullGenerate(fullGenerateAction.value === 'REWRITE')
+}
+
+async function startFullGenerate(rewrite = false) {
   fullGenerating.value = true
   try {
-    const task = await rewriteFull(currentSolution.value.id)
+    const selectedKbIds = parseKnowledgeIds(fullGenerateForm.knowledgeIds)
+    const payload = {
+      writingStyle: fullGenerateForm.writingStyle,
+      useKnowledge: selectedKbIds.length > 0,
+      // 后端 DTO 当前是 String，这里统一传逗号字符串，避免 JSON 数组反序列化成 String 失败。
+      knowledgeIds: stringifyKnowledgeIds(selectedKbIds),
+      fileResourceIds: stringifyKnowledgeIds(fullGenerateForm.fileResourceIds),
+      anonymous: fullGenerateForm.blindBidEnabled,
+      anonymousRequirement: fullGenerateForm.blindBidRequirement,
+      // 第一版暂不支持图表、表格、插图，全文生成也固定为 NONE。
+      chartLevel: 'NONE',
+      tableLevel: 'NONE',
+      imageLevel: 'NONE',
+      autoImageLevel: 'NONE'
+    }
+
+    const task = rewrite
+      ? await rewriteFull(currentSolution.value.id, payload)
+      : await generateFull(currentSolution.value.id, payload)
+
     pollGenerationTask(task.id)
     await refreshCurrent()
   } catch (e) {
@@ -1123,20 +1547,25 @@ function pollGenerationTask(taskId) {
 }
 
 function selectSectionPreview(node) {
-  if (!node) return
+  if (!node || !currentSolution.value?.id) return
   selectedSection.value = node
+  selectedSectionSolutionId.value = currentSolution.value.id
 }
 
 function openSectionDialog(node) {
   sectionNode.value = node
   selectedSection.value = node
+  selectedSectionSolutionId.value = currentSolution.value?.id || null
+  const nodeKnowledgeIds = parseKnowledgeIds(node.knowledgeIds)
+  const fallbackKnowledgeIds = nodeKnowledgeIds.length ? nodeKnowledgeIds : collectSolutionKnowledgeIds(currentSolution.value)
   Object.assign(sectionForm, {
     title: node.title,
     targetWordCount: node.targetWordCount || 300,
-    chartLevel: node.chartLevel || 'NONE',
-    tableLevel: node.tableLevel || 'NONE',
-    imageLevel: node.imageLevel || 'NONE',
-    knowledgeIds: node.knowledgeIds || '',
+    // 第一版暂不支持图表、表格、插图，前端固定传 NONE，避免弹出无效配置。
+    chartLevel: 'NONE',
+    tableLevel: 'NONE',
+    imageLevel: 'NONE',
+    knowledgeIds: stringifyKnowledgeIds(fallbackKnowledgeIds),
     fileResourceIds: node.fileResourceIds || '',
     writingDirection: node.writingDirection || '',
     writingRequirement: node.writingRequirement || '',
@@ -1156,7 +1585,13 @@ async function onGenerateSection() {
   sectionGenerating.value = true
   sectionStreamingText.value = ''
   try {
-    await streamSection(sectionNode.value.id, sectionForm, {
+    await streamSection(sectionNode.value.id, {
+      ...sectionForm,
+      // 第一版暂不生成图表、表格、插图。
+      chartLevel: 'NONE',
+      tableLevel: 'NONE',
+      imageLevel: 'NONE'
+    }, {
       onMessage(chunk) {
         sectionStreamingText.value += chunk
       },
@@ -1165,6 +1600,7 @@ async function onGenerateSection() {
       }
     })
     await refreshCurrent()
+    selectedSectionSolutionId.value = currentSolution.value?.id || null
     ElMessage.success('本段生成完成')
   } finally {
     sectionGenerating.value = false
@@ -1173,12 +1609,25 @@ async function onGenerateSection() {
 
 async function onDeleteSolution(item) {
   if (!item?.id) return
-  await ElMessageBox.confirm(`确定删除方案“${item.solutionName || ''}”吗？删除后该方案将从列表中移除。`, '确认删除', { type: 'warning' })
+
+  let latest = null
+  try {
+    latest = await getSolution(item.id)
+  } catch (e) {
+    latest = item
+  }
+  const running = ['WAITING', 'RUNNING'].includes(latest?.runningTask?.status) || latest?.status === 'CONTENT_GENERATING'
+  const message = running
+    ? `方案“${item.solutionName || ''}”正在生成中，删除后会取消后台任务并移除该方案，是否继续？`
+    : `确定删除方案“${item.solutionName || ''}”吗？删除后该方案将从列表中移除。`
+
+  await ElMessageBox.confirm(message, '确认删除', { type: 'warning' })
   await deleteSolution(item.id)
   solutions.value = solutions.value.filter((solution) => solution.id !== item.id)
   if (currentSolution.value?.id === item.id) {
     currentSolution.value = null
     selectedSection.value = null
+    selectedSectionSolutionId.value = null
     editMode.value = false
     mode.value = solutions.value.length ? 'detail' : 'home'
     if (solutions.value.length) {
@@ -1234,10 +1683,12 @@ function syncSolutionCard(data) {
 function syncSelectedSectionAfterDetail(data) {
   if (!data?.outlines?.length) {
     selectedSection.value = null
+    selectedSectionSolutionId.value = null
     return
   }
 
-  if (selectedSection.value?.id) {
+  // 切换方案时不要沿用上一个方案的章节选中状态。
+  if (selectedSection.value?.id && selectedSectionSolutionId.value === data.id) {
     const latest = findOutlineNodeById(data.outlines, selectedSection.value.id)
     if (latest) {
       selectedSection.value = latest
@@ -1248,6 +1699,10 @@ function syncSelectedSectionAfterDetail(data) {
   const firstGenerated = findFirstGeneratedLeaf(data.outlines)
   if (firstGenerated) {
     selectedSection.value = firstGenerated
+    selectedSectionSolutionId.value = data.id
+  } else {
+    selectedSection.value = null
+    selectedSectionSolutionId.value = null
   }
 }
 
@@ -1465,9 +1920,20 @@ const WritingDirectionEditor = defineComponent({
 .section-preview pre { white-space: pre-wrap; line-height: 1.8; color: #334155; font-family: inherit; }
 .score-dialog-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .dialog-label { font-weight: 700; margin-bottom: 8px; }
-.preset-box { display: flex; flex-direction: column; gap: 18px; }
-.preset-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.preset-row span { width: 100px; color: #64748b; }
+.word-preset-panel { display: flex; flex-direction: column; gap: 14px; }
+.preset-tip { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 12px; background: #f8fbff; border: 1px solid #dbeafe; color: #475569; }
+.preset-tip strong { color: #1f2937; font-size: 16px; }
+.preset-auto-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 12px; cursor: pointer; background: #fff; }
+.preset-auto-card strong, .preset-group-title { display: block; color: #1f2937; font-weight: 700; margin-bottom: 4px; }
+.preset-auto-card span, .preset-group-desc { color: #94a3b8; font-size: 13px; line-height: 1.5; }
+.preset-auto-card.active { border-color: #2f6bff; background: #f1f6ff; box-shadow: 0 8px 20px rgba(47, 107, 255, .08); }
+.preset-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.preset-group-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px; background: #fff; min-width: 0; }
+.preset-word-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.preset-word-grid.small { grid-template-columns: 1fr; }
+.preset-word-grid button { height: 34px; border: 1px solid #dbe3ef; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; }
+.preset-word-grid button:hover { border-color: #2f6bff; color: #2f6bff; }
+.preset-word-grid button.active { border-color: #2f6bff; background: #2f6bff; color: #fff; }
 .section-form :deep(.el-form-item) { margin-bottom: 14px; }
 :deep(.outline-tree) { font-size: 15px; }
 :deep(.tree-row) { display: flex; align-items: center; gap: 8px; min-height: 36px; border-bottom: 1px dashed #e5e7eb; color: #6b7280; }
@@ -1480,6 +1946,84 @@ const WritingDirectionEditor = defineComponent({
 :deep(.simple-level) { color: #9ca3af; font-size: 12px; }
 :deep(.direction-editor) { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 5px rgba(15, 23, 42, .06); }
 :deep(.title-input) { flex: 1; }
+.full-generate-form :deep(.el-form-item) { margin-bottom: 18px; }
+.blind-setting { width: 100%; }
+.blind-rule-input { margin-top: 10px; }
+.style-radio-grid { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; width: 100%; }
+.style-radio-grid :deep(.el-radio-button__inner) { width: 100%; }
+.knowledge-setting {
+  width: 100%;
+}
+
+.knowledge-actions {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.selected-kb-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selected-kb-empty {
+  color: #9aa4b2;
+  font-size: 13px;
+}
+
+.knowledge-selector {
+  min-height: 360px;
+}
+
+.knowledge-search-row {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.knowledge-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.knowledge-check-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.knowledge-check-card:hover {
+  border-color: #2f6bff;
+  background: #f8fbff;
+}
+
+.kb-info {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.kb-name {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.kb-meta {
+  max-width: 520px;
+  color: #94a3b8;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 260px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
 :deep(.tree-row.clickable) { cursor: pointer; }
 :deep(.tree-row.clickable:hover) { background: #f8fafc; }
