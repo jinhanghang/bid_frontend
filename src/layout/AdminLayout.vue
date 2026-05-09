@@ -11,10 +11,10 @@
 
       <el-scrollbar class="menu-scroll">
         <el-menu
-          :default-active="route.path"
-          router
-          unique-opened
-          class="side-menu"
+            :default-active="route.path"
+            router
+            unique-opened
+            class="side-menu"
         >
           <el-menu-item index="/dashboard">
             <el-icon><DataBoard /></el-icon>
@@ -101,7 +101,15 @@
                 <el-dropdown-item disabled>
                   {{ userSubText }}
                 </el-dropdown-item>
-                <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+
+                <!-- 新增：修改密码，放在退出登录上方 -->
+                <el-dropdown-item divided @click="openChangePasswordDialog">
+                  修改密码
+                </el-dropdown-item>
+
+                <el-dropdown-item @click="logout">
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -112,14 +120,79 @@
         <router-view />
       </main>
     </section>
+
+    <!-- 修改密码弹窗 -->
+    <el-dialog
+        v-model="passwordDialogVisible"
+        title="修改密码"
+        width="430px"
+        destroy-on-close
+        :close-on-click-modal="false"
+        @closed="resetPasswordForm"
+    >
+      <el-form
+          ref="passwordFormRef"
+          :model="passwordForm"
+          :rules="passwordRules"
+          label-width="96px"
+      >
+        <el-form-item label="旧密码" prop="oldPassword">
+          <el-input
+              v-model="passwordForm.oldPassword"
+              type="password"
+              show-password
+              clearable
+              autocomplete="current-password"
+              placeholder="请输入旧密码"
+          />
+        </el-form-item>
+
+        <el-form-item label="新密码" prop="newPassword">
+          <el-input
+              v-model="passwordForm.newPassword"
+              type="password"
+              show-password
+              clearable
+              autocomplete="new-password"
+              placeholder="请输入新密码"
+              @input="validateConfirmPasswordAgain"
+          />
+        </el-form-item>
+
+        <el-form-item label="确认密码" prop="confirmPassword">
+          <el-input
+              v-model="passwordForm.confirmPassword"
+              type="password"
+              show-password
+              clearable
+              autocomplete="new-password"
+              placeholder="请再次输入新密码"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">
+          取消
+        </el-button>
+        <el-button
+            type="primary"
+            :loading="passwordSubmitting"
+            @click="submitChangePassword"
+        >
+          确认修改
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { changePassword } from '@/api/auth'
 import { Refresh } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -150,12 +223,108 @@ const canAuditEnterpriseApply = computed(() => canManageEnterprise.value || isEn
 const showSystemMenu = computed(() => canManageUsers.value || canManageEnterprise.value || canManageCoreSystem.value || canSubmitEnterpriseApply.value || canAuditEnterpriseApply.value)
 const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 
+/**
+ * 修改密码弹窗是否显示。
+ */
+const passwordDialogVisible = ref(false)
+
+/**
+ * 修改密码提交 loading。
+ */
+const passwordSubmitting = ref(false)
+
+/**
+ * Element Plus 表单引用。
+ */
+const passwordFormRef = ref()
+
+/**
+ * 修改密码表单。
+ *
+ * oldPassword：旧密码
+ * newPassword：新密码
+ * confirmPassword：确认新密码
+ */
+const passwordForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+
+/**
+ * 校验新密码。
+ */
+function validateNewPassword(rule, value, callback) {
+  if (!value) {
+    callback(new Error('请输入新密码'))
+    return
+  }
+
+  if (value.length < 6) {
+    callback(new Error('新密码至少 6 位'))
+    return
+  }
+
+  if (value.length > 32) {
+    callback(new Error('新密码不能超过 32 位'))
+    return
+  }
+
+  if (passwordForm.oldPassword && value === passwordForm.oldPassword) {
+    callback(new Error('新密码不能和旧密码一样'))
+    return
+  }
+
+  callback()
+}
+
+/**
+ * 校验确认密码。
+ */
+function validateConfirmPassword(rule, value, callback) {
+  if (!value) {
+    callback(new Error('请再次输入新密码'))
+    return
+  }
+
+  if (value !== passwordForm.newPassword) {
+    callback(new Error('两次输入的新密码不一致'))
+    return
+  }
+
+  callback()
+}
+
+/**
+ * 修改密码表单规则。
+ */
+const passwordRules = {
+  oldPassword: [
+    { required: true, message: '请输入旧密码', trigger: 'blur' }
+  ],
+  newPassword: [
+    { required: true, validator: validateNewPassword, trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, validator: validateConfirmPassword, trigger: 'blur' }
+  ]
+}
+
+/**
+ * 新密码变化时，如果确认密码已经填了，需要重新校验确认密码。
+ */
+function validateConfirmPasswordAgain() {
+  if (passwordForm.confirmPassword) {
+    passwordFormRef.value?.validateField('confirmPassword')
+  }
+}
+
 function normalizeRoleCode(value = '') {
   return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/^ROLE[_-]?/, '')
-    .replace(/[^A-Z0-9]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/^ROLE[_-]?/, '')
+      .replace(/[^A-Z0-9]/g, '')
 }
 
 function normalizeRoleList(values = []) {
@@ -164,6 +333,54 @@ function normalizeRoleList(values = []) {
     if (typeof item === 'string') return normalizeRoleCode(item)
     return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
   }).filter(Boolean)
+}
+
+/**
+ * 打开修改密码弹窗。
+ */
+function openChangePasswordDialog() {
+  resetPasswordForm()
+  passwordDialogVisible.value = true
+}
+
+/**
+ * 重置修改密码表单。
+ */
+function resetPasswordForm() {
+  passwordForm.oldPassword = ''
+  passwordForm.newPassword = ''
+  passwordForm.confirmPassword = ''
+  passwordSubmitting.value = false
+  passwordFormRef.value?.clearValidate()
+}
+
+/**
+ * 提交修改密码。
+ *
+ * 修改成功后建议强制退出登录：
+ * 1. 避免旧 token 继续使用；
+ * 2. 让用户用新密码重新登录；
+ * 3. 更符合后台系统安全习惯。
+ */
+async function submitChangePassword() {
+  await passwordFormRef.value?.validate()
+
+  passwordSubmitting.value = true
+  try {
+    await changePassword({
+      oldPassword: passwordForm.oldPassword,
+      newPassword: passwordForm.newPassword,
+      confirmPassword: passwordForm.confirmPassword
+    })
+
+    ElMessage.success('密码修改成功，请重新登录')
+    passwordDialogVisible.value = false
+
+    await auth.logout()
+    router.replace('/login')
+  } finally {
+    passwordSubmitting.value = false
+  }
 }
 
 async function reloadMe() {
