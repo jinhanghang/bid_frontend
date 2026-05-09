@@ -44,7 +44,7 @@
         </div>
         <el-empty v-else description="暂无方案，您可先新建方案" :image-size="110" />
       </el-scrollbar>
-      <el-button class="new-btn" type="primary" @click="startCreate">新建方案</el-button>
+      <el-button class="new-btn" type="primary" :loading="creatingDraft" @click="startCreate('QUICK')">新建方案</el-button>
     </aside>
 
     <section class="solution-main-card">
@@ -69,7 +69,7 @@
               <div class="mode-ill">AI</div>
             </div>
           </div>
-          <el-button type="primary" class="home-new-btn" @click="startCreate">新建方案</el-button>
+          <el-button type="primary" class="home-new-btn" :loading="creatingDraft" @click="startCreate('QUICK')">新建方案</el-button>
         </div>
       </template>
 
@@ -264,7 +264,7 @@
           <template v-else>
             <el-scrollbar class="detail-scroll">
               <el-progress :percentage="generatePercent" :show-text="false" color="#ff4d4f" />
-              <OutlineTree :nodes="currentSolution.outlines" mode="generate" @section-generate="openSectionDialog" />
+              <OutlineTree :nodes="currentSolution.outlines" mode="generate" @preview="selectSectionPreview" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
               <el-button size="large" :disabled="!canRewriteAll" @click="onRewriteFull" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
@@ -422,6 +422,7 @@ import {
   createSolution,
   deleteOutlineNodes,
   deleteSolution,
+  downloadFileResource,
   exportWord,
   generateFull,
   generateOutline,
@@ -449,16 +450,20 @@ const listQuery = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
 let searchTimer = null
 let parseTimer = null
 let taskTimer = null
+const notifiedTaskIds = new Set()
 
 const createStep = ref(0)
 const parseTask = ref(null)
 const parseLoading = ref(false)
 const outlineGenerating = ref(false)
-const previewOutlines = computed(() => currentSolution.value?.outlines || [])
+const creatingDraft = ref(false)
+const previewOutlinesLocal = ref([])
+const previewOutlines = computed(() => mode.value === 'create' ? previewOutlinesLocal.value : (currentSolution.value?.outlines || []))
 const outlineLeafCount = computed(() => flattenLeaf(previewOutlines.value).length)
 const parseDone = computed(() => parseTask.value?.status === 'SUCCESS')
 const canClickGenerateOutline = computed(() => {
-  return !outlineGenerating.value
+  return !!currentSolution.value?.id
+    && !outlineGenerating.value
     && !parseLoading.value
     && parseDone.value
     && !!createForm.solutionName?.trim()
@@ -466,6 +471,7 @@ const canClickGenerateOutline = computed(() => {
 })
 const generateOutlineButtonText = computed(() => {
   if (outlineGenerating.value) return '生成中'
+  if (!currentSolution.value?.id) return '正在创建草稿'
   if (!parseTask.value?.id) return '请先上传标书'
   if (parseTask.value.status === 'FAILED') return '解析失败，无法生成'
   if (!parseDone.value) return '解析完成后生成目录'
@@ -506,6 +512,10 @@ const requirementForm = reactive({
   technicalScoreItems: '',
   otherRequirement: '',
   outlineRequirement: ''
+})
+
+const outlineForm = reactive({
+  outlineMode: 'SCORE_ITEM'
 })
 
 const sectionForm = reactive({
@@ -578,8 +588,15 @@ async function loadList() {
   try {
     const res = await pageSolutions(listQuery)
     solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+
     if (!currentSolution.value && mode.value !== 'create' && solutions.value.length) {
       await loadDetail(solutions.value[0].id)
+    }
+
+    if (!solutions.value.length && mode.value !== 'create') {
+      currentSolution.value = null
+      selectedSection.value = null
+      mode.value = 'home'
     }
   } finally {
     loading.value = false
@@ -592,17 +609,54 @@ function onSearchInput() {
 }
 
 async function loadDetail(id) {
-  const data = await getSolution(id)
-  applySolutionDetail(data)
-  selectedSection.value = null
-  mode.value = 'detail'
-  resumeRunningTaskIfNeeded()
+  try {
+    const data = await getSolution(id)
+    applySolutionDetail(data)
+    selectedSection.value = null
+
+    const hasOutline = Array.isArray(data?.outlines) && data.outlines.length > 0
+    if (!hasOutline && ['DRAFT', 'PARSING', 'PARSE_FAILED', 'INFO_READY'].includes(data?.status)) {
+      mode.value = 'create'
+      editMode.value = false
+    } else {
+      mode.value = 'detail'
+    }
+
+    resumeRunningTaskIfNeeded()
+    resumeParseTaskIfNeeded()
+  } catch (e) {
+    ElMessage.error('方案详情加载失败，请稍后刷新后重试')
+  }
 }
 
 function applySolutionDetail(data) {
   currentSolution.value = data
   overallWritingRequirement.value = data?.overallWritingRequirement || ''
   fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
+
+  if (data) {
+    syncSolutionCard(data)
+    syncSelectedSectionAfterDetail(data)
+    createForm.solutionMode = data.solutionMode || createForm.solutionMode || 'QUICK'
+    createForm.solutionType = data.solutionType || createForm.solutionType || 'SERVICE'
+    createForm.solutionSubType = data.solutionSubType || createForm.solutionSubType || '不限'
+    createForm.aiLevel = data.aiLevel || createForm.aiLevel || 'BASIC'
+    createForm.writingStyle = data.writingStyle || createForm.writingStyle || 'GENERAL'
+    createForm.solutionName = data.solutionName || ''
+
+    const req = data.requirement || {}
+    requirementForm.purchaseRequirement = req.purchaseRequirement || ''
+    requirementForm.technicalRequirement = req.technicalRequirement || ''
+    requirementForm.serviceRequirement = req.serviceRequirement || ''
+    requirementForm.scoreRequirement = req.scoreRequirement || ''
+    requirementForm.technicalScoreItems = req.technicalScoreItems || ''
+    requirementForm.otherRequirement = req.otherRequirement || ''
+    requirementForm.outlineRequirement = req.outlineRequirement || ''
+
+    parseTask.value = data.latestParseTask || null
+    previewOutlinesLocal.value = data.outlines || []
+    createStep.value = calcCreateStep(data, parseTask.value)
+  }
 }
 
 function resumeRunningTaskIfNeeded() {
@@ -612,36 +666,114 @@ function resumeRunningTaskIfNeeded() {
   }
 }
 
-function startCreate(solutionMode = 'QUICK') {
+function resumeParseTaskIfNeeded() {
+  const task = parseTask.value
+  if (task?.id && ['WAITING', 'PARSING', 'EXTRACTING'].includes(task.status)) {
+    parseLoading.value = true
+    pollParseTask(task.id)
+  } else {
+    parseLoading.value = false
+  }
+}
+
+function calcCreateStep(solution, task) {
+  if (solution?.outlines?.length) return 3
+  if (task?.status === 'SUCCESS') return 2
+  if (task?.id) return 1
+  return 0
+}
+
+async function startCreate(solutionMode = 'QUICK') {
+  clearInterval(parseTimer)
+  clearInterval(taskTimer)
+  parseTimer = null
+  taskTimer = null
+
   mode.value = 'create'
   createStep.value = 0
   parseTask.value = null
+  parseLoading.value = false
+  outlineGenerating.value = false
+  wordPresetVisible.value = false
+  currentSolution.value = null
+  selectedSection.value = null
+  editMode.value = false
+  previewOutlinesLocal.value = []
+
   createForm.solutionMode = solutionMode
   createForm.solutionType = 'SERVICE'
   createForm.solutionSubType = '不限'
   createForm.aiLevel = 'BASIC'
   createForm.writingStyle = 'GENERAL'
-  createForm.solutionName = ''
-  Object.assign(requirementForm, {
-    purchaseRequirement: '', technicalRequirement: '', serviceRequirement: '', scoreRequirement: '', technicalScoreItems: '', otherRequirement: '', outlineRequirement: ''
-  })
-  currentSolution.value = null
-}
+  createForm.solutionName = '新建AI方案'
+  outlineForm.outlineMode = 'SCORE_ITEM'
 
-async function handleTenderFileChange(uploadFile) {
-  if (!uploadFile?.raw) return
-  parseLoading.value = true
-  createStep.value = 1
+  Object.assign(requirementForm, {
+    purchaseRequirement: '',
+    technicalRequirement: '',
+    serviceRequirement: '',
+    scoreRequirement: '',
+    technicalScoreItems: '',
+    otherRequirement: '',
+    outlineRequirement: ''
+  })
+
+  creatingDraft.value = true
   try {
-    const task = await uploadAndParseTenderFile(uploadFile.raw, {
+    const draft = await createSolution({
+      solutionName: createForm.solutionName,
       solutionMode: createForm.solutionMode,
       solutionType: createForm.solutionType,
       solutionSubType: createForm.solutionSubType,
       aiLevel: createForm.aiLevel,
       writingStyle: createForm.writingStyle
     })
+    applySolutionDetail(draft)
+    mode.value = 'create'
+    await loadList()
+  } catch (e) {
+    mode.value = solutions.value.length ? 'detail' : 'home'
+  } finally {
+    creatingDraft.value = false
+  }
+}
+
+async function handleTenderFileChange(uploadFile) {
+  if (!uploadFile?.raw) return
+
+  if (!currentSolution.value?.id) {
+    ElMessage.warning('草稿方案尚未创建完成，请稍后再上传')
+    return
+  }
+
+  parseLoading.value = true
+  createStep.value = 1
+  parseTask.value = null
+  previewOutlinesLocal.value = []
+
+  Object.assign(requirementForm, {
+    purchaseRequirement: '',
+    technicalRequirement: '',
+    serviceRequirement: '',
+    scoreRequirement: '',
+    technicalScoreItems: '',
+    otherRequirement: '',
+    outlineRequirement: requirementForm.outlineRequirement || ''
+  })
+
+  try {
+    const task = await uploadAndParseTenderFile(uploadFile.raw, {
+      solutionId: currentSolution.value.id,
+      solutionMode: createForm.solutionMode,
+      solutionType: createForm.solutionType,
+      solutionSubType: createForm.solutionSubType,
+      aiLevel: createForm.aiLevel,
+      writingStyle: createForm.writingStyle
+    })
+
     parseTask.value = task
-    currentSolution.value = null
+    await refreshCurrent()
+    mode.value = 'create'
     pollParseTask(task.id)
   } catch (e) {
     parseLoading.value = false
@@ -650,11 +782,13 @@ async function handleTenderFileChange(uploadFile) {
 
 function pollParseTask(taskId) {
   clearInterval(parseTimer)
-  parseTimer = setInterval(async () => {
+
+  const tick = async () => {
     try {
       const task = await getParseTask(taskId)
       parseTask.value = task
       createStep.value = 1
+
       if (task.solutionName) createForm.solutionName = task.solutionName
       requirementForm.purchaseRequirement = task.purchaseRequirement || requirementForm.purchaseRequirement
       requirementForm.technicalRequirement = task.technicalRequirement || requirementForm.technicalRequirement
@@ -662,22 +796,39 @@ function pollParseTask(taskId) {
       requirementForm.scoreRequirement = task.scoreRequirement || requirementForm.scoreRequirement
       requirementForm.technicalScoreItems = task.technicalScoreItems || requirementForm.technicalScoreItems
       requirementForm.otherRequirement = task.otherRequirement || requirementForm.otherRequirement
+
       if (task.status === 'SUCCESS') {
         clearInterval(parseTimer)
+        parseTimer = null
         parseLoading.value = false
         createStep.value = 2
-        // 解析完成后仍不创建方案，用户点击“生成目录”时再创建方案并显示到左侧列表。
+        if (task.solutionId) {
+          await refreshCurrent()
+          mode.value = 'create'
+        }
         ElMessage.success('标书解析完成')
-      } else if (task.status === 'FAILED') {
+      } else if (['FAILED', 'CANCELED'].includes(task.status)) {
         clearInterval(parseTimer)
+        parseTimer = null
         parseLoading.value = false
-        ElMessage.error(task.errorMessage || '解析失败')
+
+        if (task.status === 'CANCELED') {
+          ElMessage.warning(task.errorMessage || '解析任务已取消')
+        } else if (task.purchaseRequirement || task.solutionName || task.scoreRequirement) {
+          ElMessage.warning('部分内容已提取，但解析任务未成功，请重新上传标书后再生成目录')
+        } else {
+          ElMessage.error(task.errorMessage || '解析失败')
+        }
       }
     } catch (e) {
       clearInterval(parseTimer)
+      parseTimer = null
       parseLoading.value = false
     }
-  }, 1500)
+  }
+
+  tick()
+  parseTimer = setInterval(tick, 1500)
 }
 
 async function reExtractFromParse() {
@@ -685,12 +836,37 @@ async function reExtractFromParse() {
     ElMessage.warning('请先上传并解析招标文件')
     return
   }
+
   const task = await getParseTask(parseTask.value.id)
+
+  if (task.solutionName) createForm.solutionName = task.solutionName
   requirementForm.purchaseRequirement = task.purchaseRequirement || requirementForm.purchaseRequirement
+  requirementForm.technicalRequirement = task.technicalRequirement || requirementForm.technicalRequirement
+  requirementForm.serviceRequirement = task.serviceRequirement || requirementForm.serviceRequirement
+  requirementForm.scoreRequirement = task.scoreRequirement || requirementForm.scoreRequirement
+  requirementForm.technicalScoreItems = task.technicalScoreItems || requirementForm.technicalScoreItems
+  requirementForm.otherRequirement = task.otherRequirement || requirementForm.otherRequirement
+
   ElMessage.success('已从解析结果重新回填')
 }
 
+function buildRequirementPayload() {
+  return {
+    ...requirementForm,
+    solutionName: createForm.solutionName,
+    solutionType: createForm.solutionType,
+    solutionSubType: createForm.solutionSubType,
+    aiLevel: createForm.aiLevel,
+    writingStyle: createForm.writingStyle
+  }
+}
+
 async function onGenerateOutline() {
+  if (!currentSolution.value?.id) {
+    ElMessage.warning('草稿方案尚未创建完成，请稍后再试')
+    return
+  }
+
   if (!parseTask.value?.id) {
     ElMessage.warning('请先上传招标文件并等待解析完成')
     return
@@ -698,10 +874,17 @@ async function onGenerateOutline() {
 
   if (parseTask.value.status !== 'SUCCESS') {
     if (parseTask.value.status === 'FAILED') {
-      ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传或重新解析')
+      ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传标书')
+    } else if (parseTask.value.status === 'CANCELED') {
+      ElMessage.warning('解析任务已取消，请重新上传标书')
     } else {
       ElMessage.warning('标书正在解析中，请等待解析完成后再生成目录')
     }
+    return
+  }
+
+  if (!createForm.solutionName?.trim()) {
+    ElMessage.warning('方案名称不能为空')
     return
   }
 
@@ -709,36 +892,25 @@ async function onGenerateOutline() {
     ElMessage.warning('采购需求不能为空')
     return
   }
-  if (!createForm.solutionName?.trim()) {
-    ElMessage.warning('方案名称不能为空')
-    return
-  }
+
   outlineGenerating.value = true
+
   try {
-    let solutionId = currentSolution.value?.id
+    const solutionId = currentSolution.value.id
 
-    // 正确流程：上传标书只创建解析任务；点击“生成目录”时才真正创建方案，
-    // 创建成功后左侧“我的方案”列表才显示该方案。
-    if (!solutionId) {
-      const created = await createSolution({
-        solutionName: createForm.solutionName,
-        solutionMode: createForm.solutionMode,
-        solutionType: createForm.solutionType,
-        solutionSubType: createForm.solutionSubType,
-        aiLevel: createForm.aiLevel,
-        writingStyle: createForm.writingStyle,
-        parseTaskId: parseTask.value?.id
-      })
-      currentSolution.value = created
-      solutionId = created.id
-      await loadList()
-    }
+    await saveRequirement(solutionId, buildRequirementPayload())
+    const data = await generateOutline(solutionId, {
+      outlineMode: outlineForm.outlineMode,
+      outlineRequirement: requirementForm.outlineRequirement
+    })
 
-    await saveRequirement(solutionId, requirementForm)
-    const data = await generateOutline(solutionId, outlineForm)
     currentSolution.value = data
+    previewOutlinesLocal.value = data?.outlines || []
     createStep.value = 3
+    mode.value = 'detail'
+
     await loadList()
+
     wordPresetVisible.value = true
     ElMessage.success('目录生成完成，请设置篇幅')
   } finally {
@@ -781,6 +953,7 @@ async function refreshCurrent() {
   const data = await getSolution(currentSolution.value.id)
   applySolutionDetail(data)
   resumeRunningTaskIfNeeded()
+  resumeParseTaskIfNeeded()
 }
 
 async function onNodeWordChange({ node, value }) {
@@ -910,9 +1083,11 @@ function pollGenerationTask(taskId) {
   const tick = async () => {
     try {
       const task = await getGenerationTask(taskId)
-      await refreshCurrent()
+
       if (['WAITING', 'RUNNING'].includes(task.status)) {
         fullGenerating.value = true
+        await refreshCurrent()
+        await loadList()
         return
       }
 
@@ -920,10 +1095,21 @@ function pollGenerationTask(taskId) {
       taskTimer = null
       fullGenerating.value = false
 
-      if (task.status === 'FAILED') {
-        ElMessage.error(task.errorMessage || task.message || '生成失败')
-      } else {
-        ElMessage.success(task.message || '生成完成')
+      // 后端任务刚落 SUCCESS 时，方案状态和统计可能还在最后一次事务刷新中。
+      // 等一小会儿再重新拉详情和列表，避免页面仍显示旧状态。
+      await sleep(600)
+      await refreshCurrent()
+      await loadList()
+
+      if (!notifiedTaskIds.has(task.id)) {
+        notifiedTaskIds.add(task.id)
+        if (task.status === 'FAILED') {
+          ElMessage.error(task.errorMessage || task.message || '生成失败')
+        } else if (task.status === 'CANCELED') {
+          ElMessage.warning(task.message || '生成已取消')
+        } else {
+          ElMessage.success(task.message || '生成完成')
+        }
       }
     } catch (e) {
       clearInterval(taskTimer)
@@ -934,6 +1120,11 @@ function pollGenerationTask(taskId) {
 
   tick()
   taskTimer = setInterval(tick, 2000)
+}
+
+function selectSectionPreview(node) {
+  if (!node) return
+  selectedSection.value = node
 }
 
 function openSectionDialog(node) {
@@ -1003,10 +1194,86 @@ async function onExportWord() {
     ElMessage.warning(hasRunningTask.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
     return
   }
+
   const file = await exportWord(currentSolution.value.id)
   await refreshCurrent()
+  await loadList()
+
+  if (!file?.id) {
+    ElMessage.warning('导出成功，但未返回文件ID，请到文件资源中查看')
+    return
+  }
+
+  const blob = await downloadFileResource(file.id)
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.originalName || `${currentSolution.value?.solutionName || 'AI方案'}-导出.docx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
   ElMessage.success('导出成功')
-  if (file?.fileUrl) window.open(file.fileUrl, '_blank')
+}
+
+function syncSolutionCard(data) {
+  if (!data?.id) return
+  const index = solutions.value.findIndex((item) => item.id === data.id)
+  if (index >= 0) {
+    solutions.value[index] = {
+      ...solutions.value[index],
+      solutionName: data.solutionName,
+      status: data.status,
+      aiLevel: data.aiLevel,
+      targetWordCount: data.targetWordCount,
+      actualWordCount: data.actualWordCount
+    }
+  }
+}
+
+function syncSelectedSectionAfterDetail(data) {
+  if (!data?.outlines?.length) {
+    selectedSection.value = null
+    return
+  }
+
+  if (selectedSection.value?.id) {
+    const latest = findOutlineNodeById(data.outlines, selectedSection.value.id)
+    if (latest) {
+      selectedSection.value = latest
+      return
+    }
+  }
+
+  const firstGenerated = findFirstGeneratedLeaf(data.outlines)
+  if (firstGenerated) {
+    selectedSection.value = firstGenerated
+  }
+}
+
+function findOutlineNodeById(nodes = [], id) {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    const child = findOutlineNodeById(node.children || [], id)
+    if (child) return child
+  }
+  return null
+}
+
+function findFirstGeneratedLeaf(nodes = []) {
+  for (const node of nodes) {
+    if (node.children?.length) {
+      const child = findFirstGeneratedLeaf(node.children)
+      if (child) return child
+    } else if (node.section?.content) {
+      return node
+    }
+  }
+  return null
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function flattenLeaf(nodes = []) {
@@ -1030,7 +1297,7 @@ function levelLabel(value) {
 
 function statusLabel(value) {
   const map = {
-    DRAFT: '草稿', FILE_PARSING: '解析中', INFO_READY: '已解析', OUTLINE_GENERATING: '目录中', OUTLINE_READY: '目录完成', WORD_COUNT_SET: '已设篇幅', CONTENT_GENERATING: '生成中', CONTENT_PARTIAL: '部分完成', CONTENT_READY: '已完成', DONE: '已完成', FAILED: '失败', SUCCESS: '成功', PARSING: '解析中', EXTRACTING: '提取中'
+    DRAFT: '草稿', FILE_PARSING: '解析中', INFO_READY: '已解析', OUTLINE_GENERATING: '目录中', OUTLINE_READY: '目录完成', WORD_COUNT_SET: '已设篇幅', CONTENT_GENERATING: '生成中', CONTENT_PARTIAL: '部分完成', CONTENT_READY: '已完成', DONE: '已完成', FAILED: '失败', PARSE_FAILED: '解析失败', SUCCESS: '成功', PARSING: '解析中', EXTRACTING: '提取中', CANCELED: '已取消'
   }
   return map[value] || value || '-'
 }
@@ -1043,7 +1310,7 @@ const OutlineTree = defineComponent({
     simple: { type: Boolean, default: false },
     selected: { type: Array, default: () => [] }
   },
-  emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'section-generate'],
+  emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate'],
   setup(props, { emit }) {
     const renderNode = (node, depth = 0) => {
       const hasChildren = node.children?.length
@@ -1072,11 +1339,11 @@ const OutlineTree = defineComponent({
       }
       if (props.mode === 'generate' && !hasChildren) {
         controls.push(h('span', { class: 'count-text' }, `${node.actualWordCount || 0} / ${node.targetWordCount || 0}`))
-        controls.push(h(ElButton, { size: 'small', type: node.contentStatus === 'SUCCESS' ? 'warning' : 'primary', plain: true, onClick: () => emit('section-generate', node) }, () => node.contentStatus === 'SUCCESS' ? '重编' : '生成'))
+        controls.push(h(ElButton, { size: 'small', type: node.contentStatus === 'SUCCESS' ? 'warning' : 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => node.contentStatus === 'SUCCESS' ? '重编' : '生成'))
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap' }, [
-        h('div', { class: ['tree-row', `level-${depth}`], style: { paddingLeft: `${depth * 20}px` } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: 'tree-controls' }, controls)]),
+        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: 'tree-controls' }, controls)]),
         hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
@@ -1214,4 +1481,6 @@ const WritingDirectionEditor = defineComponent({
 :deep(.direction-editor) { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 5px rgba(15, 23, 42, .06); }
 :deep(.title-input) { flex: 1; }
 @media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 260px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
+:deep(.tree-row.clickable) { cursor: pointer; }
+:deep(.tree-row.clickable:hover) { background: #f8fafc; }
 </style>
