@@ -1,94 +1,36 @@
 <template>
-  <div class="admin-shell">
-    <aside class="admin-aside">
-      <div class="brand">
-        <div class="brand-logo">AI</div>
-        <div>
-          <div class="brand-title">AI标书系统</div>
-          <div class="brand-sub">一键中标 / 标书生成</div>
+  <div class="product-shell">
+    <aside class="product-rail">
+      <div class="rail-logo">AI</div>
+
+      <el-scrollbar class="rail-scroll">
+        <div class="rail-menu">
+          <div
+            v-for="item in productMenus"
+            :key="item.path"
+            class="rail-item"
+            :class="{ active: isMenuActive(item) }"
+            @click="goMenu(item)"
+          >
+            <el-badge v-if="item.badge" :value="item.badge" class="rail-badge">
+              <el-icon><component :is="item.icon" /></el-icon>
+            </el-badge>
+            <el-icon v-else><component :is="item.icon" /></el-icon>
+            <span>{{ item.title }}</span>
+          </div>
         </div>
-      </div>
-
-      <el-scrollbar class="menu-scroll">
-        <el-menu
-            :default-active="route.path"
-            router
-            unique-opened
-            class="side-menu"
-        >
-          <el-menu-item index="/dashboard">
-            <el-icon><DataBoard /></el-icon>
-            <span>工作台</span>
-          </el-menu-item>
-
-          <el-sub-menu v-if="canUseBusiness" index="bid">
-            <template #title>
-              <el-icon><Document /></el-icon>
-              <span>标书业务</span>
-            </template>
-            <el-menu-item index="/bid/projects">标书项目</el-menu-item>
-            <el-menu-item v-if="canManageBusinessData" index="/bid/templates">标书模板</el-menu-item>
-            <el-menu-item v-if="canManageBusinessData" index="/bid/template-variables">模板变量</el-menu-item>
-            <el-menu-item index="/bid/company-materials">企业资料库</el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu v-if="canUseBusiness" index="ai">
-            <template #title>
-              <el-icon><MagicStick /></el-icon>
-              <span>AI能力</span>
-            </template>
-            <el-menu-item index="/ai/workbench">AI生成工作台</el-menu-item>
-            <el-menu-item index="/ai/solutions">AI方案</el-menu-item>
-            <el-menu-item v-if="canManagePrompt" index="/ai/prompts">Prompt模板</el-menu-item>
-            <el-menu-item v-if="canManageAiModel" index="/ai/models">模型配置</el-menu-item>
-            <el-menu-item index="/ai/tasks">生成任务</el-menu-item>
-            <el-menu-item index="/ai/results">生成结果</el-menu-item>
-            <el-menu-item index="/ai/exports">导出记录</el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu v-if="canUseBusiness" index="tender">
-            <template #title>
-              <el-icon><Tickets /></el-icon>
-              <span>一键中标</span>
-            </template>
-            <el-menu-item index="/tender/sources">招标数据源</el-menu-item>
-            <el-menu-item index="/tender/notices">招标公告</el-menu-item>
-            <el-menu-item index="/tender/reports">一键报备</el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu v-if="canUseBusiness" index="knowledge">
-            <template #title>
-              <el-icon><Collection /></el-icon>
-              <span>知识库</span>
-            </template>
-            <el-menu-item index="/knowledge/bases">知识库管理</el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu v-if="showSystemMenu" index="system">
-            <template #title>
-              <el-icon><Setting /></el-icon>
-              <span>系统管理</span>
-            </template>
-            <el-menu-item v-if="canManageUsers" index="/system/users">用户管理</el-menu-item>
-            <el-menu-item v-if="canSubmitEnterpriseApply" index="/system/enterprise-apply">企业申请</el-menu-item>
-            <el-menu-item v-if="canAuditEnterpriseApply" index="/system/enterprise-apply-audit">企业申请审核</el-menu-item>
-            <el-menu-item v-if="canViewEnterpriseProfile" index="/system/enterprise-profile">企业资料</el-menu-item>
-            <el-menu-item v-if="canManageEnterprise" index="/system/enterprises">企业管理</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/roles">角色管理</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/menus">菜单管理</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/files">文件资源</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/configs">系统配置</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/dict-types">字典类型</el-menu-item>
-            <el-menu-item v-if="canManageCoreSystem" index="/system/dict-data">字典数据</el-menu-item>
-          </el-sub-menu>
-        </el-menu>
       </el-scrollbar>
+
+      <div class="rail-upgrade">升级<br />企业版</div>
     </aside>
 
-    <section class="admin-main">
-      <header class="admin-header">
-        <div class="breadcrumb-title">{{ currentTitle }}</div>
+    <section class="product-main">
+      <header class="product-header">
+        <div class="header-left">
+          <div class="page-title">{{ currentTitle }}</div>
+        </div>
         <div class="header-right">
+          <div class="quota-pill">剩余总字数：49178</div>
           <el-button link :icon="Refresh" @click="reloadMe">刷新用户</el-button>
           <el-dropdown trigger="click">
             <div class="user-entry">
@@ -98,102 +40,41 @@
             </div>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item disabled>
-                  {{ userSubText }}
-                </el-dropdown-item>
-
-                <!-- 新增：修改密码，放在退出登录上方 -->
-                <el-dropdown-item divided @click="openChangePasswordDialog">
-                  修改密码
-                </el-dropdown-item>
-
-                <el-dropdown-item @click="logout">
-                  退出登录
-                </el-dropdown-item>
+                <el-dropdown-item disabled>{{ userSubText }}</el-dropdown-item>
+                <el-dropdown-item v-if="showManagerEntry" divided @click="goManager">管理后台</el-dropdown-item>
+                <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
         </div>
       </header>
 
-      <main class="admin-content">
+      <main class="product-content">
         <router-view />
       </main>
     </section>
-
-    <!-- 修改密码弹窗 -->
-    <el-dialog
-        v-model="passwordDialogVisible"
-        title="修改密码"
-        width="430px"
-        destroy-on-close
-        :close-on-click-modal="false"
-        @closed="resetPasswordForm"
-    >
-      <el-form
-          ref="passwordFormRef"
-          :model="passwordForm"
-          :rules="passwordRules"
-          label-width="96px"
-      >
-        <el-form-item label="旧密码" prop="oldPassword">
-          <el-input
-              v-model="passwordForm.oldPassword"
-              type="password"
-              show-password
-              clearable
-              autocomplete="current-password"
-              placeholder="请输入旧密码"
-          />
-        </el-form-item>
-
-        <el-form-item label="新密码" prop="newPassword">
-          <el-input
-              v-model="passwordForm.newPassword"
-              type="password"
-              show-password
-              clearable
-              autocomplete="new-password"
-              placeholder="请输入新密码"
-              @input="validateConfirmPasswordAgain"
-          />
-        </el-form-item>
-
-        <el-form-item label="确认密码" prop="confirmPassword">
-          <el-input
-              v-model="passwordForm.confirmPassword"
-              type="password"
-              show-password
-              clearable
-              autocomplete="new-password"
-              placeholder="请再次输入新密码"
-          />
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="passwordDialogVisible = false">
-          取消
-        </el-button>
-        <el-button
-            type="primary"
-            :loading="passwordSubmitting"
-            @click="submitChangePassword"
-        >
-          确认修改
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import {
+  ArrowDown,
+  Collection,
+  DataBoard,
+  Delete,
+  Download,
+  Files,
+  Folder,
+  House,
+  MagicStick,
+  Refresh,
+  Search,
+  Tickets
+} from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { changePassword } from '@/api/auth'
-import { Refresh } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -203,128 +84,44 @@ const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
-const currentTitle = computed(() => route.meta.title || 'AI标书后台管理系统')
+const currentTitle = computed(() => route.meta.title || 'AI标书系统')
 const avatarText = computed(() => (auth.displayName || '用').slice(0, 1))
+const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
 const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
-const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
-const canManageUsers = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
-const canManageEnterprise = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
-const canManageCoreSystem = computed(() => isSuperAdmin.value)
-const canManageAiModel = computed(() => isSuperAdmin.value)
-const canManageBusinessData = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
-const canManagePrompt = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
-const canUseBusiness = computed(() => hasEnterprise.value || canManageEnterprise.value)
-const canViewEnterpriseProfile = computed(() => isEnterpriseAdmin.value && !canManageEnterprise.value)
-const canSubmitEnterpriseApply = computed(() => !hasEnterprise.value && !canManageEnterprise.value)
-const canAuditEnterpriseApply = computed(() => canManageEnterprise.value || isEnterpriseAdmin.value)
-const showSystemMenu = computed(() => canManageUsers.value || canManageEnterprise.value || canManageCoreSystem.value || canSubmitEnterpriseApply.value || canAuditEnterpriseApply.value)
-const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
+const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 
-/**
- * 修改密码弹窗是否显示。
- */
-const passwordDialogVisible = ref(false)
+const productMenus = computed(() => [
+  { title: '首页', path: '/dashboard', icon: House },
+  { title: 'AI方案', path: '/ai/solutions', icon: MagicStick },
+  { title: 'AI标书', path: '/ai-bid', icon: Files },
+  { title: 'AI质检', path: '/ai-quality', icon: Collection },
+  { title: '方案查重', path: '/solution-duplicate', icon: Search },
+  { title: '知识库', path: '/knowledge/bases', icon: Folder },
+  { title: '资料库', path: '/materials', icon: Tickets },
+  { title: '标讯商机', path: '/tender/notices', icon: DataBoard },
+  { title: '下载中心', path: '/download-center', icon: Download },
+  { title: '回收站', path: '/recycle-bin', icon: Delete }
+])
 
-/**
- * 修改密码提交 loading。
- */
-const passwordSubmitting = ref(false)
-
-/**
- * Element Plus 表单引用。
- */
-const passwordFormRef = ref()
-
-/**
- * 修改密码表单。
- *
- * oldPassword：旧密码
- * newPassword：新密码
- * confirmPassword：确认新密码
- */
-const passwordForm = reactive({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-
-/**
- * 校验新密码。
- */
-function validateNewPassword(rule, value, callback) {
-  if (!value) {
-    callback(new Error('请输入新密码'))
-    return
-  }
-
-  if (value.length < 6) {
-    callback(new Error('新密码至少 6 位'))
-    return
-  }
-
-  if (value.length > 32) {
-    callback(new Error('新密码不能超过 32 位'))
-    return
-  }
-
-  if (passwordForm.oldPassword && value === passwordForm.oldPassword) {
-    callback(new Error('新密码不能和旧密码一样'))
-    return
-  }
-
-  callback()
+function isMenuActive(item) {
+  if (item.path === '/dashboard') return route.path === '/dashboard' || route.path === '/'
+  if (item.path === '/ai-bid') return route.path === '/ai-bid' || route.path.startsWith('/bid/projects')
+  return route.path === item.path || route.path.startsWith(`${item.path}/`)
 }
 
-/**
- * 校验确认密码。
- */
-function validateConfirmPassword(rule, value, callback) {
-  if (!value) {
-    callback(new Error('请再次输入新密码'))
-    return
-  }
-
-  if (value !== passwordForm.newPassword) {
-    callback(new Error('两次输入的新密码不一致'))
-    return
-  }
-
-  callback()
-}
-
-/**
- * 修改密码表单规则。
- */
-const passwordRules = {
-  oldPassword: [
-    { required: true, message: '请输入旧密码', trigger: 'blur' }
-  ],
-  newPassword: [
-    { required: true, validator: validateNewPassword, trigger: 'blur' }
-  ],
-  confirmPassword: [
-    { required: true, validator: validateConfirmPassword, trigger: 'blur' }
-  ]
-}
-
-/**
- * 新密码变化时，如果确认密码已经填了，需要重新校验确认密码。
- */
-function validateConfirmPasswordAgain() {
-  if (passwordForm.confirmPassword) {
-    passwordFormRef.value?.validateField('confirmPassword')
-  }
+function goMenu(item) {
+  router.push(item.path)
 }
 
 function normalizeRoleCode(value = '') {
   return String(value)
-      .trim()
-      .toUpperCase()
-      .replace(/^ROLE[_-]?/, '')
-      .replace(/[^A-Z0-9]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE[_-]?/, '')
+    .replace(/[^A-Z0-9]/g, '')
 }
 
 function normalizeRoleList(values = []) {
@@ -335,57 +132,13 @@ function normalizeRoleList(values = []) {
   }).filter(Boolean)
 }
 
-/**
- * 打开修改密码弹窗。
- */
-function openChangePasswordDialog() {
-  resetPasswordForm()
-  passwordDialogVisible.value = true
-}
-
-/**
- * 重置修改密码表单。
- */
-function resetPasswordForm() {
-  passwordForm.oldPassword = ''
-  passwordForm.newPassword = ''
-  passwordForm.confirmPassword = ''
-  passwordSubmitting.value = false
-  passwordFormRef.value?.clearValidate()
-}
-
-/**
- * 提交修改密码。
- *
- * 修改成功后建议强制退出登录：
- * 1. 避免旧 token 继续使用；
- * 2. 让用户用新密码重新登录；
- * 3. 更符合后台系统安全习惯。
- */
-async function submitChangePassword() {
-  await passwordFormRef.value?.validate()
-
-  passwordSubmitting.value = true
-  try {
-    await changePassword({
-      oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword,
-      confirmPassword: passwordForm.confirmPassword
-    })
-
-    ElMessage.success('密码修改成功，请重新登录')
-    passwordDialogVisible.value = false
-
-    await auth.logout()
-    router.replace('/login')
-  } finally {
-    passwordSubmitting.value = false
-  }
-}
-
 async function reloadMe() {
   await auth.loadMe()
   ElMessage.success('用户信息已刷新')
+}
+
+function goManager() {
+  router.push('/system/users')
 }
 
 async function logout() {
@@ -395,99 +148,131 @@ async function logout() {
 </script>
 
 <style scoped>
-.admin-shell {
+.product-shell {
   display: flex;
   width: 100%;
   height: 100%;
-  background: var(--page-bg);
+  background: #eef3fb;
 }
 
-.admin-aside {
+.product-rail {
   display: flex;
   flex-direction: column;
-  width: 238px;
-  height: 100%;
-  background: #0f172a;
-  color: #ffffff;
-}
-
-.brand {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  height: 68px;
-  padding: 0 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  width: 82px;
+  height: 100%;
+  background: #f7faff;
+  border-right: 1px solid #e7edf7;
 }
 
-.brand-logo {
+.rail-logo {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 38px;
   height: 38px;
-  border-radius: 12px;
-  background: var(--aliyun-orange);
-  font-weight: 700;
+  margin: 14px 0 8px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #3b82f6, #7c3aed);
+  color: #fff;
+  font-weight: 800;
 }
 
-.brand-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.brand-sub {
-  margin-top: 2px;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.menu-scroll {
+.rail-scroll {
   flex: 1;
+  width: 100%;
 }
 
-.side-menu {
-  border-right: 0;
-  background: transparent;
+.rail-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 12px;
 }
 
-.side-menu :deep(.el-menu-item),
-.side-menu :deep(.el-sub-menu__title) {
-  color: #cbd5e1;
+.rail-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 64px;
+  min-height: 58px;
+  border-radius: 14px;
+  color: #273449;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.18s ease;
 }
 
-.side-menu :deep(.el-menu-item.is-active) {
-  color: #ffffff;
-  background: var(--aliyun-orange);
+.rail-item .el-icon {
+  font-size: 20px;
 }
 
-.admin-main {
+.rail-item:hover {
+  background: #edf4ff;
+  color: #246bfe;
+}
+
+.rail-item.active {
+  color: #246bfe;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.12);
+}
+
+.rail-badge :deep(.el-badge__content) {
+  transform: translate(8px, -6px) scale(0.8);
+}
+
+.rail-upgrade {
+  width: 52px;
+  margin: 8px 0 18px;
+  padding: 7px 0;
+  border-radius: 14px;
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.25;
+  background: linear-gradient(180deg, #ff7759, #ff3d55);
+  box-shadow: 0 8px 18px rgba(255, 83, 83, 0.22);
+}
+
+.product-main {
   display: flex;
   flex: 1;
-  flex-direction: column;
   min-width: 0;
   height: 100%;
+  flex-direction: column;
 }
 
-.admin-header {
+.product-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
+  height: 52px;
   padding: 0 18px;
-  background: #ffffff;
-  border-bottom: 1px solid var(--border);
 }
 
-.breadcrumb-title {
+.page-title {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
+  color: #1f2937;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+}
+
+.quota-pill {
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #ff4f4f, #ff8d4a);
 }
 
 .user-entry {
@@ -501,18 +286,18 @@ async function logout() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  color: #ffffff;
-  background: var(--aliyun-orange);
-  font-size: 14px;
-  font-weight: 700;
+  color: #fff;
+  font-weight: 800;
+  background: linear-gradient(135deg, #2563eb, #06b6d4);
 }
 
-.admin-content {
+.product-content {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  padding: 0 16px 16px 0;
+  overflow: hidden;
 }
 </style>

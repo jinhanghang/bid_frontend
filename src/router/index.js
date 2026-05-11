@@ -21,6 +21,7 @@ const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
 const FileResourceManage = () => import('@/views/system/file/index.vue')
 const KnowledgeBase = () => import('@/views/knowledge/base/index.vue')
+const ProductPlaceholder = () => import('@/views/common/ProductPlaceholder.vue')
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -34,12 +35,18 @@ const routes = [
     component: AdminLayout,
     redirect: '/dashboard',
     children: [
-      { path: 'dashboard', component: Dashboard, meta: { title: '工作台' } },
+      { path: 'dashboard', component: Dashboard, meta: { title: '首页' } },
+      { path: 'ai-bid', component: BidProject, meta: { title: 'AI标书', requiresBusiness: true } },
+      { path: 'ai-quality', component: ProductPlaceholder, meta: { title: 'AI质检', productName: 'AI质检', productDesc: '用于检查投标文件响应完整性、废标风险、格式规范和评分项覆盖情况。' } },
+      { path: 'solution-duplicate', component: ProductPlaceholder, meta: { title: '方案查重', productName: '方案查重', productDesc: '用于检查方案重复率、相似片段和可降重内容。' } },
+      { path: 'materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
+      { path: 'download-center', component: AiExportManage, meta: { title: '下载中心', requiresBusiness: true } },
+      { path: 'recycle-bin', component: ProductPlaceholder, meta: { title: '回收站', productName: '回收站', productDesc: '用于恢复或彻底删除已删除的方案、标书、资料和导出文件。' } },
 
-      { path: 'bid/projects', component: BidProject, meta: { title: '标书项目', requiresBusiness: true } },
+      { path: 'bid/projects', redirect: '/ai-bid' },
       { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
-      { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '企业资料库', requiresBusiness: true } },
+      { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
 
       { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
       { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
@@ -47,10 +54,10 @@ const routes = [
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },
       { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
-      { path: 'ai/exports', component: AiExportManage, meta: { title: '导出记录', requiresBusiness: true } },
+      { path: 'ai/exports', component: AiExportManage, meta: { title: '下载中心', requiresBusiness: true } },
 
       { path: 'tender/sources', component: GenericCrudView, meta: { title: '招标数据源', configKey: 'tenderSource', requiresBusiness: true } },
-      { path: 'tender/notices', component: GenericCrudView, meta: { title: '招标公告', configKey: 'tenderNotice', requiresBusiness: true } },
+      { path: 'tender/notices', component: GenericCrudView, meta: { title: '标讯商机', configKey: 'tenderNotice', requiresBusiness: true } },
       { path: 'tender/reports', component: GenericCrudView, meta: { title: '一键报备', configKey: 'tenderReport', requiresBusiness: true } },
 
       { path: 'knowledge/bases', component: KnowledgeBase, meta: { title: '知识库', requiresBusiness: true } },
