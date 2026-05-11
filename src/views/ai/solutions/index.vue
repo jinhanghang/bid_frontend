@@ -152,6 +152,18 @@
                 <el-input v-model="createForm.solutionName" placeholder="请填写方案名称" />
               </div>
 
+              <div class="form-section outline-direction-section">
+                <div class="form-label">生成目录编写方向：</div>
+                <el-input
+                  v-model="outlineForm.writingDirection"
+                  type="textarea"
+                  :rows="3"
+                  maxlength="10000"
+                  show-word-limit
+                  placeholder="生成目录时使用，例如：重点突出无人值守流程、减少人工干预、风险防控、系统对接、落地交付能力等"
+                />
+              </div>
+
               <div class="form-section">
                 <div class="inline-title">
                   <span class="required">采购需求：</span>
@@ -177,6 +189,7 @@
                 </el-radio-group>
                 <el-input v-model="requirementForm.outlineRequirement" type="textarea" :rows="4" maxlength="100000" show-word-limit placeholder="可补充目录要求，例如必须包含项目背景、系统功能、交付计划、运维保障等" />
               </div>
+
             </div>
 
             <div class="create-right">
@@ -690,7 +703,8 @@ const requirementForm = reactive({
 })
 
 const outlineForm = reactive({
-  outlineMode: 'SCORE_ITEM'
+  outlineMode: 'SCORE_ITEM',
+  writingDirection: ''
 })
 
 const sectionForm = reactive({
@@ -852,6 +866,7 @@ function applySolutionDetail(data) {
     createForm.aiLevel = data.aiLevel || createForm.aiLevel || 'BASIC'
     createForm.writingStyle = data.writingStyle || createForm.writingStyle || 'GENERAL'
     createForm.solutionName = data.solutionName || ''
+    outlineForm.writingDirection = data.overallWritingRequirement || outlineForm.writingDirection || ''
 
     const req = data.requirement || {}
     requirementForm.purchaseRequirement = req.purchaseRequirement || ''
@@ -963,6 +978,7 @@ async function startCreate(solutionMode = 'QUICK') {
   createForm.writingStyle = 'GENERAL'
   createForm.solutionName = '新建AI方案'
   outlineForm.outlineMode = 'SCORE_ITEM'
+  outlineForm.writingDirection = ''
 
   Object.assign(requirementForm, {
     purchaseRequirement: '',
@@ -1007,6 +1023,10 @@ async function handleTenderFileChange(uploadFile) {
   parseTask.value = null
   previewOutlinesLocal.value = []
 
+  // 用户重新上传标书时，先用文件名立即回填方案名称。
+  // 后端解析完成后如果识别出了更合适的方案名称，会再次同步刷新。
+  applySolutionNameFromParse(uploadFile.name || uploadFile.raw?.name)
+
   Object.assign(requirementForm, {
     purchaseRequirement: '',
     technicalRequirement: '',
@@ -1028,7 +1048,9 @@ async function handleTenderFileChange(uploadFile) {
     })
 
     parseTask.value = task
+    applySolutionNameFromParse(task)
     await refreshCurrent()
+    applySolutionNameFromParse(task)
     mode.value = 'create'
     pollParseTask(task.id)
   } catch (e) {
@@ -1045,7 +1067,7 @@ function pollParseTask(taskId) {
       parseTask.value = task
       createStep.value = 1
 
-      if (task.solutionName) createForm.solutionName = task.solutionName
+      applySolutionNameFromParse(task)
       requirementForm.purchaseRequirement = task.purchaseRequirement || requirementForm.purchaseRequirement
       requirementForm.technicalRequirement = task.technicalRequirement || requirementForm.technicalRequirement
       requirementForm.serviceRequirement = task.serviceRequirement || requirementForm.serviceRequirement
@@ -1060,6 +1082,8 @@ function pollParseTask(taskId) {
         createStep.value = 2
         if (task.solutionId) {
           await refreshCurrent()
+          applySolutionNameFromParse(task)
+          await loadList()
           mode.value = 'create'
         }
         ElMessage.success('标书解析完成')
@@ -1095,7 +1119,7 @@ async function reExtractFromParse() {
 
   const task = await getParseTask(parseTask.value.id)
 
-  if (task.solutionName) createForm.solutionName = task.solutionName
+  applySolutionNameFromParse(task)
   requirementForm.purchaseRequirement = task.purchaseRequirement || requirementForm.purchaseRequirement
   requirementForm.technicalRequirement = task.technicalRequirement || requirementForm.technicalRequirement
   requirementForm.serviceRequirement = task.serviceRequirement || requirementForm.serviceRequirement
@@ -1170,12 +1194,19 @@ async function onGenerateOutline() {
     const solutionId = currentSolution.value.id
 
     await saveRequirement(solutionId, buildRequirementPayload())
+    const writingDirection = (outlineForm.writingDirection || '').trim()
+    if (writingDirection) {
+      await saveOverallWritingRequirement(solutionId, writingDirection)
+    }
     const data = await generateOutline(solutionId, {
       outlineMode: outlineForm.outlineMode,
-      outlineRequirement: requirementForm.outlineRequirement
+      writingStyle: createForm.writingStyle,
+      extraRequirement: requirementForm.outlineRequirement,
+      outlineRequirement: requirementForm.outlineRequirement,
+      writingDirection
     })
 
-    currentSolution.value = data
+    applySolutionDetail(data)
     previewOutlinesLocal.value = data?.outlines || []
     createStep.value = 3
     mode.value = 'detail'
@@ -1680,6 +1711,33 @@ function syncSolutionCard(data) {
   }
 }
 
+function fileBaseName(fileName) {
+  const name = String(fileName || '').split(/[\\/]/).pop().trim()
+  if (!name) return ''
+  return name.replace(/\.[^.]+$/, '')
+}
+
+function applySolutionNameFromParse(value) {
+  const name = typeof value === 'string'
+    ? fileBaseName(value)
+    : (value?.solutionName || fileBaseName(value?.fileName))
+
+  if (!name) return
+
+  createForm.solutionName = name
+
+  if (currentSolution.value?.id) {
+    currentSolution.value = {
+      ...currentSolution.value,
+      solutionName: name
+    }
+    syncSolutionCard({
+      ...currentSolution.value,
+      solutionName: name
+    })
+  }
+}
+
 function syncSelectedSectionAfterDetail(data) {
   if (!data?.outlines?.length) {
     selectedSection.value = null
@@ -1934,6 +1992,7 @@ const WritingDirectionEditor = defineComponent({
 .preset-word-grid button { height: 34px; border: 1px solid #dbe3ef; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; }
 .preset-word-grid button:hover { border-color: #2f6bff; color: #2f6bff; }
 .preset-word-grid button.active { border-color: #2f6bff; background: #2f6bff; color: #fff; }
+.outline-direction-section :deep(.el-textarea__inner) { min-height: 92px !important; }
 .section-form :deep(.el-form-item) { margin-bottom: 14px; }
 :deep(.outline-tree) { font-size: 15px; }
 :deep(.tree-row) { display: flex; align-items: center; gap: 8px; min-height: 36px; border-bottom: 1px dashed #e5e7eb; color: #6b7280; }
