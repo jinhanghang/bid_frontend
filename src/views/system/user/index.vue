@@ -5,11 +5,11 @@
         <div class="list-head">
           <div class="list-head__left">
             <el-input
-              v-model="query.keyword"
-              class="filter-input"
-              placeholder="按姓名 / 手机号 / 账号 / 企业名称自动查询"
-              clearable
-              @input="onKeywordInput"
+                v-model="query.keyword"
+                class="filter-input"
+                placeholder="按姓名 / 手机号 / 账号 / 企业名称自动查询"
+                clearable
+                @input="onKeywordInput"
             />
           </div>
           <div class="list-head__right">
@@ -19,31 +19,50 @@
         </div>
 
         <el-table
-          class="ui-table"
-          :data="rows"
-          border
-          stripe
-          height="calc(100vh - 224px)"
-          v-loading="loading"
+            class="ui-table"
+            :data="rows"
+            border
+            stripe
+            height="calc(100vh - 224px)"
+            v-loading="loading"
         >
           <el-table-column prop="fullName" label="姓名" min-width="130" show-overflow-tooltip />
           <el-table-column prop="phone" label="手机号" min-width="140" />
           <el-table-column prop="username" label="账号" min-width="170" show-overflow-tooltip />
+
+          <el-table-column prop="isInternal" label="内部人员" width="100">
+            <template #default="{ row }">
+              <el-tag :type="Number(row.isInternal) === 1 ? 'success' : 'info'" effect="plain">
+                {{ Number(row.isInternal) === 1 ? '是' : '否' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column prop="oaUsername" label="OA系统用户名" min-width="150" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ Number(row.isInternal) === 1 ? (row.oaUsername || '-') : '-' }}
+            </template>
+          </el-table-column>
+
           <el-table-column prop="enterpriseId" label="所属企业" min-width="190" show-overflow-tooltip>
             <template #default="{ row }">{{ getEnterpriseName(row.enterpriseId, row.enterpriseName) }}</template>
           </el-table-column>
+
           <el-table-column prop="roleNames" label="角色" min-width="180" show-overflow-tooltip>
             <template #default="{ row }">
               {{ formatRoleNames(row) }}
             </template>
           </el-table-column>
+
           <el-table-column prop="status" label="状态" width="90">
             <template #default="{ row }">
               <StatusTag :value="row.status" :map="enableMap" />
             </template>
           </el-table-column>
+
           <el-table-column prop="lastLoginTime" label="最后登录" width="170" />
           <el-table-column prop="createTime" label="创建时间" width="170" />
+
           <el-table-column label="操作" width="310" fixed="right">
             <template #default="{ row }">
               <div class="table-actions">
@@ -61,73 +80,91 @@
         </el-table>
 
         <PageFooterPager
-          v-model:page="pager.page"
-          v-model:size="pager.size"
-          :total="pager.total"
-          @change="loadData"
+            v-model:page="pager.page"
+            v-model:size="pager.size"
+            :total="pager.total"
+            @change="loadData"
         />
       </div>
     </div>
 
     <el-dialog
-      v-model="formDialog.visible"
-      :title="formDialog.isEdit ? '编辑用户' : '新增用户'"
-      width="760px"
-      destroy-on-close
+        v-model="formDialog.visible"
+        :title="formDialog.isEdit ? '编辑用户' : '新增用户'"
+        width="760px"
+        destroy-on-close
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
         <el-form-item label="姓名" prop="fullName">
           <el-input v-model="form.fullName" placeholder="请输入姓名" />
         </el-form-item>
+
         <el-form-item label="手机号" prop="phone">
           <el-input v-model="form.phone" placeholder="请输入手机号" />
         </el-form-item>
+
         <el-form-item label="邮箱">
           <el-input v-model="form.email" placeholder="请输入邮箱" />
         </el-form-item>
 
+        <el-form-item label="是否内部人员" prop="isInternal">
+          <el-radio-group v-model="form.isInternal">
+            <el-radio :label="1">是</el-radio>
+            <el-radio :label="0">否</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item label="OA系统用户名" prop="oaUsername">
+          <el-input
+              v-model="form.oaUsername"
+              clearable
+              :disabled="Number(form.isInternal) !== 1"
+              placeholder="选择内部人员后填写 OA 系统用户名"
+          />
+        </el-form-item>
+
         <el-form-item v-if="showRoleField" label="角色" prop="roleIds">
           <el-select
-            v-model="form.roleIds"
-            multiple
-            :multiple-limit="1"
-            clearable
-            filterable
-            placeholder="请选择角色"
-            style="width: 100%"
+              v-model="form.roleIds"
+              multiple
+              :multiple-limit="1"
+              clearable
+              filterable
+              placeholder="请选择角色"
+              style="width: 100%"
           >
             <el-option
-              v-for="role in assignableRoles"
-              :key="role.id"
-              :label="role.roleName"
-              :value="role.id"
+                v-for="role in assignableRoles"
+                :key="role.id"
+                :label="role.roleName"
+                :value="role.id"
             />
           </el-select>
         </el-form-item>
 
         <el-form-item v-if="showEnterpriseField" label="所属企业" prop="enterpriseId">
           <el-select
-            v-model="form.enterpriseId"
-            clearable
-            filterable
-            placeholder="请选择用户所属企业"
-            style="width: 100%"
+              v-model="form.enterpriseId"
+              clearable
+              filterable
+              placeholder="请选择用户所属企业"
+              style="width: 100%"
           >
             <el-option
-              v-for="item in enterprises"
-              :key="item.id"
-              :label="item.enterpriseName"
-              :value="item.id"
+                v-for="item in enterprises"
+                :key="item.id"
+                :label="item.enterpriseName"
+                :value="item.id"
             />
           </el-select>
         </el-form-item>
 
         <el-form-item v-if="!formDialog.isEdit" label="初始密码">
           <el-input
-            v-model="form.password"
-            show-password
-            clearable
-            placeholder="可不填，不填则由后端自动生成"
+              v-model="form.password"
+              show-password
+              clearable
+              placeholder="可不填，不填则由后端自动生成"
           />
         </el-form-item>
 
@@ -137,6 +174,7 @@
             <el-option label="禁用" :value="0" />
           </el-select>
         </el-form-item>
+
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="4" placeholder="请输入备注" />
         </el-form-item>
@@ -152,30 +190,32 @@
       <div class="form-tip" style="margin-bottom: 12px">
         当前用户：{{ roleDialog.user?.fullName || roleDialog.user?.username || '-' }}
       </div>
+
       <el-form label-width="92px">
         <el-form-item label="角色">
           <el-select v-model="roleDialog.roleIds" multiple :multiple-limit="1" clearable filterable style="width: 100%">
             <el-option
-              v-for="role in assignableRoles"
-              :key="role.id"
-              :label="`${role.roleName}（${role.roleCode}）`"
-              :value="role.id"
+                v-for="role in assignableRoles"
+                :key="role.id"
+                :label="`${role.roleName}（${role.roleCode}）`"
+                :value="role.id"
             />
           </el-select>
         </el-form-item>
+
         <el-form-item v-if="roleDialogRequiresEnterprise" label="所属企业">
           <el-select
-            v-model="roleDialog.enterpriseId"
-            clearable
-            filterable
-            placeholder="请选择用户所属企业"
-            style="width: 100%"
+              v-model="roleDialog.enterpriseId"
+              clearable
+              filterable
+              placeholder="请选择用户所属企业"
+              style="width: 100%"
           >
             <el-option
-              v-for="item in enterprises"
-              :key="item.id"
-              :label="item.enterpriseName"
-              :value="item.id"
+                v-for="item in enterprises"
+                :key="item.id"
+                :label="item.enterpriseName"
+                :value="item.id"
             />
           </el-select>
         </el-form-item>
@@ -239,6 +279,7 @@ const formDialog = reactive({
 })
 
 const form = reactive({})
+
 const roleDialog = reactive({
   visible: false,
   user: null,
@@ -262,6 +303,7 @@ const canCreateUser = computed(() => isSuperAdmin.value || isPlatformAdmin.value
 
 const assignableRoles = computed(() => {
   let allowCodes = []
+
   if (isSuperAdmin.value) {
     // 超级管理员也不在页面开放新增/分配 SUPER_ADMIN，避免误操作。
     allowCodes = [ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN, ROLE_NORMAL_USER]
@@ -289,10 +331,12 @@ const roleDialogSelectedRoles = computed(() => {
 
 const selectedRoleCodes = computed(() => selectedRoles.value.map((role) => getRoleCode(role)).filter(Boolean))
 const roleDialogSelectedRoleCodes = computed(() => roleDialogSelectedRoles.value.map((role) => getRoleCode(role)).filter(Boolean))
+
 const roleDialogRequiresEnterprise = computed(() => {
   if (!canSelectEnterprise.value) return false
   return roleDialogSelectedRoleCodes.value.some((code) => [ROLE_ENTERPRISE_ADMIN, ROLE_NORMAL_USER].includes(code))
 })
+
 const selectedRequiresEnterprise = computed(() => {
   if (formDialog.isEdit) return editTargetRequiresEnterprise()
   if (isEnterpriseAdmin.value) return false
@@ -301,6 +345,7 @@ const selectedRequiresEnterprise = computed(() => {
 })
 
 const showRoleField = computed(() => !formDialog.isEdit && canSelectRole.value)
+
 const showEnterpriseField = computed(() => {
   if (!canSelectEnterprise.value) return false
   return selectedRequiresEnterprise.value
@@ -310,23 +355,27 @@ const rules = {
   fullName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
   phone: [{ required: true, message: '请输入手机号', trigger: 'blur' }],
   roleIds: [{ validator: validateRoleIds, trigger: 'change' }],
-  enterpriseId: [{ validator: validateEnterpriseId, trigger: 'change' }]
+  enterpriseId: [{ validator: validateEnterpriseId, trigger: 'change' }],
+  oaUsername: [{ validator: validateOaUsername, trigger: ['blur', 'change'] }]
 }
 
 function normalizeRoleCode(value = '') {
   return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/^ROLE[_-]?/, '')
-    .replace(/[^A-Z0-9]/g, '')
+      .trim()
+      .toUpperCase()
+      .replace(/^ROLE[_-]?/, '')
+      .replace(/[^A-Z0-9]/g, '')
 }
 
 function normalizeRoleList(values = []) {
   if (!Array.isArray(values)) return []
-  return values.map((item) => {
-    if (typeof item === 'string') return normalizeRoleCode(item)
-    return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
-  }).filter(Boolean)
+
+  return values
+      .map((item) => {
+        if (typeof item === 'string') return normalizeRoleCode(item)
+        return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
+      })
+      .filter(Boolean)
 }
 
 function getRoleCode(role = {}) {
@@ -339,6 +388,7 @@ function getRowRoleCodes(row = {}) {
 
   const roleNames = Array.isArray(row.roleNames) ? row.roleNames : []
   const inferred = []
+
   roleNames.forEach((name) => {
     const text = String(name || '')
     if (text.includes('超级')) inferred.push(ROLE_SUPER_ADMIN)
@@ -346,6 +396,7 @@ function getRowRoleCodes(row = {}) {
     else if (text.includes('企业')) inferred.push(ROLE_ENTERPRISE_ADMIN)
     else if (text.includes('普通')) inferred.push(ROLE_NORMAL_USER)
   })
+
   return inferred
 }
 
@@ -379,9 +430,11 @@ function editTargetRequiresEnterprise() {
 function canOperateRow(row = {}) {
   if (isSuperAdmin.value) return !rowHasRole(row, ROLE_SUPER_ADMIN)
   if (isPlatformAdmin.value) return !isProtectedPlatformRow(row)
+
   if (isEnterpriseAdmin.value) {
     return isSameEnterprise(row) && !isProtectedPlatformRow(row) && !isEnterpriseAdminRow(row)
   }
+
   return false
 }
 
@@ -414,10 +467,12 @@ function validateRoleIds(rule, value, callback) {
     callback()
     return
   }
+
   if (!Array.isArray(value) || value.length === 0) {
     callback(new Error('请选择角色'))
     return
   }
+
   callback()
 }
 
@@ -426,10 +481,26 @@ function validateEnterpriseId(rule, value, callback) {
     callback()
     return
   }
+
   if (value === undefined || value === null || value === '') {
     callback(new Error('请选择用户所属企业'))
     return
   }
+
+  callback()
+}
+
+function validateOaUsername(rule, value, callback) {
+  if (Number(form.isInternal) !== 1) {
+    callback()
+    return
+  }
+
+  if (!String(value || '').trim()) {
+    callback(new Error('内部人员请填写 OA 系统用户名'))
+    return
+  }
+
   callback()
 }
 
@@ -445,20 +516,33 @@ function setDefaultCreateRole() {
 
   const normalRole = assignableRoles.value.find((role) => getRoleCode(role) === ROLE_NORMAL_USER)
   const defaultRole = normalRole || assignableRoles.value[0]
+
   if (defaultRole?.id) {
     form.roleIds = [defaultRole.id]
   }
 }
 
 watch(
-  () => form.roleIds,
-  () => {
-    if (!formDialog.isEdit && !selectedRequiresEnterprise.value) {
-      form.enterpriseId = ''
+    () => form.roleIds,
+    () => {
+      if (!formDialog.isEdit && !selectedRequiresEnterprise.value) {
+        form.enterpriseId = ''
+      }
+
+      formRef.value?.clearValidate?.(['roleIds', 'enterpriseId'])
+    },
+    { deep: true }
+)
+
+watch(
+    () => form.isInternal,
+    (value) => {
+      if (Number(value) !== 1) {
+        form.oaUsername = ''
+      }
+
+      formRef.value?.clearValidate?.(['oaUsername'])
     }
-    formRef.value?.clearValidate?.(['roleIds', 'enterpriseId'])
-  },
-  { deep: true }
 )
 
 onMounted(async () => {
@@ -468,6 +552,7 @@ onMounted(async () => {
 
 function onKeywordInput() {
   clearTimeout(timer.value)
+
   timer.value = setTimeout(() => {
     pager.page = 1
     loadData()
@@ -476,12 +561,14 @@ function onKeywordInput() {
 
 async function loadData() {
   loading.value = true
+
   try {
     const res = await pageUsers({
       keyword: query.keyword || undefined,
       pageNum: pager.page,
       pageSize: pager.size
     })
+
     rows.value = res?.records || []
     pager.total = Number(res?.total || 0)
   } finally {
@@ -508,12 +595,14 @@ async function loadEnterprises() {
 
 function getEnterpriseName(id, fallback = '') {
   if (fallback) return fallback
+
   const match = enterprises.value.find((item) => String(item.id) === String(id))
   return match?.enterpriseName || (id ? `企业 #${id}` : '-')
 }
 
 function resetForm(row = {}) {
   for (const key of Object.keys(form)) delete form[key]
+
   Object.assign(form, {
     id: row.id,
     enterpriseId: row.enterpriseId ?? '',
@@ -522,6 +611,8 @@ function resetForm(row = {}) {
     phone: row.phone ?? '',
     fullName: row.fullName ?? '',
     email: row.email ?? '',
+    isInternal: Number(row.isInternal) === 1 ? 1 : 0,
+    oaUsername: row.oaUsername ?? '',
     status: row.status ?? 1,
     roleIds: row.roleIds || [],
     roleCodes: row.roleCodes || row.roles || [],
@@ -533,6 +624,7 @@ function resetForm(row = {}) {
 function openCreate() {
   formDialog.isEdit = false
   resetForm()
+
   if (isEnterpriseAdmin.value) {
     const normalRole = roles.value.find((role) => getRoleCode(role) === ROLE_NORMAL_USER)
     form.roleIds = normalRole?.id ? [normalRole.id] : []
@@ -540,6 +632,7 @@ function openCreate() {
   } else {
     setDefaultCreateRole()
   }
+
   formDialog.visible = true
 }
 
@@ -554,6 +647,8 @@ function buildCreatePayload() {
     fullName: form.fullName,
     phone: form.phone,
     email: form.email || undefined,
+    isInternal: Number(form.isInternal) === 1 ? 1 : 0,
+    oaUsername: Number(form.isInternal) === 1 ? String(form.oaUsername || '').trim() : '',
     status: form.status,
     remark: form.remark || undefined
   }
@@ -578,6 +673,8 @@ function buildUpdatePayload() {
     fullName: form.fullName,
     phone: form.phone,
     email: form.email || undefined,
+    isInternal: Number(form.isInternal) === 1 ? 1 : 0,
+    oaUsername: Number(form.isInternal) === 1 ? String(form.oaUsername || '').trim() : '',
     status: form.status,
     remark: form.remark || undefined
   }
@@ -610,17 +707,17 @@ async function showCreatedAccount(res = {}) {
 
   if (username || password) {
     await ElMessageBox.alert(
-      `<div style="line-height: 1.9">
+        `<div style="line-height: 1.9">
         <div>用户创建成功，请复制保存。</div>
         ${username ? `<div>账号：<b>${username}</b></div>` : ''}
         ${password ? `<div>初始密码：<b>${password}</b></div>` : '<div>初始密码：已按你填写的密码保存</div>'}
         <div style="color:#909399;margin-top:8px">账号和初始密码只在创建成功时展示一次。</div>
       </div>`,
-      '新增成功',
-      {
-        dangerouslyUseHTMLString: true,
-        confirmButtonText: '我已保存'
-      }
+        '新增成功',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '我已保存'
+        }
     )
   } else {
     ElMessage.success('新增成功')
@@ -649,16 +746,16 @@ async function resetPassword(row) {
 
   if (password) {
     await ElMessageBox.alert(
-      `<div style="line-height: 1.9">
+        `<div style="line-height: 1.9">
         ${username ? `<div>账号：<b>${username}</b></div>` : ''}
         <div>新密码：<b>${password}</b></div>
         <div style="color:#909399;margin-top:8px">请复制保存，密码只显示一次。</div>
       </div>`,
-      '重置成功',
-      {
-        dangerouslyUseHTMLString: true,
-        confirmButtonText: '我已保存'
-      }
+        '重置成功',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '我已保存'
+        }
     )
   } else {
     ElMessage.success('密码已重置')
@@ -674,18 +771,22 @@ async function openRoleDialog(row) {
 
 async function submitRoles() {
   if (!roleDialog.user?.id) return
+
   if (!Array.isArray(roleDialog.roleIds) || roleDialog.roleIds.length === 0) {
     ElMessage.warning('请选择角色')
     return
   }
+
   if (roleDialogRequiresEnterprise.value && !roleDialog.enterpriseId) {
     ElMessage.warning('企业管理员或普通用户必须选择所属企业')
     return
   }
+
   await updateUserRoles(roleDialog.user.id, {
     roleIds: roleDialog.roleIds,
     enterpriseId: roleDialogRequiresEnterprise.value ? roleDialog.enterpriseId : null
   })
+
   ElMessage.success('角色已保存')
   roleDialog.visible = false
   loadData()
