@@ -281,8 +281,16 @@
             </el-scrollbar>
             <div class="detail-actions">
               <el-button size="large" :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
-              <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">开始生成</el-button>
-              <el-button size="large" type="success" :disabled="!canExport" @click="onExportWord">导出Word</el-button>
+              <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
+              <el-tooltip
+                :disabled="canExport"
+                content="仍有章节未生成完成，需全部章节完成后才能导出Word"
+                placement="top"
+              >
+                <span>
+                  <el-button size="large" type="success" :disabled="!canExport" @click="onExportWord">导出Word</el-button>
+                </span>
+              </el-tooltip>
             </div>
           </template>
         </div>
@@ -737,7 +745,19 @@ const subTypeMap = {
   OTHER: ['其他']
 }
 const subTypes = computed(() => subTypeMap[createForm.solutionType] || [])
+const leafGenerationStat = computed(() => {
+  const leaves = flattenLeaf(currentSolution.value?.outlines || [])
+  const total = leaves.length
+  const done = leaves.filter(isOutlineGenerated).length
+  const failed = leaves.filter(isOutlineFailed).length
+  return { total, done, failed, pending: Math.max(0, total - done - failed) }
+})
+
 const generatePercent = computed(() => {
+  const stat = leafGenerationStat.value
+  if (stat.total) {
+    return Math.min(100, Math.round((stat.done * 100) / stat.total))
+  }
   const target = currentSolution.value?.targetWordCount || 0
   const actual = currentSolution.value?.actualWordCount || 0
   if (!target) return 0
@@ -756,7 +776,14 @@ const hasRunningTask = computed(() => {
 const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !hasRunningTask.value)
 const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !hasRunningTask.value)
 const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !hasRunningTask.value)
-const canExport = computed(() => currentSolution.value?.canExport === true && !hasRunningTask.value)
+const allLeafGenerated = computed(() => leafGenerationStat.value.total > 0 && leafGenerationStat.value.done === leafGenerationStat.value.total)
+const canExport = computed(() => currentSolution.value?.canExport === true && allLeafGenerated.value && !hasRunningTask.value)
+const generateActionText = computed(() => {
+  const stat = leafGenerationStat.value
+  if (stat.total > 0 && stat.failed > 0) return '重试未完成章节'
+  if (stat.total > 0 && stat.done > 0 && stat.done < stat.total) return '继续生成'
+  return '开始生成'
+})
 
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
@@ -1562,6 +1589,8 @@ function pollGenerationTask(taskId) {
           ElMessage.error(task.errorMessage || task.message || '生成失败')
         } else if (task.status === 'CANCELED') {
           ElMessage.warning(task.message || '生成已取消')
+        } else if (task.status === 'PARTIAL') {
+          ElMessage.warning(task.message || task.errorMessage || '部分章节未生成完成，请查看失败章节后重试')
         } else {
           ElMessage.success(task.message || '生成完成')
         }
@@ -1632,6 +1661,7 @@ async function onGenerateSection() {
     })
     await refreshCurrent()
     selectedSectionSolutionId.value = currentSolution.value?.id || null
+    selectedSection.value = findOutlineNodeById(currentSolution.value?.outlines || [], sectionNode.value.id) || selectedSection.value
     ElMessage.success('本段生成完成')
   } finally {
     sectionGenerating.value = false
@@ -1799,6 +1829,26 @@ function flattenLeaf(nodes = []) {
   return arr
 }
 
+function isOutlineGenerated(node) {
+  if (!node) return false
+  const sectionOk = node.section?.generateStatus === 'SUCCESS' && !!String(node.section?.content || '').trim()
+  return node.contentStatus === 'SUCCESS' || sectionOk
+}
+
+function isOutlineFailed(node) {
+  if (!node) return false
+  return node.contentStatus === 'FAILED' || node.section?.generateStatus === 'FAILED'
+}
+
+function outlineActualWordCount(node) {
+  return node?.actualWordCount || node?.section?.actualWordCount || 0
+}
+
+function outlineTargetWordCount(node) {
+  return node?.targetWordCount || node?.section?.targetWordCount || 0
+}
+
+
 function formatDateTime(value) {
   if (!value) return ''
   return String(value).replace('T', ' ').slice(0, 19)
@@ -1810,7 +1860,7 @@ function levelLabel(value) {
 
 function statusLabel(value) {
   const map = {
-    DRAFT: '草稿', FILE_PARSING: '解析中', INFO_READY: '已解析', OUTLINE_GENERATING: '目录中', OUTLINE_READY: '目录完成', WORD_COUNT_SET: '已设篇幅', CONTENT_GENERATING: '生成中', CONTENT_PARTIAL: '部分完成', CONTENT_READY: '已完成', DONE: '已完成', FAILED: '失败', PARSE_FAILED: '解析失败', SUCCESS: '成功', PARSING: '解析中', EXTRACTING: '提取中', CANCELED: '已取消'
+    DRAFT: '草稿', FILE_PARSING: '解析中', INFO_READY: '已解析', OUTLINE_GENERATING: '目录中', OUTLINE_READY: '目录完成', WORD_COUNT_SET: '已设篇幅', CONTENT_GENERATING: '生成中', CONTENT_PARTIAL: '部分完成', CONTENT_READY: '已完成', DONE: '已完成', FAILED: '失败', PARSE_FAILED: '解析失败', SUCCESS: '成功', PARTIAL: '部分完成', PARSING: '解析中', EXTRACTING: '提取中', CANCELED: '已取消'
   }
   return map[value] || value || '-'
 }
@@ -1851,8 +1901,19 @@ const OutlineTree = defineComponent({
         controls.push(h(ElButton, { link: true, icon: SortDown, onClick: () => emit('move', { node, direction: 'DOWN' }) }))
       }
       if (props.mode === 'generate' && !hasChildren) {
-        controls.push(h('span', { class: 'count-text' }, `${node.actualWordCount || 0} / ${node.targetWordCount || 0}`))
-        controls.push(h(ElButton, { size: 'small', type: node.contentStatus === 'SUCCESS' ? 'warning' : 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => node.contentStatus === 'SUCCESS' ? '重编' : '生成'))
+        const generated = isOutlineGenerated(node)
+        const failed = isOutlineFailed(node)
+        controls.push(h('span', { class: 'count-text' }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
+        if (generated) {
+          controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
+          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
+        } else if (failed) {
+          controls.push(h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败'))
+          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重试'))
+        } else {
+          controls.push(h(ElTag, { size: 'small', type: 'info', effect: 'light' }, () => '未生成'))
+          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '生成'))
+        }
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap' }, [
