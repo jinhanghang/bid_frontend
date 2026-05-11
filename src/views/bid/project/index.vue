@@ -342,17 +342,18 @@
                     <el-button plain @click="activeDoc = ''">退出技术方案</el-button>
                   </div>
 
-                  <div class="tech-preview-head tech-detail-outline-head">
-                    <strong>预览目录 {{ technicalOutlineLeafCount }}</strong>
-                    <span>一键差异化目录可改变标题内容，减少查重隐患</span>
-                  </div>
-
-                  <div v-if="technicalStep >= 5 || technicalFinishedLeafCount > 0 || fullGenerating || isTechnicalRunningByBackend" class="tech-generate-status">
-                    <el-progress :percentage="technicalGeneratePercent" :stroke-width="8" />
-                    <div class="tech-generate-summary">
-                      已完成 {{ technicalFinishedLeafCount }} / {{ technicalLeafNodes.length }} 个章节
-                      <span v-if="fullGenerating || isTechnicalRunningByBackend">，正在生成正文，请稍候...</span>
+                  <div v-if="technicalOutlines.length" class="solution-like-progress-wrap">
+                    <div class="solution-like-progress-meta">
+                      <span>共 {{ technicalOutlineLeafCount }} 个章节</span>
+                      <span>已完成 {{ technicalFinishedLeafCount }} / {{ technicalLeafNodes.length }} 个章节</span>
+                      <span v-if="fullGenerating || isTechnicalRunningByBackend">正在生成正文，请稍候...</span>
                     </div>
+                    <el-progress
+                      :percentage="technicalGeneratePercent"
+                      :stroke-width="6"
+                      :show-text="false"
+                      class="solution-like-progress"
+                    />
                   </div>
 
                   <el-scrollbar class="tech-detail-outline-scroll">
@@ -409,13 +410,11 @@
 
             <div class="bid-tech-right">
               <template v-if="technicalGeneratedView">
-                <div class="tech-result-panel">
-                  <div class="result-preview-head result-main-head">
-                    <strong>结果预览</strong>
-                    <span v-if="selectedTechnicalLeaf">{{ selectedTechnicalLeaf.title }}</span>
-                    <span v-else>正文生成完成后，点击章节查看结果</span>
+                <div class="tech-result-panel solution-like-result-panel">
+                  <div class="solution-like-result-title">
+                    {{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}
                   </div>
-                  <div v-if="selectedTechnicalLeafContent" class="result-preview-body result-main-body">
+                  <div v-if="selectedTechnicalLeafContent" class="result-preview-body result-main-body solution-like-result-body">
                     <pre>{{ selectedTechnicalLeafContent }}</pre>
                   </div>
                   <div v-else class="result-main-empty">
@@ -1560,7 +1559,7 @@ async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) 
     const payload = {
       writingStyle: fullGenerateForm.writingStyle || 'GENERAL',
       useKnowledge: selectedKnowledgeIds.length > 0,
-      knowledgeIds: selectedKnowledgeIds,
+      knowledgeIds: stringifyKnowledgeIds(selectedKnowledgeIds),
       anonymous: !!fullGenerateForm.blindBidEnabled,
       anonymousRequirement: fullGenerateForm.blindBidRequirement || ''
     }
@@ -1860,6 +1859,7 @@ async function generateTechnicalSection() {
   try {
     await streamBidProjectTechnicalSection(sectionNode.value.id, {
       ...sectionForm,
+      knowledgeIds: stringifyKnowledgeIds(sectionForm.knowledgeIds),
       chartLevel: 'NONE',
       tableLevel: 'NONE',
       imageLevel: 'NONE'
@@ -3418,4 +3418,52 @@ function startPolling() {
 .style-radio-grid :deep(.el-radio-button__inner) {
   width: 100%;
 }
+
+/* AI标书-技术方案：生成后布局按 AI方案详情页压缩成“左目录 + 右结果” */
+.solution-like-progress-wrap {
+  padding: 8px 0 14px;
+  border-bottom: 1px solid #eef2f8;
+}
+
+.solution-like-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 8px;
+  color: #7b8798;
+  font-size: 13px;
+}
+
+.solution-like-progress :deep(.el-progress-bar__outer) {
+  background: #edf1f7;
+}
+
+.solution-like-progress :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #ff4d4f, #ff5f6d);
+}
+
+.solution-like-result-panel {
+  padding: 34px 34px 28px;
+}
+
+.solution-like-result-title {
+  margin-bottom: 24px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #162033;
+}
+
+.solution-like-result-body {
+  height: calc(100vh - 190px);
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.solution-like-result-body pre {
+  font-size: 16px;
+  line-height: 2.05;
+  color: #29364a;
+}
+
 </style>
