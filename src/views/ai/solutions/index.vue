@@ -283,12 +283,20 @@
               <el-button size="large" :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
               <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
               <el-tooltip
-                :disabled="canExport"
+                :disabled="canExport || exportLoading"
                 content="仍有章节未生成完成，需全部章节完成后才能导出Word"
                 placement="top"
               >
                 <span>
-                  <el-button size="large" type="success" :disabled="!canExport" @click="onExportWord">导出Word</el-button>
+                  <el-button
+                    size="large"
+                    type="success"
+                    :disabled="!canExport || exportLoading"
+                    :loading="exportLoading"
+                    @click="onExportWord"
+                  >
+                    {{ exportButtonText }}
+                  </el-button>
                 </span>
               </el-tooltip>
             </div>
@@ -723,6 +731,7 @@ const overallWritingRequirement = ref('')
 const sectionContentEditMode = ref(false)
 const sectionContentSaving = ref(false)
 const sectionContentDraft = ref('')
+const exportLoading = ref(false)
 
 const createForm = reactive({
   solutionMode: 'QUICK',
@@ -822,6 +831,7 @@ const generateActionText = computed(() => {
   if (stat.total > 0 && stat.done > 0 && stat.done < stat.total) return '继续生成'
   return '开始生成'
 })
+const exportButtonText = computed(() => exportLoading.value ? '正在导出' : '导出Word')
 
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
@@ -1801,30 +1811,47 @@ async function onDeleteSolution(item) {
 }
 
 async function onExportWord() {
+  if (exportLoading.value) {
+    return
+  }
+
   if (!canExport.value) {
     ElMessage.warning(hasRunningTask.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
     return
   }
 
-  const file = await exportWord(currentSolution.value.id)
-  await refreshCurrent()
-  await loadList()
-
-  if (!file?.id) {
-    ElMessage.warning('导出成功，但未返回文件ID，请到文件资源中查看')
+  if (!currentSolution.value?.id) {
+    ElMessage.warning('请先选择要导出的方案')
     return
   }
 
-  const blob = await downloadFileResource(file.id)
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = file.originalName || `${currentSolution.value?.solutionName || 'AI方案'}-导出.docx`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  window.URL.revokeObjectURL(url)
-  ElMessage.success('导出成功')
+  const solutionId = currentSolution.value.id
+  const solutionName = currentSolution.value?.solutionName || 'AI方案'
+
+  exportLoading.value = true
+  try {
+    const file = await exportWord(solutionId)
+    await refreshCurrent(solutionId)
+    await loadList()
+
+    if (!file?.id) {
+      ElMessage.warning('导出成功，但未返回文件ID，请到文件资源中查看')
+      return
+    }
+
+    const blob = await downloadFileResource(file.id)
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = file.originalName || `${solutionName}-导出.docx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } finally {
+    exportLoading.value = false
+  }
 }
 
 function syncSolutionCard(data) {
