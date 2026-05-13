@@ -299,8 +299,37 @@
 
     <section v-if="showRightPreview" class="right-preview-card">
       <div v-if="selectedSectionSolutionId === currentSolution?.id && selectedSection?.section?.content" class="section-preview">
-        <h3>{{ selectedSection.title }}</h3>
-        <pre>{{ selectedSection.section.content }}</pre>
+        <div class="section-preview-head">
+          <h3>{{ selectedSection.title }}</h3>
+          <div class="section-preview-actions">
+            <template v-if="sectionContentEditMode">
+              <el-button size="small" :disabled="sectionContentSaving" @click="cancelEditSectionContent">取消</el-button>
+              <el-button size="small" type="primary" :loading="sectionContentSaving" @click="saveSectionContent">保存</el-button>
+            </template>
+            <el-button
+              v-else
+              size="small"
+              type="primary"
+              plain
+              :icon="EditPen"
+              :disabled="!canEditSectionContent"
+              @click="startEditSectionContent"
+            >
+              编辑
+            </el-button>
+          </div>
+        </div>
+        <el-input
+          v-if="sectionContentEditMode"
+          v-model="sectionContentDraft"
+          class="section-content-editor"
+          type="textarea"
+          :autosize="{ minRows: 24 }"
+          maxlength="200000"
+          show-word-limit
+          placeholder="请输入章节正文内容"
+        />
+        <div v-else class="section-content-preview">{{ selectedSection.section.content }}</div>
       </div>
       <div v-else class="right-home">
         <h1>AI方案</h1>
@@ -597,6 +626,7 @@ import {
   streamSection,
   streamWritingDirection,
   updateOutlineWordCount,
+  updateSectionContent,
   updateWritingConfig,
   uploadAndParseTenderFile
 } from '@/api/aiSolution'
@@ -690,6 +720,9 @@ const sectionGenerating = ref(false)
 const sectionNode = ref(null)
 const sectionStreamingText = ref('')
 const overallWritingRequirement = ref('')
+const sectionContentEditMode = ref(false)
+const sectionContentSaving = ref(false)
+const sectionContentDraft = ref('')
 
 const createForm = reactive({
   solutionMode: 'QUICK',
@@ -765,6 +798,11 @@ const generatePercent = computed(() => {
 })
 
 const showRightPreview = computed(() => mode.value === 'detail' && !!currentSolution.value)
+const canEditSectionContent = computed(() => {
+  return !!selectedSection.value?.id
+    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && !hasRunningTask.value
+})
 const shellClass = computed(() => ({
   'with-preview': showRightPreview.value,
   'no-preview': !showRightPreview.value
@@ -788,6 +826,15 @@ const generateActionText = computed(() => {
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
 })
+
+watch(
+  () => [selectedSection.value?.id, selectedSection.value?.section?.content],
+  () => {
+    if (!sectionContentEditMode.value) {
+      sectionContentDraft.value = selectedSection.value?.section?.content || ''
+    }
+  }
+)
 
 onMounted(async () => {
   await loadList()
@@ -833,6 +880,8 @@ async function loadDetail(id) {
   activeSolutionId.value = solutionId
   selectedSection.value = null
   selectedSectionSolutionId.value = null
+  sectionContentEditMode.value = false
+  sectionContentDraft.value = ''
   sectionNode.value = null
   sectionDialogVisible.value = false
 
@@ -995,6 +1044,8 @@ async function startCreate(solutionMode = 'QUICK') {
   activeSolutionId.value = null
   selectedSection.value = null
   selectedSectionSolutionId.value = null
+  sectionContentEditMode.value = false
+  sectionContentDraft.value = ''
   editMode.value = false
   previewOutlinesLocal.value = []
 
@@ -1610,6 +1661,54 @@ function selectSectionPreview(node) {
   if (!node || !currentSolution.value?.id) return
   selectedSection.value = node
   selectedSectionSolutionId.value = currentSolution.value.id
+  sectionContentEditMode.value = false
+  sectionContentDraft.value = node.section?.content || ''
+}
+
+function startEditSectionContent() {
+  if (!canEditSectionContent.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前方案有任务正在执行，暂不能修改正文')
+    return
+  }
+  sectionContentDraft.value = selectedSection.value?.section?.content || ''
+  sectionContentEditMode.value = true
+}
+
+function cancelEditSectionContent() {
+  sectionContentDraft.value = selectedSection.value?.section?.content || ''
+  sectionContentEditMode.value = false
+}
+
+function normalizeSectionContent(value) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+}
+
+async function saveSectionContent() {
+  if (!selectedSection.value?.id) {
+    ElMessage.warning('请先选择要修改的章节')
+    return
+  }
+  const content = normalizeSectionContent(sectionContentDraft.value)
+  if (!content.trim()) {
+    ElMessage.warning('正文内容不能为空')
+    return
+  }
+  sectionContentSaving.value = true
+  try {
+    const outlineId = selectedSection.value.id
+    await updateSectionContent(outlineId, content)
+    sectionContentEditMode.value = false
+    await refreshCurrent()
+    selectedSectionSolutionId.value = currentSolution.value?.id || null
+    selectedSection.value = findOutlineNodeById(currentSolution.value?.outlines || [], outlineId) || selectedSection.value
+    sectionContentDraft.value = selectedSection.value?.section?.content || ''
+    await loadList()
+    ElMessage.success('正文保存成功')
+  } finally {
+    sectionContentSaving.value = false
+  }
 }
 
 function openSectionDialog(node) {
@@ -1662,6 +1761,8 @@ async function onGenerateSection() {
     await refreshCurrent()
     selectedSectionSolutionId.value = currentSolution.value?.id || null
     selectedSection.value = findOutlineNodeById(currentSolution.value?.outlines || [], sectionNode.value.id) || selectedSection.value
+    sectionContentDraft.value = selectedSection.value?.section?.content || ''
+    sectionContentEditMode.value = false
     ElMessage.success('本段生成完成')
   } finally {
     sectionGenerating.value = false
@@ -1772,6 +1873,8 @@ function syncSelectedSectionAfterDetail(data) {
   if (!data?.outlines?.length) {
     selectedSection.value = null
     selectedSectionSolutionId.value = null
+    sectionContentEditMode.value = false
+    sectionContentDraft.value = ''
     return
   }
 
@@ -1780,6 +1883,9 @@ function syncSelectedSectionAfterDetail(data) {
     const latest = findOutlineNodeById(data.outlines, selectedSection.value.id)
     if (latest) {
       selectedSection.value = latest
+      if (!sectionContentEditMode.value) {
+        sectionContentDraft.value = latest.section?.content || ''
+      }
       return
     }
   }
@@ -1788,9 +1894,14 @@ function syncSelectedSectionAfterDetail(data) {
   if (firstGenerated) {
     selectedSection.value = firstGenerated
     selectedSectionSolutionId.value = data.id
+    if (!sectionContentEditMode.value) {
+      sectionContentDraft.value = firstGenerated.section?.content || ''
+    }
   } else {
     selectedSection.value = null
     selectedSectionSolutionId.value = null
+    sectionContentEditMode.value = false
+    sectionContentDraft.value = ''
   }
 }
 
@@ -2035,8 +2146,69 @@ const WritingDirectionEditor = defineComponent({
 .delete-bar { display: flex; justify-content: center; padding: 10px 0 18px; }
 .right-preview-card { background: linear-gradient(135deg, #eff6ff 0%, #fff 45%, #f7f2ff 100%); }
 .right-home { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #475569; padding: 40px; }
-.section-preview { height: 100%; padding: 24px; overflow-y: auto; background: #fff; }
-.section-preview pre { white-space: pre-wrap; line-height: 1.8; color: #334155; font-family: inherit; }
+.section-preview {
+  height: 100%;
+  padding: 24px 28px;
+  overflow: hidden;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.section-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-shrink: 0;
+}
+.section-preview-head h3 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.45;
+  font-weight: 800;
+  color: #06152b;
+}
+.section-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.section-content-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.9;
+  color: #0f2747;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+}
+.section-content-editor {
+  flex: 1;
+  min-height: 0;
+}
+.section-content-editor :deep(.el-textarea__inner) {
+  height: 100% !important;
+  min-height: 620px !important;
+  font-size: 18px;
+  line-height: 1.9;
+  color: #0f2747;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+  resize: vertical;
+  box-sizing: border-box;
+}
 .score-dialog-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .dialog-label { font-weight: 700; margin-bottom: 8px; }
 .word-preset-panel { display: flex; flex-direction: column; gap: 14px; }

@@ -88,6 +88,14 @@ export function getGenerationTask(taskId) {
   return request({ url: `/ai-solution/task/${taskId}`, method: 'get' })
 }
 
+export function updateSectionContent(outlineId, content) {
+  return request({
+    url: `/ai-solution/outline/${outlineId}/section-content`,
+    method: 'put',
+    data: { content }
+  })
+}
+
 export function exportWord(id) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: 180000 })
 }
