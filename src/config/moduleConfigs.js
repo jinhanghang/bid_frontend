@@ -1,7 +1,6 @@
 import { enableMap, aiTaskStatusMap, approvalStatusMap, tenderStatusMap } from '@/config/statusMaps'
 
 const enterpriseOptionSource = { baseUrl: '/enterprise', label: 'enterpriseName', value: 'id', key: 'enterprise' }
-const bidTemplateOptionSource = { baseUrl: '/bid-template', label: 'templateName', value: 'id', key: 'bidTemplate' }
 const promptTemplateOptionSource = { baseUrl: '/prompt-template', label: 'name', value: 'id', key: 'promptTemplate' }
 const knowledgeBaseOptionSource = { baseUrl: '/knowledge-base', label: 'kbName', value: 'id', key: 'knowledgeBase' }
 const tenderSourceOptionSource = { baseUrl: '/tender-source', label: 'sourceName', value: 'id', key: 'tenderSource' }
@@ -134,7 +133,7 @@ export const moduleConfigs = {
     searchFields: ['variableKey', 'variableLabel', 'inputType', 'remark'],
     columns: [
       { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'templateId', label: '所属模板', width: 160, type: 'optionLabel', optionSource: bidTemplateOptionSource },
+      { prop: 'templateId', label: '所属Prompt模板', width: 160, type: 'optionLabel', optionSource: promptTemplateOptionSource },
       { prop: 'variableKey', label: '变量Key', minWidth: 160 },
       { prop: 'variableLabel', label: '变量名称', minWidth: 160 },
       { prop: 'inputType', label: '输入类型', width: 120 },
@@ -142,7 +141,7 @@ export const moduleConfigs = {
       { prop: 'sortNo', label: '排序', width: 90 }
     ],
     formFields: [
-      { prop: 'templateId', label: '所属模板', type: 'select', required: true, optionSource: bidTemplateOptionSource },
+      { prop: 'templateId', label: '所属Prompt模板', type: 'select', optionSource: promptTemplateOptionSource },
       { prop: 'variableKey', label: '变量Key', required: true },
       { prop: 'variableLabel', label: '变量名称', required: true },
       { prop: 'inputType', label: '输入类型', type: 'select', default: 'text', options: [
@@ -154,35 +153,6 @@ export const moduleConfigs = {
       { prop: 'optionJson', label: '选项JSON', type: 'json', rows: 5 },
       { prop: 'sortNo', label: '排序', type: 'number', default: 0 },
       { prop: 'remark', label: '备注', type: 'textarea' }
-    ]
-  },
-
-  bidTemplate: {
-    title: '标书模板管理',
-    baseUrl: '/bid-template',
-    keywordPlaceholder: '按模板名称 / 类型查询',
-    searchFields: ['templateName', 'templateType', 'description'],
-    columns: [
-      { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'templateName', label: '模板名称', minWidth: 220 },
-      { prop: 'templateType', label: '模板类型', minWidth: 160 },
-      { prop: 'description', label: '说明', minWidth: 220 },
-      { prop: 'sortNo', label: '排序', width: 90 },
-      { prop: 'status', label: '状态', width: 90, type: 'status', map: enableMap },
-      { prop: 'createTime', label: '创建时间', width: 170 }
-    ],
-    formFields: [
-      { prop: 'templateName', label: '模板名称', required: true },
-      { prop: 'templateType', label: '模板类型', type: 'select', default: 'government_procurement', options: [
-        { label: '政府采购', value: 'government_procurement' },
-        { label: '工程类', value: 'engineering' },
-        { label: '服务类', value: 'service' },
-        { label: '自定义', value: 'custom' }
-      ] },
-      { prop: 'fileId', label: '模板文件', type: 'fileUpload', moduleType: 'bid_template', tip: '这里上传的是模板文件，保存到 fileId 字段；fileId 是文件资源表的主键，不是标书模板表的主键。' },
-      { prop: 'description', label: '模板描述', type: 'textarea' },
-      { prop: 'sortNo', label: '排序', type: 'number', default: 0 },
-      { prop: 'status', label: '状态', type: 'select', default: 1, options: [{ label: '启用', value: 1 }, { label: '停用', value: 0 }] }
     ]
   },
 
@@ -270,6 +240,7 @@ export const moduleConfigs = {
       ] }
     ]
   },
+
 
   tenderSource: {
     title: '招标数据源',

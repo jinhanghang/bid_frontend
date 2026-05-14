@@ -7,7 +7,6 @@ const Login = () => import('@/views/login/index.vue')
 const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
-const BidTemplateManage = () => import('@/views/bid/templates/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
@@ -45,7 +44,6 @@ const routes = [
       { path: 'recycle-bin', component: RecycleBin, meta: { title: '回收站', requiresBusiness: true } },
 
       { path: 'bid/projects', redirect: '/ai-bid' },
-      { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
 

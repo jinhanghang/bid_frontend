@@ -84,7 +84,7 @@ const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
-const currentTitle = computed(() => route.meta.title || 'AI标书系统')
+const currentTitle = computed(() => route.meta.title || '恒鼎·智慧AI')
 const avatarText = computed(() => (auth.displayName || '用').slice(0, 1))
 const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))

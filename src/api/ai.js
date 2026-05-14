@@ -40,14 +40,11 @@ export function exportMarkdown(resultId) {
   return request.post(`/ai/export/markdown/${resultId}`)
 }
 
-
 export function downloadExportFile(fileId) {
   return request.get(`/ai/export/download/${fileId}`, {
     responseType: 'blob'
   })
 }
-
-
 
 export function deleteAiGenerateTask(id) {
   return request.delete(`/ai-generate-task/${id}`)

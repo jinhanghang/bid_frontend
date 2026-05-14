@@ -290,8 +290,8 @@ const sceneGroupOptions = [
 const sceneOptions = [
   { label: '技术标模板', value: 'BID_TECH', group: 'BID' },
   { label: '商务标模板', value: 'BID_BUSINESS', group: 'BID' },
-  { label: '完整标书模板', value: 'BID_FULL', group: 'BID' },
-  { label: '通用标书模板', value: 'BID', group: 'BID' },
+  { label: '完整标书Prompt', value: 'BID_FULL', group: 'BID' },
+  { label: '通用标书Prompt', value: 'BID', group: 'BID' },
   { label: '合同模板', value: 'CONTRACT', group: 'CONTRACT' },
   { label: '可研报告模板', value: 'FEASIBILITY', group: 'FEASIBILITY' },
   { label: '环境影响评价模板', value: 'EIA', group: 'EIA' },

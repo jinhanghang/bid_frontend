@@ -3,13 +3,13 @@
     <div class="page-body">
       <div class="welcome-card card">
         <div>
-          <div class="welcome-title">AI标书工作台</div>
+          <div class="welcome-title">恒鼎·智慧AI工作台</div>
           <div class="welcome-sub">
             <template v-if="needEnterpriseApply">
               当前账号还没有绑定企业。请先提交企业申请，审核通过后即可使用标书项目、知识库、AI生成等业务功能。
             </template>
             <template v-else>
-              从项目创建、资料准备、AI生成到Word套版导出，集中查看当前企业的标书业务进展。
+              从项目创建、资料准备、AI生成到正式 Word 导出，集中查看当前企业的标书业务进展。
             </template>
           </div>
         </div>
@@ -182,7 +182,6 @@ const summary = reactive({
   documentExportCount: 0,
   knowledgeBaseCount: 0,
   companyMaterialCount: 0,
-  bidTemplateCount: 0,
   tenderNoticeCount: 0,
   tenderReportCount: 0,
   projectDraftCount: 0,
@@ -206,8 +205,7 @@ const stats = computed(() => [
   { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/bid/company-materials' },
   { title: 'AI生成结果', value: summary.aiGenerateResultCount || 0, desc: '生成内容沉淀', path: '/ai/results' },
   { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word / Markdown 导出', path: '/ai/exports' },
-  { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' },
-  { title: '标书模板', value: summary.bidTemplateCount || 0, desc: 'Word套版模板', path: '/bid/templates' }
+  { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
 ])
 
 const projectStatusCards = computed(() => [
@@ -226,9 +224,8 @@ const projectProgress = computed(() => {
 })
 
 const quickActions = [
-  { title: '新建标书项目', desc: '录入项目基础信息，绑定模板和知识库', icon: '项', path: '/bid/projects' },
+  { title: '新建标书项目', desc: '录入项目基础信息，绑定知识库和企业资料', icon: '项', path: '/bid/projects' },
   { title: '维护企业资料', desc: '补充公司简介、资质证书、项目业绩', icon: '企', path: '/bid/company-materials' },
-  { title: '上传标书模板', desc: '维护 .docx 模板并设置默认模板', icon: '模', path: '/bid/templates' },
   { title: '进入AI工作台', desc: '选择项目并发起技术标 / 商务标生成', icon: 'AI', path: '/ai/workbench' },
   { title: '查看生成结果', desc: '预览、复制、导出和重新生成', icon: '结', path: '/ai/results' },
   { title: '查看文件资源', desc: '检查OSS文件和业务依赖', icon: '文', path: '/system/files' }
@@ -247,8 +244,7 @@ async function loadStats() {
       documentExportCount: 0,
       knowledgeBaseCount: 0,
       companyMaterialCount: 0,
-      bidTemplateCount: 0,
-      tenderNoticeCount: 0,
+          tenderNoticeCount: 0,
       tenderReportCount: 0,
       projectDraftCount: 0,
       projectGeneratingCount: 0,
