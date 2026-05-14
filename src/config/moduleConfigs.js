@@ -394,26 +394,6 @@ export const moduleConfigs = {
     ]
   },
 
-  fileResource: {
-    title: '文件资源',
-    baseUrl: '/file-resource',
-    readonly: true,
-    keywordPlaceholder: '按原始文件名 / 模块 / 扩展名查询',
-    searchFields: ['originalName', 'moduleType', 'fileExt', 'storageType'],
-    columns: [
-      { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'moduleType', label: '模块', width: 130 },
-      { prop: 'bizId', label: '业务ID', width: 100 },
-      { prop: 'originalName', label: '原始文件名', minWidth: 220 },
-      { prop: 'fileExt', label: '扩展名', width: 90 },
-      { prop: 'fileSize', label: '大小', width: 120, type: 'fileSize' },
-      { prop: 'storageType', label: '存储', width: 100 },
-      { prop: 'fileUrl', label: '访问地址', minWidth: 220, type: 'link' },
-      { prop: 'createTime', label: '创建时间', width: 170 }
-    ],
-    formFields: []
-  },
-
   systemConfig: {
     title: '系统配置',
     baseUrl: '/sys-config',

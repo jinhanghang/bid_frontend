@@ -119,8 +119,7 @@ const stats = computed(() => [
 
 const quickActions = [
   { title: '新建标书项目', desc: '录入项目基础信息，绑定知识库和企业资料', icon: '项', path: '/bid/projects' },
-  { title: '维护企业资料', desc: '补充公司简介、资质证书、项目业绩', icon: '企', path: '/bid/company-materials' },
-  { title: '查看文件资源', desc: '检查OSS文件和业务依赖', icon: '文', path: '/system/files' }
+  { title: '维护企业资料', desc: '补充公司简介、资质证书、项目业绩', icon: '企', path: '/bid/company-materials' }
 ]
 
 onMounted(loadStats)
