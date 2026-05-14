@@ -33,10 +33,18 @@
                 title="删除项目"
                 @click.stop="confirmDeleteProject(project)"
               />
-              <el-icon class="fold-icon"><ArrowDown /></el-icon>
+              <el-button
+                class="project-fold-btn"
+                text
+                circle
+                title="展开/收起"
+                @click.stop="toggleProjectFold(project)"
+              >
+                <el-icon class="fold-icon" :class="{ collapsed: !isProjectExpanded(project) }"><ArrowDown /></el-icon>
+              </el-button>
             </div>
 
-            <div v-if="String(selectedProject?.id || '') === String(project.id)" class="doc-list">
+            <div v-if="isProjectExpanded(project)" class="doc-list">
               <div
                 v-for="doc in workflowDocuments"
                 :key="doc.type"
@@ -54,7 +62,6 @@
                 </div>
               </div>
 
-              <el-button class="export-project-btn" plain :disabled="!canExportProject">导出项目</el-button>
             </div>
           </div>
         </div>
@@ -707,6 +714,7 @@ const keyword = ref('')
 const projectLoading = ref(false)
 const projects = ref([])
 const selectedProject = ref(null)
+const expandedProjectId = ref('')
 const workflow = ref(null)
 const activeDoc = ref('')
 const uploadFiles = ref([])
@@ -839,9 +847,6 @@ const parseReportText = computed(() => workflow.value?.parseReportText || select
 const parseProgress = computed(() => Number(workflow.value?.parseTask?.progress || 0))
 const isParseRunning = computed(() => ['PARSING', 'EXTRACTING'].includes(String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()))
 const isParseSuccess = computed(() => String(selectedProject.value?.parseStatus || '').toUpperCase() === 'SUCCESS' || String(workflow.value?.parseTask?.status || '').toUpperCase() === 'SUCCESS')
-const canExportProject = computed(() => {
-  return workflowDocuments.value.some((item) => ['DONE', 'SUCCESS'].includes(String(item.status || '').toUpperCase()))
-})
 const parseStatusLabel = computed(() => {
   const doc = workflowDocuments.value.find((item) => item.type === 'PARSE_REPORT')
   return doc?.statusLabel || '-'
@@ -1016,6 +1021,7 @@ async function loadProjects(selectId) {
       await selectProject(id, false)
     } else {
       selectedProject.value = null
+      expandedProjectId.value = ''
       workflow.value = null
       activeDoc.value = ''
       resetTechnicalWorkspace()
@@ -1035,6 +1041,7 @@ async function selectProject(id, resetDoc = true) {
 
   workflow.value = await getBidProjectWorkflow(id)
   selectedProject.value = workflow.value?.project || projects.value.find((item) => String(item.id) === String(id)) || null
+  expandedProjectId.value = selectedProject.value?.id ? String(selectedProject.value.id) : ''
   if (String(technicalOutlinePendingProjectId.value || '') === String(id)) {
     technicalGeneratingOutline.value = true
   }
@@ -1044,6 +1051,27 @@ async function selectProject(id, resetDoc = true) {
     projects.value.splice(index, 1, { ...projects.value[index], ...selectedProject.value })
   }
   autoFillTechnicalRequirementAfterParse(false)
+}
+
+
+function isProjectExpanded(project) {
+  return String(selectedProject.value?.id || '') === String(project?.id || '')
+    && String(expandedProjectId.value || '') === String(project?.id || '')
+}
+
+async function toggleProjectFold(project) {
+  if (!project?.id) return
+  const projectId = String(project.id)
+
+  // 当前项目：只控制展开/收起，不重新加载，不影响右侧正在编辑/生成的页面。
+  if (String(selectedProject.value?.id || '') === projectId) {
+    expandedProjectId.value = String(expandedProjectId.value || '') === projectId ? '' : projectId
+    return
+  }
+
+  // 其他项目：先选中并展开。
+  await selectProject(project.id, true)
+  expandedProjectId.value = projectId
 }
 
 async function refreshWorkflow() {
@@ -1205,6 +1233,7 @@ async function confirmDeleteProject(project) {
   ElMessage.success('项目已删除')
   if (String(selectedProject.value?.id || '') === String(project.id)) {
     selectedProject.value = null
+    expandedProjectId.value = ''
     workflow.value = null
     activeDoc.value = ''
     resetTechnicalWorkspace()
@@ -2064,16 +2093,28 @@ function startPolling() {
   font-size: 12px;
 }
 
-.fold-icon {
-  margin-top: 4px;
-  color: #94a3b8;
-}
-
+.project-fold-btn,
 .project-delete-btn {
   width: 26px;
   height: 26px;
   margin-top: -4px;
   color: #94a3b8;
+}
+
+.project-fold-btn {
+  opacity: 1;
+}
+
+.fold-icon {
+  color: #94a3b8;
+  transition: transform 0.18s ease;
+}
+
+.fold-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.project-delete-btn {
   opacity: 0;
 }
 
@@ -2085,6 +2126,11 @@ function startPolling() {
 .project-delete-btn:hover {
   color: #ef4444;
   background: #fee2e2;
+}
+
+.project-fold-btn:hover {
+  color: #2563eb;
+  background: #eff6ff;
 }
 
 .doc-list {
@@ -3006,6 +3052,88 @@ function startPolling() {
   font-size: 13px;
 }
 
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
 </style>
 
 <style scoped>
@@ -3146,6 +3274,88 @@ function startPolling() {
   background: #2563eb;
   color: #fff;
 }
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
 </style>
 
 <style scoped>
@@ -3336,6 +3546,88 @@ function startPolling() {
   color: #64748b;
   font-size: 13px;
 }
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
 </style>
 
 <style scoped>
@@ -3366,6 +3658,88 @@ function startPolling() {
   min-height: 30px;
   padding: 4px 8px;
 }
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
 </style>
 
 
@@ -3466,4 +3840,238 @@ function startPolling() {
   color: #29364a;
 }
 
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+
+
+/* ============================================================
+   v27：目录树区域严格贴近 AI方案详情页。
+   只调整目录区样式，不改操作流程、不改接口、不改折叠/删除逻辑。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .solution-like-progress-wrap {
+  padding: 12px 20px 12px !important;
+  border-bottom: 0 !important;
+  background: #fff !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress-meta {
+  display: none !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress :deep(.el-progress-bar__outer) {
+  height: 6px !important;
+  border-radius: 999px !important;
+  background: #edf1f7 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress :deep(.el-progress-bar__inner) {
+  border-radius: 999px !important;
+  background: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-outline-scroll {
+  flex: 1 !important;
+  min-height: 0 !important;
+  padding: 0 20px 0 !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-outline-tree {
+  padding: 0 0 80px !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1,
+.ai-bid-page .bid-tech-body.generated .outline-lv2,
+.ai-bid-page .bid-tech-body.generated .outline-lv3 {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 36px !important;
+  border-bottom: 1px dashed #e5e7eb !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1 {
+  padding-left: 0 !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv2 {
+  padding-left: 20px !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv3 {
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding-left: 40px !important;
+  color: #6b7280 !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv2::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv3::before {
+  display: inline-block !important;
+  width: 16px !important;
+  margin-right: 8px !important;
+  color: #ef4444 !important;
+  text-align: center !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv2::before {
+  content: '▾' !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv3::before {
+  content: '•' !important;
+  font-size: 14px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row > span {
+  flex: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta em {
+  min-width: 82px !important;
+  color: #22c55e !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  font-style: normal !important;
+  font-weight: 700 !important;
+  text-align: right !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta :deep(.el-tag) {
+  height: 24px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta :deep(.el-button) {
+  height: 24px !important;
+  padding: 0 4px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row:hover,
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row.active {
+  background: #f8fafc !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-outline-next-tip {
+  padding: 8px 20px 0 !important;
+  color: #64748b !important;
+  font-size: 13px !important;
+  background: #fff !important;
+  border-top: 0 !important;
+  flex-shrink: 0 !important;
+}
 </style>
