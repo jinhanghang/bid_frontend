@@ -15,7 +15,8 @@ const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiPromptManage = () => import('@/views/ai/prompts/index.vue')
 const AiTaskManage = () => import('@/views/ai/tasks/index.vue')
 const AiResultManage = () => import('@/views/ai/results/index.vue')
-const AiExportManage = () => import('@/views/ai/exports/index.vue')
+const DownloadCenter = () => import('@/views/download/index.vue')
+const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
 const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
@@ -40,8 +41,8 @@ const routes = [
       { path: 'ai-quality', component: ProductPlaceholder, meta: { title: 'AI质检', productName: 'AI质检', productDesc: '用于检查投标文件响应完整性、废标风险、格式规范和评分项覆盖情况。' } },
       { path: 'solution-duplicate', component: ProductPlaceholder, meta: { title: '方案查重', productName: '方案查重', productDesc: '用于检查方案重复率、相似片段和可降重内容。' } },
       { path: 'materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
-      { path: 'download-center', component: AiExportManage, meta: { title: '下载中心', requiresBusiness: true } },
-      { path: 'recycle-bin', component: ProductPlaceholder, meta: { title: '回收站', productName: '回收站', productDesc: '用于恢复或彻底删除已删除的方案、标书、资料和导出文件。' } },
+      { path: 'download-center', component: DownloadCenter, meta: { title: '下载中心', requiresBusiness: true } },
+      { path: 'recycle-bin', component: RecycleBin, meta: { title: '回收站', requiresBusiness: true } },
 
       { path: 'bid/projects', redirect: '/ai-bid' },
       { path: 'bid/templates', component: BidTemplateManage, meta: { title: '标书模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
@@ -54,7 +55,7 @@ const routes = [
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },
       { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
-      { path: 'ai/exports', component: AiExportManage, meta: { title: '下载中心', requiresBusiness: true } },
+      { path: 'ai/exports', redirect: '/download-center' },
 
       { path: 'tender/sources', component: GenericCrudView, meta: { title: '招标数据源', configKey: 'tenderSource', requiresBusiness: true } },
       { path: 'tender/notices', component: GenericCrudView, meta: { title: '标讯商机', configKey: 'tenderNotice', requiresBusiness: true } },
@@ -135,5 +136,5 @@ function normalizeRoleList(values = []) {
     return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
   }).filter(Boolean)
 }
-
+  
 export default router

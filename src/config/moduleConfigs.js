@@ -271,25 +271,6 @@ export const moduleConfigs = {
     ]
   },
 
-  documentExport: {
-    title: '文档导出记录',
-    baseUrl: '/document-export',
-    readonly: true,
-    keywordPlaceholder: '按业务类型 / 状态查询',
-    searchFields: ['bizType', 'exportType', 'status', 'fileUrl', 'errorMsg'],
-    columns: [
-      { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'bizType', label: '业务类型', width: 120 },
-      { prop: 'bizId', label: '业务ID', width: 100 },
-      { prop: 'exportType', label: '导出类型', width: 110 },
-      { prop: 'fileId', label: '文件ID', width: 100 },
-      { prop: 'fileUrl', label: '文件地址', minWidth: 220, type: 'link' },
-      { prop: 'status', label: '状态', width: 100, type: 'status' },
-      { prop: 'createTime', label: '创建时间', width: 170 }
-    ],
-    formFields: []
-  },
-
   tenderSource: {
     title: '招标数据源',
     baseUrl: '/tender-source',
