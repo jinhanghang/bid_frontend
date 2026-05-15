@@ -191,6 +191,77 @@ export function downloadFileResource(id) {
   })
 }
 
+
+/**
+ * AI标书：技术方案单节点修改目标字数。
+ * 复用 AI方案目录接口，outlineId 属于 AI标书内部技术方案草稿。
+ */
+export function updateBidProjectTechnicalOutlineWordCount(outlineId, targetWordCount) {
+  return request.put(`/ai-solution/outline/${outlineId}/word-count`, { targetWordCount })
+}
+
+/**
+ * AI标书：技术方案批量修改下级节点目标字数。
+ */
+export function batchUpdateBidProjectTechnicalOutlineWordCount(outlineId, targetWordCount) {
+  return request.put(`/ai-solution/outline/${outlineId}/word-count/batch`, { targetWordCount })
+}
+
+/**
+ * AI标书：技术方案保存节点标题、编写方向和编写要求。
+ */
+export function updateBidProjectTechnicalWritingConfig(outlineId, data = {}) {
+  return request.put(`/ai-solution/outline/${outlineId}/writing-config`, data || {})
+}
+
+/**
+ * AI标书：技术方案新增目录节点。
+ */
+export function addBidProjectTechnicalOutlineNode(outlineId, data = {}) {
+  return request.post(`/ai-solution/outline/${outlineId}/children`, data || {})
+}
+
+/**
+ * AI标书：技术方案批量删除目录节点。
+ */
+export function deleteBidProjectTechnicalOutlineNodes(outlineIds = []) {
+  return request.delete('/ai-solution/outline/batch', { data: { outlineIds } })
+}
+
+/**
+ * AI标书：技术方案节点排序。
+ */
+export function moveBidProjectTechnicalOutlineNode(outlineId, direction) {
+  return request.post(`/ai-solution/outline/${outlineId}/move`, { direction })
+}
+
+/**
+ * AI标书：技术方案保存章节正文。
+ */
+export function updateBidProjectTechnicalSectionContent(outlineId, content) {
+  return request.put(`/ai-solution/outline/${outlineId}/section-content`, { content })
+}
+
+/**
+ * AI标书：技术方案保存整体编写要求。
+ */
+export function saveBidProjectTechnicalOverallWritingRequirement(solutionId, overallWritingRequirement) {
+  return request.put(`/ai-solution/${solutionId}/overall-writing-requirement`, { overallWritingRequirement })
+}
+
+/**
+ * AI标书：技术方案 AI帮写编写方向。
+ */
+export async function streamBidProjectTechnicalWritingDirection(outlineId, params = {}, handlers = {}) {
+  const query = new URLSearchParams()
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.append(key, value)
+  })
+  return streamFetch(`/ai-solution/outline/${outlineId}/writing-direction/stream?${query.toString()}`, {
+    method: 'GET'
+  }, handlers)
+}
+
 /**
  * AI标书：技术方案单章节流式生成。
  * 这里复用 AI方案已有单章节生成接口，传入的 outlineId 属于 AI标书内部技术方案草稿。

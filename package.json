@@ -1,7 +1,7 @@
 {
   "name": "ai-bid-web",
   "version": "1.0.0",
-  "description": "AI标书后台管理系统前端，基于后端 /ai_bid/api 接口生成。",
+  "description": "恒鼎·智慧AI 前端项目",
   "private": true,
   "type": "module",
   "scripts": {

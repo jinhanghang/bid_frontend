@@ -2,7 +2,7 @@
   <el-dialog
     v-model="innerVisible"
     title="导出正式 Word"
-    width="680px"
+    width="640px"
     destroy-on-close
     @closed="reset"
   >
@@ -15,17 +15,17 @@
           {{ generateTypeLabel(result?.bizType) }}
         </el-descriptions-item>
         <el-descriptions-item label="所属项目">
-          {{ project?.projectName || result?.projectName || '-' }}
+          {{ result?.projectName || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="项目编号">
-          {{ project?.projectCode || result?.projectCode || '-' }}
+          {{ result?.projectCode || '-' }}
         </el-descriptions-item>
       </el-descriptions>
 
       <div class="template-card">
         <div class="template-card__title">正式标书版导出</div>
         <div class="template-card__body">
-          <strong>使用系统内置正式 Word 样式</strong>
+          <strong>使用系统内置正式 Word 样式导出</strong>
           <span>系统会自动生成封面、目录、章节分页，并统一标题、正文、表格、列表样式。</span>
         </div>
         <div class="formal-options">
@@ -37,8 +37,8 @@
 
       <el-alert
         class="dialog-alert"
-        title="当前已删除上传式 Word 模板功能，导出统一使用系统正式标书版样式。"
-        type="info"
+        title="Word 标书模板模块已移除，导出统一使用系统内置正式 Word 样式。"
+        type="success"
         show-icon
         :closable="false"
       />
@@ -54,10 +54,9 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { exportWord } from '@/api/ai'
-import { getBidProject } from '@/api/bidProject'
 
 const props = defineProps({
   modelValue: {
@@ -78,7 +77,6 @@ const innerVisible = computed({
 })
 
 const submitting = ref(false)
-const project = ref(null)
 const result = computed(() => props.result || {})
 
 const form = reactive({
@@ -91,30 +89,6 @@ const resultTitle = computed(() => {
   return props.result?.title || props.result?.resultTitle || 'AI生成结果'
 })
 
-watch(
-  () => props.modelValue,
-  async (visible) => {
-    if (visible) {
-      await prepare()
-    }
-  }
-)
-
-async function prepare() {
-  project.value = null
-  form.includeCoverPage = true
-  form.includeCatalogPage = true
-  form.chapterPageBreak = true
-
-  if (isBidResult(props.result) && props.result?.bizId) {
-    try {
-      project.value = await getBidProject(props.result.bizId)
-    } catch (e) {
-      project.value = null
-    }
-  }
-}
-
 async function submitExport() {
   if (!props.result?.id && !props.result?.resultId) {
     ElMessage.warning('生成结果ID为空')
@@ -122,17 +96,15 @@ async function submitExport() {
   }
 
   const resultId = props.result.id || props.result.resultId
-  const payload = {
-    plainExport: true,
-    formalExport: true,
-    includeCoverPage: form.includeCoverPage,
-    includeCatalogPage: form.includeCatalogPage,
-    chapterPageBreak: form.chapterPageBreak
-  }
-
   submitting.value = true
   try {
-    const file = await exportWord(resultId, payload)
+    const file = await exportWord(resultId, {
+      plainExport: true,
+      formalExport: true,
+      includeCoverPage: form.includeCoverPage,
+      includeCatalogPage: form.includeCatalogPage,
+      chapterPageBreak: form.chapterPageBreak
+    })
     ElMessage.success('Word已导出，开始下载')
     emit('success', file)
     innerVisible.value = false
@@ -145,11 +117,6 @@ function reset() {
   form.includeCoverPage = true
   form.includeCatalogPage = true
   form.chapterPageBreak = true
-  project.value = null
-}
-
-function isBidResult(value) {
-  return String(value?.bizType || '').toLowerCase().startsWith('bid')
 }
 
 function generateTypeLabel(value) {
@@ -204,10 +171,8 @@ function generateTypeLabel(value) {
 
 .formal-options {
   display: flex;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 10px 18px;
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
 }
 </style>

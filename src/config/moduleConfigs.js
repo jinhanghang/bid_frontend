@@ -133,7 +133,6 @@ export const moduleConfigs = {
     searchFields: ['variableKey', 'variableLabel', 'inputType', 'remark'],
     columns: [
       { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'templateId', label: '所属Prompt模板', width: 160, type: 'optionLabel', optionSource: promptTemplateOptionSource },
       { prop: 'variableKey', label: '变量Key', minWidth: 160 },
       { prop: 'variableLabel', label: '变量名称', minWidth: 160 },
       { prop: 'inputType', label: '输入类型', width: 120 },
@@ -141,7 +140,6 @@ export const moduleConfigs = {
       { prop: 'sortNo', label: '排序', width: 90 }
     ],
     formFields: [
-      { prop: 'templateId', label: '所属Prompt模板', type: 'select', optionSource: promptTemplateOptionSource },
       { prop: 'variableKey', label: '变量Key', required: true },
       { prop: 'variableLabel', label: '变量名称', required: true },
       { prop: 'inputType', label: '输入类型', type: 'select', default: 'text', options: [
@@ -241,7 +239,6 @@ export const moduleConfigs = {
     ]
   },
 
-
   tenderSource: {
     title: '招标数据源',
     baseUrl: '/tender-source',
@@ -268,46 +265,48 @@ export const moduleConfigs = {
     ]
   },
 
-  // tenderNotice: {
-  //   title: '招标公告',
-  //   baseUrl: '/tender-notice',
-  //   keywordPlaceholder: '按公告标题 / 招标编号 / 采购人查询',
-  //   searchFields: ['noticeTitle', 'tenderNo', 'purchaser', 'agency', 'province', 'city'],
-  //   columns: [
-  //     { prop: 'id', label: 'ID', width: 90 },
-  //     { prop: 'noticeTitle', label: '公告标题', minWidth: 280 },
-  //     { prop: 'tenderNo', label: '招标编号', minWidth: 150 },
-  //     { prop: 'purchaser', label: '采购人', minWidth: 160 },
-  //     { prop: 'budgetAmount', label: '预算金额', width: 130, type: 'money' },
-  //     { prop: 'city', label: '城市', width: 90 },
-  //     { prop: 'publishDate', label: '发布日期', width: 120 },
-  //     { prop: 'deadline', label: '截止时间', width: 170 },
-  //     { prop: 'status', label: '状态', width: 100, type: 'status', map: tenderStatusMap }
-  //   ],
-  //   formWidth: '900px',
-  //   formFields: [
-  //     { prop: 'sourceId', label: '数据源', type: 'select', optionSource: tenderSourceOptionSource },
-  //     { prop: 'sourceCode', label: '数据源编码' },
-  //     { prop: 'noticeTitle', label: '公告标题', required: true },
-  //     { prop: 'tenderNo', label: '招标编号' },
-  //     { prop: 'purchaser', label: '招标方/采购人' },
-  //     { prop: 'contactPerson', label: '联系人' },
-  //     { prop: 'agency', label: '代理机构' },
-  //     { prop: 'budgetAmount', label: '预算金额', type: 'number' },
-  //     { prop: 'city', label: '城市' },
-  //     { prop: 'industry', label: '行业分类' },
-  //     { prop: 'noticeType', label: '公告类型' },
-  //     { prop: 'tenderScope', label: '招标范围', type: 'textarea' },
-  //     { prop: 'qualificationRequirements', label: '资质要求', type: 'textarea' },
-  //     { prop: 'publishDate', label: '发布日期', type: 'date' },
-  //     { prop: 'deadline', label: '截止时间', type: 'datetime' },
-  //     { prop: 'openBidTime', label: '开标时间', type: 'datetime' },
-  //     { prop: 'sourceUrl', label: '原文链接' },
-  //     { prop: 'contentText', label: '正文文本', type: 'textarea', rows: 8 },
-  //     { prop: 'contentHash', label: '内容Hash', required: true },
-  //     { prop: 'status', label: '状态', default: 'new' }
-  //   ]
-  // },
+  tenderNotice: {
+    title: '招标公告',
+    baseUrl: '/tender-notice',
+    keywordPlaceholder: '按公告标题 / 招标编号 / 采购人查询',
+    searchFields: ['noticeTitle', 'tenderNo', 'purchaser', 'agency', 'province', 'city'],
+    columns: [
+      { prop: 'id', label: 'ID', width: 90 },
+      { prop: 'noticeTitle', label: '公告标题', minWidth: 280 },
+      { prop: 'tenderNo', label: '招标编号', minWidth: 150 },
+      { prop: 'purchaser', label: '采购人', minWidth: 160 },
+      { prop: 'budgetAmount', label: '预算金额', width: 130, type: 'money' },
+      { prop: 'province', label: '省份', width: 90 },
+      { prop: 'city', label: '城市', width: 90 },
+      { prop: 'publishDate', label: '发布日期', width: 120 },
+      { prop: 'deadline', label: '截止时间', width: 170 },
+      { prop: 'status', label: '状态', width: 100, type: 'status', map: tenderStatusMap }
+    ],
+    formWidth: '900px',
+    formFields: [
+      { prop: 'sourceId', label: '数据源', type: 'select', optionSource: tenderSourceOptionSource },
+      { prop: 'sourceCode', label: '数据源编码' },
+      { prop: 'noticeTitle', label: '公告标题', required: true },
+      { prop: 'tenderNo', label: '招标编号' },
+      { prop: 'purchaser', label: '招标方/采购人' },
+      { prop: 'agency', label: '代理机构' },
+      { prop: 'budgetAmount', label: '预算金额', type: 'number' },
+      { prop: 'province', label: '省份' },
+      { prop: 'city', label: '城市' },
+      { prop: 'district', label: '区县' },
+      { prop: 'industry', label: '行业分类' },
+      { prop: 'noticeType', label: '公告类型' },
+      { prop: 'tenderScope', label: '招标范围', type: 'textarea' },
+      { prop: 'qualificationRequirements', label: '资质要求', type: 'textarea' },
+      { prop: 'publishDate', label: '发布日期', type: 'date' },
+      { prop: 'deadline', label: '截止时间', type: 'datetime' },
+      { prop: 'openBidTime', label: '开标时间', type: 'datetime' },
+      { prop: 'sourceUrl', label: '原文链接' },
+      { prop: 'contentText', label: '正文文本', type: 'textarea', rows: 8 },
+      { prop: 'contentHash', label: '内容Hash', required: true },
+      { prop: 'status', label: '状态', default: 'new' }
+    ]
+  },
 
   tenderReport: {
     title: '一键报备',

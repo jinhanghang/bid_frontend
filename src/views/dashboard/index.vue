@@ -9,7 +9,7 @@
               当前账号还没有绑定企业。请先提交企业申请，审核通过后即可使用标书项目、知识库、AI生成等业务功能。
             </template>
             <template v-else>
-              从项目创建、资料准备、AI标书生成到文件导出，集中查看当前企业的标书业务进展。
+              从项目创建、资料准备、AI生成到正式 Word 导出，集中查看当前企业的标书业务进展。
             </template>
           </div>
         </div>
@@ -24,15 +24,11 @@
         <div class="enterprise-options">
           <div class="enterprise-option">
             <div class="option-title">注册新企业</div>
-            <div class="option-desc">
-              适合你的企业还没有在系统中开通。提交企业入驻申请后，由平台管理员审核；审核通过后系统会创建企业，并把你设置为企业管理员。
-            </div>
+            <div class="option-desc">提交企业入驻申请后，由平台管理员审核；审核通过后系统会创建企业，并把你设置为企业管理员。</div>
           </div>
           <div class="enterprise-option">
             <div class="option-title">加入已有企业</div>
-            <div class="option-desc">
-              适合你的企业已经在系统中存在。提交加入申请后，由平台管理员或企业管理员审核；审核通过后你会加入该企业。
-            </div>
+            <div class="option-desc">提交加入申请后，由平台管理员或企业管理员审核；审核通过后你会加入该企业。</div>
           </div>
         </div>
       </div>
@@ -46,40 +42,29 @@
           </div>
         </div>
 
-        <div class="card list-card recent-project-card">
-          <div class="card-head">
-            <div>
-              <div class="guide-title">最近标书项目</div>
-              <div class="guide-desc">最近更新的项目，方便继续处理。</div>
-            </div>
-            <el-button link type="primary" @click="$router.push('/bid/projects')">全部项目</el-button>
-          </div>
-
-          <div v-if="summary.recentProjects?.length" class="recent-list">
-            <div v-for="item in summary.recentProjects" :key="item.id" class="recent-item" @click="$router.push(item.path)">
-              <div class="recent-main">
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.subTitle || '-' }} · {{ item.typeLabel || '标书项目' }}</span>
-              </div>
-              <div class="recent-right">
-                <el-tag :type="projectStatusTag(item.status)" effect="light">{{ item.statusLabel }}</el-tag>
-                <span>{{ item.timeText }}</span>
-              </div>
-            </div>
-          </div>
-          <el-empty v-else description="暂无标书项目" />
-        </div>
-
-        <div class="card quick-card">
-          <div class="guide-title">常用操作</div>
-          <div class="quick-grid">
-            <div v-for="item in quickActions" :key="item.title" class="quick-item" @click="$router.push(item.path)">
-              <div class="quick-icon">{{ item.icon }}</div>
+        <div class="dashboard-main-grid dashboard-main-grid--single">
+          <div class="card list-card">
+            <div class="card-head">
               <div>
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.desc }}</span>
+                <div class="guide-title">最近标书项目</div>
+                <div class="guide-desc">最近更新的项目，方便继续处理。</div>
+              </div>
+              <el-button link type="primary" @click="$router.push('/ai-bid')">全部项目</el-button>
+            </div>
+
+            <div v-if="summary.recentProjects?.length" class="recent-list">
+              <div v-for="item in summary.recentProjects" :key="item.id" class="recent-item" @click="$router.push(item.path)">
+                <div class="recent-main">
+                  <strong>{{ item.title }}</strong>
+                  <span>{{ item.subTitle || '-' }} · {{ item.typeLabel || '标书项目' }}</span>
+                </div>
+                <div class="recent-right">
+                  <el-tag :type="projectStatusTag(item.status)" effect="light">{{ item.statusLabel }}</el-tag>
+                  <span>{{ item.timeText }}</span>
+                </div>
               </div>
             </div>
+            <el-empty v-else description="暂无标书项目" />
           </div>
         </div>
       </template>
@@ -101,8 +86,6 @@ const summary = reactive({
   documentExportCount: 0,
   knowledgeBaseCount: 0,
   companyMaterialCount: 0,
-  tenderNoticeCount: 0,
-  tenderReportCount: 0,
   recentProjects: []
 })
 
@@ -111,16 +94,11 @@ const isPlatformUser = computed(() => roleCodes.value.includes('SUPERADMIN') || 
 const needEnterpriseApply = computed(() => !isPlatformUser.value && !auth.user?.enterpriseId)
 
 const stats = computed(() => [
-  { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/bid/projects' },
-  { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/bid/company-materials' },
-  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word / Markdown 导出', path: '/ai/exports' },
+  { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/ai-bid' },
+  { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/materials' },
+  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word / Markdown 导出', path: '/download-center' },
   { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
 ])
-
-const quickActions = [
-  { title: '新建标书项目', desc: '录入项目基础信息，绑定知识库和企业资料', icon: '项', path: '/bid/projects' },
-  { title: '维护企业资料', desc: '补充公司简介、资质证书、项目业绩', icon: '企', path: '/bid/company-materials' }
-]
 
 onMounted(loadStats)
 
@@ -133,8 +111,6 @@ async function loadStats() {
       documentExportCount: 0,
       knowledgeBaseCount: 0,
       companyMaterialCount: 0,
-      tenderNoticeCount: 0,
-      tenderReportCount: 0,
       recentProjects: [],
       ...(res || {})
     })
@@ -144,11 +120,7 @@ async function loadStats() {
 }
 
 function normalizeRoleCode(value = '') {
-  return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/^ROLE[_-]?/, '')
-    .replace(/[^A-Z0-9]/g, '')
+  return String(value).trim().toUpperCase().replace(/^ROLE[_-]?/, '').replace(/[^A-Z0-9]/g, '')
 }
 
 function normalizeRoleList(values = []) {
@@ -231,7 +203,7 @@ function projectStatusTag(status) {
 
 .dashboard-stats {
   margin-top: 16px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .stat-card {
@@ -250,11 +222,15 @@ function projectStatusTag(status) {
   font-size: 12px;
 }
 
-.recent-project-card,
-.quick-card {
+.dashboard-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
   margin-top: 16px;
 }
 
+.process-card,
+.todo-card,
 .list-card,
 .quick-card {
   padding: 20px;
@@ -279,11 +255,49 @@ function projectStatusTag(status) {
   font-size: 13px;
 }
 
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.status-card {
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.status-card__label {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.status-card__value {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.progress-section {
+  margin-top: 16px;
+}
+
+.progress-title {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-sub);
+}
+
+.todo-list,
 .recent-list {
   display: grid;
   gap: 10px;
 }
 
+.todo-item,
 .recent-item {
   display: flex;
   align-items: center;
@@ -295,10 +309,22 @@ function projectStatusTag(status) {
   border: 1px solid var(--border);
 }
 
+.todo-item.is-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.todo-item.is-danger {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+
+.todo-main,
 .recent-main {
   min-width: 0;
 }
 
+.todo-main strong,
 .recent-main strong {
   display: block;
   color: var(--text-main);
@@ -307,6 +333,7 @@ function projectStatusTag(status) {
   white-space: nowrap;
 }
 
+.todo-main span,
 .recent-main span {
   display: block;
   margin-top: 5px;
@@ -325,9 +352,13 @@ function projectStatusTag(status) {
   font-size: 12px;
 }
 
+.quick-card {
+  margin-top: 16px;
+}
+
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   margin-top: 16px;
 }
@@ -336,31 +367,30 @@ function projectStatusTag(status) {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 72px;
-  padding: 16px;
-  border-radius: 14px;
+  padding: 14px;
   border: 1px solid var(--border);
+  border-radius: 14px;
   background: #f8fafc;
   cursor: pointer;
   transition: all 0.18s ease;
 }
 
 .quick-item:hover {
+  border-color: #2563eb;
   background: #eff6ff;
-  border-color: #bfdbfe;
-  transform: translateY(-1px);
 }
 
 .quick-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: #2563eb;
-  color: #fff;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: #dbeafe;
+  color: #2563eb;
   font-weight: 900;
+  flex-shrink: 0;
 }
 
 .quick-item strong {
@@ -373,22 +403,30 @@ function projectStatusTag(status) {
   margin-top: 4px;
   color: var(--text-sub);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
-@media (max-width: 1200px) {
-  .dashboard-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
+@media (max-width: 1480px) {
+  .dashboard-stats,
   .quick-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .status-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 768px) {
-  .welcome-card,
-  .enterprise-options {
+@media (max-width: 1080px) {
+  .dashboard-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .enterprise-options,
+  .dashboard-stats,
+  .quick-grid {
     grid-template-columns: 1fr;
   }
 
@@ -396,10 +434,9 @@ function projectStatusTag(status) {
     align-items: flex-start;
     flex-direction: column;
   }
-
-  .dashboard-stats,
-  .quick-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>
+
+.dashboard-main-grid--single {
+  grid-template-columns: 1fr;
+}

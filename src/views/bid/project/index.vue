@@ -334,7 +334,7 @@
               </template>
 
               <template v-else>
-                <div class="tech-detail-panel">
+                <div class="tech-detail-panel ai-solution-like-detail">
                   <div class="tech-detail-top">
                     <div>
                       <h2>{{ technicalForm.solutionName || selectedProject?.projectName || '技术方案' }}</h2>
@@ -346,87 +346,146 @@
                       </div>
                       <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
                     </div>
-                    <el-button plain @click="activeDoc = ''">退出技术方案</el-button>
+                    <el-button
+                      :icon="technicalEditMode ? Close : EditPen"
+                      :disabled="!canEditTechnicalOutline"
+                      @click="toggleTechnicalEditMode"
+                    >
+                      {{ technicalEditMode ? '退出编辑' : '编辑' }}
+                    </el-button>
                   </div>
 
-                  <div v-if="technicalOutlines.length" class="solution-like-progress-wrap">
-                    <div class="solution-like-progress-meta">
-                      <span>共 {{ technicalOutlineLeafCount }} 个章节</span>
-                      <span>已完成 {{ technicalFinishedLeafCount }} / {{ technicalLeafNodes.length }} 个章节</span>
-                      <span v-if="fullGenerating || isTechnicalRunningByBackend">正在生成正文，请稍候...</span>
+                  <template v-if="technicalEditMode">
+                    <div class="edit-tabs">
+                      <button :class="{ active: technicalEditTab === 'word' }" @click="technicalEditTab = 'word'">修改字数</button>
+                      <button :class="{ active: technicalEditTab === 'direction' }" @click="technicalEditTab = 'direction'">编写方向</button>
+                      <button :class="{ active: technicalEditTab === 'add' }" @click="technicalEditTab = 'add'">新增节点</button>
+                      <button :class="{ active: technicalEditTab === 'delete' }" @click="technicalEditTab = 'delete'">删除节点</button>
+                      <button :class="{ active: technicalEditTab === 'sort' }" @click="technicalEditTab = 'sort'">节点排序</button>
                     </div>
-                    <el-progress
-                      :percentage="technicalGeneratePercent"
-                      :stroke-width="6"
-                      :show-text="false"
-                      class="solution-like-progress"
-                    />
-                  </div>
+                    <el-scrollbar class="edit-scroll">
+                      <section v-if="technicalEditTab === 'word'" class="edit-section">
+                        <OutlineTree :nodes="technicalOutlines" mode="word" @word-change="onTechnicalNodeWordChange" @batch-word="onTechnicalBatchWord" />
+                      </section>
 
-                  <el-scrollbar class="tech-detail-outline-scroll">
-                    <div v-if="isCurrentTechnicalOutlineGenerating" class="tech-outline-loading compact">
-                      <el-icon class="is-loading"><Loading /></el-icon>
-                      <strong>正在生成技术方案目录</strong>
-                      <p>系统正在结合采购需求、评分标准和编写方向生成目录，请不要重复点击。</p>
-                    </div>
-                    <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
-                    <div v-else class="tech-outline-tree">
-                      <template v-for="chapter in technicalOutlines" :key="chapter.id || chapter.title">
-                        <div class="outline-lv1">{{ chapter.title }}</div>
-                        <template v-for="section in chapter.children" :key="section.id || section.title">
-                          <div class="outline-lv2">{{ section.title }}</div>
-                          <div
-                            v-for="leaf in section.children"
-                            :key="leaf.id || leaf.title"
-                            class="outline-lv3 tech-leaf-row"
-                            :class="{ active: String(selectedTechnicalLeaf?.id || '') === String(leaf.id || '') }"
-                            @click="selectTechnicalLeaf(leaf)"
-                          >
-                            <span>{{ leaf.title }}</span>
-                            <div class="tech-leaf-meta">
-                              <em>{{ leaf.actualWordCount || 0 }} / {{ leaf.wordCount || 0 }}字</em>
-                              <el-tag size="small" :type="technicalNodeStatusType(leaf)" effect="light">{{ technicalNodeStatusLabel(leaf) }}</el-tag>
-                              <el-button
-                                size="small"
-                                text
-                                type="primary"
-                                :disabled="fullGenerating || isTechnicalRunningByBackend || sectionGenerating"
-                                @click.stop="openTechnicalSectionDialog(leaf)"
-                              >
-                                {{ isTechnicalLeafDone(leaf) ? '重编' : (String(leaf.contentStatus || '').toUpperCase() === 'FAILED' ? '重试' : '生成') }}
-                              </el-button>
+                      <section v-else-if="technicalEditTab === 'direction'" class="edit-section direction-section">
+                        <div class="overall-card">
+                          <div class="card-title">
+                            <span>方案整体编写要求</span>
+                            <div>
+                              <el-button size="small" type="primary" plain @click="streamTechnicalOverallDirection">AI帮写</el-button>
+                              <el-button size="small" type="primary" @click="onSaveTechnicalOverallRequirement">保存</el-button>
                             </div>
                           </div>
-                        </template>
+                          <el-input
+                            v-model="technicalOverallWritingRequirement"
+                            type="textarea"
+                            :rows="4"
+                            maxlength="10000"
+                            show-word-limit
+                            placeholder="请输入方案整体编写要求，例如禁止使用某些称谓、语言风格、格式要求等"
+                          />
+                        </div>
+                        <WritingDirectionEditor
+                          :nodes="technicalOutlines"
+                          :streaming-id="technicalStreamingOutlineId"
+                          @ai-write="onTechnicalAiWriteDirection"
+                          @save="onTechnicalSaveWritingConfig"
+                        />
+                      </section>
+
+                      <section v-else-if="technicalEditTab === 'add'" class="edit-section">
+                        <OutlineTree :nodes="technicalOutlines" mode="add" @add-node="openTechnicalAddNodeDialog" />
+                      </section>
+
+                      <section v-else-if="technicalEditTab === 'delete'" class="edit-section">
+                        <div class="delete-bar">
+                          <el-button type="danger" :disabled="!technicalDeleteIds.length" @click="onTechnicalDeleteNodes">删除选中项</el-button>
+                        </div>
+                        <OutlineTree :nodes="technicalOutlines" mode="delete" v-model:selected="technicalDeleteIds" />
+                      </section>
+
+                      <section v-else class="edit-section">
+                        <OutlineTree :nodes="technicalOutlines" mode="sort" @move="onTechnicalMoveNode" />
+                      </section>
+                    </el-scrollbar>
+                  </template>
+
+                  <template v-else>
+                    <el-scrollbar class="tech-detail-outline-scroll">
+                      <div v-if="isCurrentTechnicalOutlineGenerating" class="tech-outline-loading compact">
+                        <el-icon class="is-loading"><Loading /></el-icon>
+                        <strong>正在生成技术方案目录</strong>
+                        <p>系统正在结合采购需求、评分标准和编写方向生成目录，请不要重复点击。</p>
+                      </div>
+                      <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
+                      <template v-else>
+                        <el-progress
+                          :percentage="technicalGeneratePercent"
+                          :show-text="false"
+                          color="#ff4d4f"
+                          class="solution-like-progress"
+                        />
+                        <OutlineTree
+                          :nodes="technicalOutlines"
+                          mode="generate"
+                          @preview="selectTechnicalLeaf"
+                          @section-generate="openTechnicalSectionDialog"
+                        />
                       </template>
+                    </el-scrollbar>
+
+                    <div v-if="technicalOutlines.length && !isCurrentTechnicalOutlineGenerating" class="tech-outline-next-tip">
+                      {{ technicalStep >= 5 ? '正文生成完成后，可点击章节查看结果，也可导出 Word。切换页面不会丢失生成进度。' : '目录已生成。请先设置篇幅，再开始生成正文。切换页面不会丢失结果。' }}
                     </div>
-                  </el-scrollbar>
 
-                  <div v-if="technicalOutlines.length && !isCurrentTechnicalOutlineGenerating" class="tech-outline-next-tip">
-                    {{ technicalStep >= 5 ? '正文生成完成后，可点击章节查看结果，也可导出 Word。切换页面不会丢失生成进度。' : '目录已生成。请先设置篇幅，再开始生成正文。切换页面不会丢失结果。' }}
-                  </div>
-
-                  <div class="tech-preview-actions detail-actions-like-solution">
-                    <el-button size="large" :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">重编全文</el-button>
-                    <el-button size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
-                    <el-button size="large" type="success" :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnicalWord">导出Word</el-button>
-                  </div>
+                    <div class="tech-preview-actions detail-actions-like-solution">
+                      <el-button size="large" :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">重编全文</el-button>
+                      <el-button size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
+                      <el-button size="large" type="success" :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnicalWord">导出Word</el-button>
+                    </div>
+                  </template>
                 </div>
               </template>
             </div>
 
             <div class="bid-tech-right">
               <template v-if="technicalGeneratedView">
-                <div class="tech-result-panel solution-like-result-panel">
-                  <div class="solution-like-result-title">
-                    {{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}
+                <div v-if="selectedTechnicalLeafContent" class="section-preview tech-section-preview">
+                  <div class="section-preview-head">
+                    <h3>{{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}</h3>
+                    <div class="section-preview-actions">
+                      <template v-if="technicalSectionContentEditMode">
+                        <el-button size="small" :disabled="technicalSectionContentSaving" @click="cancelEditTechnicalSectionContent">取消</el-button>
+                        <el-button size="small" type="primary" :loading="technicalSectionContentSaving" @click="saveTechnicalSectionContent">保存</el-button>
+                      </template>
+                      <el-button
+                        v-else
+                        size="small"
+                        type="primary"
+                        plain
+                        :icon="EditPen"
+                        :disabled="!canEditTechnicalSectionContent"
+                        @click="startEditTechnicalSectionContent"
+                      >
+                        编辑
+                      </el-button>
+                    </div>
                   </div>
-                  <div v-if="selectedTechnicalLeafContent" class="result-preview-body result-main-body solution-like-result-body">
-                    <pre>{{ selectedTechnicalLeafContent }}</pre>
-                  </div>
-                  <div v-else class="result-main-empty">
-                    <el-empty :description="selectedTechnicalLeaf ? '当前章节尚未生成正文，可点击目录行右侧生成本段' : '右侧用于预览章节正文。生成完成后会自动选中第一个已生成章节。'" :image-size="120" />
-                  </div>
+                  <el-input
+                    v-if="technicalSectionContentEditMode"
+                    v-model="technicalSectionContentDraft"
+                    class="section-content-editor"
+                    type="textarea"
+                    :autosize="{ minRows: 24 }"
+                    maxlength="200000"
+                    show-word-limit
+                    placeholder="请输入章节正文内容"
+                  />
+                  <div v-else class="section-content-preview">{{ selectedTechnicalLeafContent }}</div>
+                </div>
+                <div v-else class="result-main-empty">
+                  <el-empty :description="selectedTechnicalLeaf ? '当前章节尚未生成正文，可点击目录行右侧生成本段' : '右侧用于预览章节正文。生成完成后会自动选中第一个已生成章节。'" :image-size="120" />
                 </div>
               </template>
 
@@ -527,6 +586,29 @@
       <template #footer>
         <el-button @click="wordPresetVisible = false">取消</el-button>
         <el-button type="primary" :loading="wordPresetSaving" @click="applyTechnicalWordPreset">确认设置</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="technicalAddNodeVisible" title="新增目录节点" width="520px" append-to-body>
+      <el-form label-width="90px">
+        <el-form-item label="标题">
+          <el-input v-model="technicalAddNodeForm.title" placeholder="请输入节点标题" />
+        </el-form-item>
+        <el-form-item label="插入方式">
+          <el-radio-group v-model="technicalAddNodeForm.insertType">
+            <el-radio-button label="CHILD">作为子节点</el-radio-button>
+            <el-radio-button label="SIBLING_AFTER">作为同级后节点</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="目标字数">
+          <el-select v-model="technicalAddNodeForm.targetWordCount">
+            <el-option v-for="n in wordOptions" :key="n" :label="`${n}字`" :value="n" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="technicalAddNodeVisible = false">取消</el-button>
+        <el-button type="primary" @click="onTechnicalAddNode">保存</el-button>
       </template>
     </el-dialog>
 
@@ -684,11 +766,11 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, genFileId } from 'element-plus'
+import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag, genFileId } from 'element-plus'
 import { listKnowledgeBases } from '@/api/knowledge'
-import { ArrowDown, Delete, Document, Loading, Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   enterBidDocument,
   applyBidProjectTechnicalWordPreset,
@@ -705,7 +787,16 @@ import {
   rewriteBidProjectTechnicalFull,
   startReadTenderProject,
   streamBidProjectTechnicalSection,
-  uploadTenderProject
+  streamBidProjectTechnicalWritingDirection,
+  uploadTenderProject,
+  saveBidProjectTechnicalOverallWritingRequirement,
+  updateBidProjectTechnicalOutlineWordCount,
+  batchUpdateBidProjectTechnicalOutlineWordCount,
+  updateBidProjectTechnicalWritingConfig,
+  addBidProjectTechnicalOutlineNode,
+  deleteBidProjectTechnicalOutlineNodes,
+  moveBidProjectTechnicalOutlineNode,
+  updateBidProjectTechnicalSectionContent
 } from '@/api/bidProject'
 
 const router = useRouter()
@@ -736,6 +827,17 @@ const fullGenerating = ref(false)
 const exportingWord = ref(false)
 const wordPreset = reactive({ mode: 'FIXED', wordCount: 300 })
 const selectedTechnicalLeaf = ref(null)
+const technicalEditMode = ref(false)
+const technicalEditTab = ref('word')
+const technicalDeleteIds = ref([])
+const technicalAddNodeVisible = ref(false)
+const technicalAddBaseNode = ref(null)
+const technicalAddNodeForm = reactive({ title: '', insertType: 'CHILD', targetWordCount: 300 })
+const technicalOverallWritingRequirement = ref('')
+const technicalStreamingOutlineId = ref(null)
+const technicalSectionContentEditMode = ref(false)
+const technicalSectionContentDraft = ref('')
+const technicalSectionContentSaving = ref(false)
 const sectionNode = ref(null)
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
@@ -904,6 +1006,19 @@ const technicalGeneratedView = computed(() => {
     || isTechnicalRunningByBackend.value
 })
 const selectedTechnicalLeafContent = computed(() => getTechnicalLeafContent(selectedTechnicalLeaf.value))
+const canEditTechnicalOutline = computed(() => {
+  return technicalOutlines.value.length > 0
+    && !isCurrentTechnicalOutlineGenerating.value
+    && !fullGenerating.value
+    && !isTechnicalRunningByBackend.value
+})
+const canEditTechnicalSectionContent = computed(() => {
+  return !!selectedTechnicalLeaf.value?.id
+    && !!selectedTechnicalLeafContent.value
+    && !fullGenerating.value
+    && !isTechnicalRunningByBackend.value
+    && !sectionGenerating.value
+})
 const canGenerateTechnicalContent = computed(() => {
   return !!selectedProject.value?.id
     && technicalOutlines.value.length > 0
@@ -1256,6 +1371,7 @@ async function loadTechnicalSolution() {
   try {
     technicalSolution.value = await getBidProjectTechnicalSolution(selectedProject.value.id)
     hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
+    syncTechnicalOverallRequirement()
   } catch (e) {
     technicalSolution.value = null
     technicalOutlines.value = []
@@ -1274,7 +1390,10 @@ function hydrateTechnicalOutlinesFromSolution(solution) {
     if (!selectedTechnicalLeaf.value && hasContent) selectFirstGeneratedTechnicalLeaf()
   } else {
     selectedTechnicalLeaf.value = null
+    technicalSectionContentEditMode.value = false
+    technicalSectionContentDraft.value = ''
   }
+  syncTechnicalOverallRequirement()
 }
 
 function mapSolutionOutlineNode(node) {
@@ -1830,6 +1949,8 @@ function getTechnicalLeafContent(node) {
 
 function selectTechnicalLeaf(node) {
   selectedTechnicalLeaf.value = node || null
+  technicalSectionContentEditMode.value = false
+  technicalSectionContentDraft.value = getTechnicalLeafContent(node) || ''
 }
 
 function syncSelectedTechnicalLeaf() {
@@ -1837,6 +1958,180 @@ function syncSelectedTechnicalLeaf() {
   const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
   if (latest) selectedTechnicalLeaf.value = latest
   else selectedTechnicalLeaf.value = null
+}
+
+function syncTechnicalOverallRequirement() {
+  technicalOverallWritingRequirement.value = technicalSolution.value?.overallWritingRequirement
+    || technicalForm.outlineWritingDirection
+    || ''
+}
+
+function toggleTechnicalEditMode() {
+  if (!canEditTechnicalOutline.value) return
+  technicalEditMode.value = !technicalEditMode.value
+  if (technicalEditMode.value) {
+    technicalEditTab.value = 'word'
+    syncTechnicalOverallRequirement()
+  }
+}
+
+async function reloadTechnicalAfterOutlineEdit(successMsg) {
+  await loadTechnicalSolution()
+  await refreshWorkflow()
+  if (successMsg) ElMessage.success(successMsg)
+}
+
+async function onTechnicalNodeWordChange({ node, value }) {
+  if (!node?.id) return
+  await updateBidProjectTechnicalOutlineWordCount(node.id, Number(value || 0))
+  node.targetWordCount = Number(value || 0)
+  node.wordCount = Number(value || 0)
+  await reloadTechnicalAfterOutlineEdit('字数已保存')
+}
+
+async function onTechnicalBatchWord({ node, value }) {
+  if (!node?.id) return
+  await batchUpdateBidProjectTechnicalOutlineWordCount(node.id, Number(value || 0))
+  await reloadTechnicalAfterOutlineEdit('下级章节字数已批量修改')
+}
+
+async function onSaveTechnicalOverallRequirement() {
+  const solutionId = technicalSolution.value?.id
+  if (!solutionId) {
+    ElMessage.warning('当前技术方案缺少方案ID')
+    return
+  }
+  await saveBidProjectTechnicalOverallWritingRequirement(solutionId, technicalOverallWritingRequirement.value || '')
+  technicalForm.outlineWritingDirection = technicalOverallWritingRequirement.value || ''
+  await reloadTechnicalAfterOutlineEdit('整体编写要求已保存')
+}
+
+async function streamTechnicalOverallDirection() {
+  if (!technicalOutlines.value.length) {
+    ElMessage.warning('请先生成目录')
+    return
+  }
+  const firstLeaf = flattenTechnicalLeaves(technicalOutlines.value)[0]
+  if (!firstLeaf?.id) {
+    ElMessage.warning('没有可参考的章节')
+    return
+  }
+  technicalOverallWritingRequirement.value = ''
+  technicalStreamingOutlineId.value = firstLeaf.id
+  try {
+    await streamBidProjectTechnicalWritingDirection(firstLeaf.id, {
+      title: technicalForm.solutionName || selectedProject.value?.projectName || '技术方案',
+      overall: true
+    }, {
+      onMessage(chunk) {
+        technicalOverallWritingRequirement.value += chunk
+      },
+      onError(message) {
+        ElMessage.error(message || 'AI帮写失败')
+      }
+    })
+  } finally {
+    technicalStreamingOutlineId.value = null
+  }
+}
+
+async function onTechnicalAiWriteDirection(node) {
+  if (!node?.id) return
+  node.writingDirection = ''
+  technicalStreamingOutlineId.value = node.id
+  try {
+    await streamBidProjectTechnicalWritingDirection(node.id, {
+      title: node.title,
+      overallWritingRequirement: technicalOverallWritingRequirement.value || technicalForm.outlineWritingDirection || ''
+    }, {
+      onMessage(chunk) {
+        node.writingDirection = `${node.writingDirection || ''}${chunk}`
+      },
+      onError(message) {
+        ElMessage.error(message || 'AI帮写失败')
+      }
+    })
+  } finally {
+    technicalStreamingOutlineId.value = null
+  }
+}
+
+async function onTechnicalSaveWritingConfig(node) {
+  if (!node?.id) return
+  await updateBidProjectTechnicalWritingConfig(node.id, {
+    title: node.title,
+    writingDirection: node.writingDirection || '',
+    writingRequirement: node.writingRequirement || '',
+    writingStyle: node.writingStyle || 'GENERAL'
+  })
+  await reloadTechnicalAfterOutlineEdit('编写配置已保存')
+}
+
+function openTechnicalAddNodeDialog(node) {
+  if (!node?.id) return
+  technicalAddBaseNode.value = node
+  technicalAddNodeForm.title = ''
+  technicalAddNodeForm.insertType = 'CHILD'
+  technicalAddNodeForm.targetWordCount = 300
+  technicalAddNodeVisible.value = true
+}
+
+async function onTechnicalAddNode() {
+  if (!technicalAddBaseNode.value?.id) return
+  if (!technicalAddNodeForm.title?.trim()) {
+    ElMessage.warning('请输入节点标题')
+    return
+  }
+  await addBidProjectTechnicalOutlineNode(technicalAddBaseNode.value.id, {
+    ...technicalAddNodeForm,
+    title: technicalAddNodeForm.title.trim()
+  })
+  technicalAddNodeVisible.value = false
+  await reloadTechnicalAfterOutlineEdit('节点已新增')
+}
+
+async function onTechnicalDeleteNodes() {
+  if (!technicalDeleteIds.value.length) return
+  try {
+    await ElMessageBox.confirm('删除节点后，其下所有子节点及已生成正文将一并删除，是否继续？', '确认删除', { type: 'warning' })
+  } catch (e) {
+    return
+  }
+  await deleteBidProjectTechnicalOutlineNodes(technicalDeleteIds.value)
+  technicalDeleteIds.value = []
+  await reloadTechnicalAfterOutlineEdit('节点已删除')
+}
+
+async function onTechnicalMoveNode({ node, direction }) {
+  if (!node?.id) return
+  await moveBidProjectTechnicalOutlineNode(node.id, direction)
+  await reloadTechnicalAfterOutlineEdit('排序已更新')
+}
+
+function startEditTechnicalSectionContent() {
+  if (!canEditTechnicalSectionContent.value) return
+  technicalSectionContentDraft.value = selectedTechnicalLeafContent.value || ''
+  technicalSectionContentEditMode.value = true
+}
+
+function cancelEditTechnicalSectionContent() {
+  technicalSectionContentDraft.value = selectedTechnicalLeafContent.value || ''
+  technicalSectionContentEditMode.value = false
+}
+
+async function saveTechnicalSectionContent() {
+  if (!selectedTechnicalLeaf.value?.id) return
+  technicalSectionContentSaving.value = true
+  try {
+    await updateBidProjectTechnicalSectionContent(selectedTechnicalLeaf.value.id, technicalSectionContentDraft.value || '')
+    await loadTechnicalSolution()
+    const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
+    selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
+    technicalSectionContentEditMode.value = false
+    ElMessage.success('正文已保存')
+  } finally {
+    technicalSectionContentSaving.value = false
+  }
 }
 
 function selectFirstGeneratedTechnicalLeaf() {
@@ -1992,6 +2287,114 @@ function startPolling() {
     }
   }, 3000)
 }
+
+function isOutlineGenerated(node) {
+  return isTechnicalLeafDone(node)
+}
+
+function isOutlineFailed(node) {
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  return status === 'FAILED'
+}
+
+function outlineActualWordCount(node) {
+  return Number(node?.actualWordCount || node?.section?.actualWordCount || 0)
+}
+
+function outlineTargetWordCount(node) {
+  return Number(node?.targetWordCount || node?.wordCount || node?.section?.targetWordCount || 0)
+}
+
+const OutlineTree = defineComponent({
+  name: 'OutlineTree',
+  props: {
+    nodes: { type: Array, default: () => [] },
+    mode: { type: String, default: 'view' },
+    simple: { type: Boolean, default: false },
+    selected: { type: Array, default: () => [] }
+  },
+  emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate'],
+  setup(props, { emit }) {
+    const renderNode = (node, depth = 0) => {
+      const hasChildren = node.children?.length
+      const checkbox = props.mode === 'delete'
+        ? h(ElCheckbox, {
+          modelValue: props.selected.includes(node.id),
+          'onUpdate:modelValue': (checked) => {
+            const next = checked ? [...props.selected, node.id] : props.selected.filter((id) => id !== node.id)
+            emit('update:selected', next)
+          }
+        })
+        : null
+      const title = h('span', { class: ['tree-title', hasChildren ? 'parent' : 'leaf'] }, node.title)
+      const controls = []
+      if (props.mode === 'word') {
+        if (hasChildren) {
+          controls.push(h(ElSelect, { modelValue: 300, size: 'small', class: 'word-select', placeholder: '批量修改', onChange: (v) => emit('batch-word', { node, value: v }) }, () => wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))))
+        } else {
+          controls.push(h(ElSelect, { modelValue: node.targetWordCount || node.wordCount || 300, size: 'small', class: 'word-select', onChange: (v) => emit('word-change', { node, value: v }) }, () => wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))))
+        }
+      }
+      if (props.mode === 'add') controls.push(h(ElButton, { link: true, icon: Plus, onClick: () => emit('add-node', node) }))
+      if (props.mode === 'sort') {
+        controls.push(h(ElButton, { link: true, icon: SortUp, onClick: () => emit('move', { node, direction: 'UP' }) }))
+        controls.push(h(ElButton, { link: true, icon: SortDown, onClick: () => emit('move', { node, direction: 'DOWN' }) }))
+      }
+      if (props.mode === 'generate' && !hasChildren) {
+        const generated = isOutlineGenerated(node)
+        const failed = isOutlineFailed(node)
+        controls.push(h('span', { class: 'count-text' }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}字`))
+        if (generated) {
+          controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
+          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
+        } else if (failed) {
+          controls.push(h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败'))
+          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重试'))
+        } else {
+          controls.push(h(ElTag, { size: 'small', type: 'info', effect: 'light' }, () => '未生成'))
+          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '生成'))
+        }
+      }
+      if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
+      return h('div', { class: 'tree-node-wrap' }, [
+        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: 'tree-controls' }, controls)]),
+        hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
+      ])
+    }
+    return () => h('div', { class: 'outline-tree' }, props.nodes.map((node) => renderNode(node, 0)))
+  }
+})
+
+const WritingDirectionEditor = defineComponent({
+  name: 'WritingDirectionEditor',
+  props: { nodes: { type: Array, default: () => [] }, streamingId: { type: [Number, String], default: null } },
+  emits: ['ai-write', 'save'],
+  setup(props, { emit }) {
+    const renderNode = (node, depth = 0) => {
+      const hasChildren = node.children?.length
+      const children = hasChildren ? node.children.map((child) => renderNode(child, depth + 1)) : []
+      const editor = !hasChildren ? h('div', { class: 'direction-editor', style: { marginLeft: `${depth * 20 + 28}px` } }, [
+        h('div', { class: 'mini-card-title' }, [
+          h('span', null, '编写方向：'),
+          h(ElButton, { size: 'small', type: 'primary', loading: String(props.streamingId || '') === String(node.id || ''), onClick: () => emit('ai-write', node) }, () => 'AI帮写')
+        ]),
+        h(ElInput, { modelValue: node.writingDirection || '', type: 'textarea', rows: 6, maxlength: 10000, showWordLimit: true, 'onUpdate:modelValue': (v) => { node.writingDirection = v } }),
+        h('div', { class: 'mini-card-title second' }, [
+          h('span', null, '编写要求：'),
+          h(ElButton, { size: 'small', type: 'primary', onClick: () => emit('save', node) }, () => '保存')
+        ]),
+        h(ElInput, { modelValue: node.writingRequirement || '', type: 'textarea', rows: 3, maxlength: 10000, showWordLimit: true, placeholder: '请输入编写要求', 'onUpdate:modelValue': (v) => { node.writingRequirement = v } })
+      ]) : null
+      return h('div', { class: 'direction-node' }, [
+        h('div', { class: 'tree-row', style: { paddingLeft: `${depth * 20}px` } }, [h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), h(ElInput, { modelValue: node.title, class: 'title-input', 'onUpdate:modelValue': (v) => { node.title = v } }), h(ElButton, { size: 'small', onClick: () => emit('save', node) }, () => '保存')]),
+        editor,
+        children
+      ])
+    }
+    return () => h('div', { class: 'writing-direction-tree' }, props.nodes.map((node) => renderNode(node, 0)))
+  }
+})
+
 </script>
 
 <style scoped>
@@ -4073,5 +4476,303 @@ function startPolling() {
   background: #fff !important;
   border-top: 0 !important;
   flex-shrink: 0 !important;
+}
+
+
+/* AI标书技术方案编辑区：直接复用 AI方案页面的交互样式 */
+.ai-solution-like-detail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.edit-tabs {
+  height: 54px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.edit-tabs button {
+  border: 0;
+  background: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  position: relative;
+}
+.edit-tabs button.active {
+  color: #2f6bff;
+  font-weight: 700;
+}
+.edit-tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 24%;
+  right: 24%;
+  bottom: 0;
+  height: 3px;
+  background: #2f6bff;
+  border-radius: 3px 3px 0 0;
+}
+.edit-scroll {
+  flex: 1;
+  padding: 14px 18px;
+}
+.edit-section {
+  min-height: 100%;
+}
+.delete-bar {
+  text-align: center;
+  margin: 10px 0 18px;
+}
+.overall-card {
+  background: #f7f8fa;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.card-title,
+.mini-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.mini-card-title.second {
+  margin-top: 10px;
+}
+.outline-tree {
+  color: #334155;
+  font-size: 15px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px dashed #e5e7eb;
+  gap: 8px;
+}
+.tree-row.clickable {
+  cursor: pointer;
+}
+.tree-row.clickable:hover {
+  background: #f8fafc;
+}
+.tree-dot {
+  width: 16px;
+  color: #ef4444;
+  text-align: center;
+  flex-shrink: 0;
+}
+.tree-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-title.parent {
+  color: #334155;
+  font-weight: 700;
+}
+.tree-title.leaf {
+  color: #6b7280;
+  font-weight: 400;
+}
+.tree-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.word-select {
+  width: 104px;
+}
+.count-text {
+  min-width: 88px;
+  color: #22c55e;
+  font-weight: 700;
+  text-align: right;
+}
+.direction-editor {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .06);
+}
+.title-input {
+  flex: 1;
+}
+.section-preview {
+  height: 100%;
+  padding: 28px 32px;
+  box-sizing: border-box;
+  background: #fff;
+}
+.section-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.section-preview-head h3 {
+  margin: 0;
+  color: #06152b;
+  font-size: 22px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+.section-preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.section-content-preview {
+  font-size: 18px;
+  line-height: 1.9;
+  color: #0f2747;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.section-content-editor :deep(.el-textarea__inner) {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #0f2747;
+}
+.ai-bid-page .bid-tech-body.generated {
+  grid-template-columns: minmax(500px, 0.95fr) minmax(560px, 1.25fr) !important;
+}
+.ai-bid-page .bid-tech-body.generated .tech-detail-outline-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 20px 0 !important;
+  box-sizing: border-box;
+}
+.ai-bid-page .bid-tech-body.generated .solution-like-progress {
+  margin-bottom: 14px;
+}
+</style>
+
+<style scoped>
+/* ============================================================
+   AI标书技术方案编辑树样式修复
+   说明：OutlineTree / WritingDirectionEditor 是当前 SFC 内部 defineComponent 组件，
+   普通 scoped 选择器不会穿透到子组件内部渲染出来的 .tree-row / .tree-title。
+   所以这里必须使用 :deep()，否则会出现目录树变成普通文字、控件挤在一起的问题。
+   ============================================================ */
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.outline-tree),
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.writing-direction-tree) {
+  font-size: 15px !important;
+  color: #334155 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-node-wrap) {
+  width: 100% !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 36px !important;
+  border-bottom: 1px dashed #e5e7eb !important;
+  color: #6b7280 !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.clickable) {
+  cursor: pointer !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.clickable:hover) {
+  background: #f8fafc !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-dot) {
+  width: 16px !important;
+  min-width: 16px !important;
+  text-align: center !important;
+  color: #ef4444 !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title) {
+  flex: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.parent) {
+  color: #334155 !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.leaf) {
+  color: #6b7280 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls) {
+  margin-left: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.word-select) {
+  width: 110px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.count-text) {
+  color: #22c55e !important;
+  min-width: 78px !important;
+  text-align: right !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.simple-level) {
+  color: #9ca3af !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.direction-editor) {
+  background: #fff !important;
+  border-radius: 10px !important;
+  padding: 12px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .06) !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.direction-node) {
+  width: 100% !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.title-input) {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.mini-card-title) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 8px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.mini-card-title.second) {
+  margin-top: 12px !important;
 }
 </style>
