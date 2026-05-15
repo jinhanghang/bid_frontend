@@ -307,30 +307,6 @@
                     placeholder="可补充目录要求，例如必须包含项目背景、系统功能、交付计划、运维保障、数据安全等"
                   />
                 </div>
-
-                <div class="tech-form-section">
-                  <div class="tech-inline-title">
-                    <span>引用知识库：</span>
-                    <el-tag size="small" type="info">生成正文时使用</el-tag>
-                  </div>
-                  <div class="knowledge-setting">
-                    <div class="knowledge-actions">
-                      <el-button @click="goKnowledgeBasePage">上传</el-button>
-                      <el-button @click="openKnowledgeSelector('full')">从知识库选择</el-button>
-                    </div>
-                    <div v-if="selectedKnowledgeBases.length" class="selected-kb-list">
-                      <el-tag
-                        v-for="kb in selectedKnowledgeBases"
-                        :key="kb.id"
-                        closable
-                        @close="removeSelectedKnowledgeBase(kb.id, 'full')"
-                      >
-                        {{ kb.kbName }}
-                      </el-tag>
-                    </div>
-                    <div v-else class="selected-kb-empty">未选择知识库，生成正文时不引用知识库资料</div>
-                  </div>
-                </div>
               </template>
 
               <template v-else>

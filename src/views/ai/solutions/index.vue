@@ -29,7 +29,7 @@
             <div class="solution-card-time">创建于{{ formatDateTime(item.createTime) }}</div>
             <div class="solution-card-tags">
               <el-tag size="small" type="primary">{{ levelLabel(item.aiLevel) }}</el-tag>
-              <el-tag size="small" type="info">{{ statusLabel(item.status) }}</el-tag>
+              <el-tag size="small" type="info">{{ solutionCardStatusLabel(item) }}</el-tag>
             </div>
             <div class="solution-card-actions">
               <el-tooltip content="编辑" placement="top">
@@ -609,7 +609,7 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag } from 'element-plus'
+import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag, ElTooltip } from 'element-plus'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
@@ -789,8 +789,15 @@ const subTypes = computed(() => subTypeMap[createForm.solutionType] || [])
 const leafGenerationStat = computed(() => {
   const leaves = flattenLeaf(currentSolution.value?.outlines || [])
   const total = leaves.length
-  const done = leaves.filter(isOutlineGenerated).length
-  const failed = leaves.filter(isOutlineFailed).length
+
+  // 注意：同一个章节可能出现“section 已有成功正文，但 outline 旧状态还是 FAILED”的历史漂移。
+  // 这种情况下前端应该以真实正文为准，不能同时把它算成已完成和失败，
+  // 否则底部按钮会一直显示“重试未完成章节”。
+  const doneLeaves = leaves.filter(isOutlineGenerated)
+  const doneIds = new Set(doneLeaves.map((item) => item.id))
+  const failedLeaves = leaves.filter((item) => !doneIds.has(item.id) && isOutlineFailed(item))
+  const done = doneLeaves.length
+  const failed = failedLeaves.length
   return { total, done, failed, pending: Math.max(0, total - done - failed) }
 })
 
@@ -820,12 +827,13 @@ const hasRunningTask = computed(() => {
   return status === 'WAITING' || status === 'RUNNING'
 })
 const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !hasRunningTask.value)
-const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !hasRunningTask.value)
 const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !hasRunningTask.value)
 const allLeafGenerated = computed(() => leafGenerationStat.value.total > 0 && leafGenerationStat.value.done === leafGenerationStat.value.total)
+const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !hasRunningTask.value && !allLeafGenerated.value)
 const canExport = computed(() => currentSolution.value?.canExport === true && allLeafGenerated.value && !hasRunningTask.value)
 const generateActionText = computed(() => {
   const stat = leafGenerationStat.value
+  if (stat.total > 0 && stat.done === stat.total) return '已全部生成'
   if (stat.total > 0 && stat.failed > 0) return '重试未完成章节'
   if (stat.total > 0 && stat.done > 0 && stat.done < stat.total) return '继续生成'
   return '开始生成'
@@ -1650,7 +1658,7 @@ function pollGenerationTask(taskId) {
         } else if (task.status === 'CANCELED') {
           ElMessage.warning(task.message || '生成已取消')
         } else if (task.status === 'PARTIAL') {
-          ElMessage.warning(task.message || task.errorMessage || '部分章节未生成完成，请查看失败章节后重试')
+          ElMessage.warning(task.errorMessage || task.message || '部分章节未生成完成，请查看失败章节后重试')
         } else {
           ElMessage.success(task.message || '生成完成')
         }
@@ -2002,6 +2010,18 @@ function statusLabel(value) {
   return map[value] || value || '-'
 }
 
+function solutionCardStatusLabel(item) {
+  // 列表接口只返回主表状态，正在查看的方案详情里有章节真实状态。
+  // 当前方案的左侧卡片优先按详情章节计算，避免主表状态还没刷新时一直显示“部分完成”。
+  if (item?.id && currentSolution.value?.id === item.id) {
+    if (hasRunningTask.value) return '生成中'
+    const stat = leafGenerationStat.value
+    if (stat.total > 0 && stat.done === stat.total) return '已完成'
+    if (stat.total > 0 && (stat.done > 0 || stat.failed > 0)) return '部分完成'
+  }
+  return statusLabel(item?.status)
+}
+
 const OutlineTree = defineComponent({
   name: 'OutlineTree',
   props: {
@@ -2040,12 +2060,13 @@ const OutlineTree = defineComponent({
       if (props.mode === 'generate' && !hasChildren) {
         const generated = isOutlineGenerated(node)
         const failed = isOutlineFailed(node)
-        controls.push(h('span', { class: 'count-text' }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
+        controls.push(h('span', { class: ['count-text', failed ? 'failed' : ''] }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
         if (generated) {
           controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
         } else if (failed) {
-          controls.push(h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败'))
+          const errorMessage = node.errorMessage || node.section?.errorMessage || '章节生成失败，请点击“重试”重新生成'
+          controls.push(h(ElTooltip, { content: errorMessage, placement: 'top', 'show-after': 200 }, { default: () => h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败') }))
           controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重试'))
         } else {
           controls.push(h(ElTag, { size: 'small', type: 'info', effect: 'light' }, () => '未生成'))
@@ -2261,6 +2282,7 @@ const WritingDirectionEditor = defineComponent({
 :deep(.tree-controls) { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 :deep(.word-select) { width: 110px; }
 :deep(.count-text) { color: #22c55e; min-width: 78px; text-align: right; }
+:deep(.count-text.failed) { color: #ef4444; }
 :deep(.simple-level) { color: #9ca3af; font-size: 12px; }
 :deep(.direction-editor) { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 5px rgba(15, 23, 42, .06); }
 :deep(.title-input) { flex: 1; }
