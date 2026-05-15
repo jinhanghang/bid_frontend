@@ -17,6 +17,7 @@ const AiResultManage = () => import('@/views/ai/results/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
+const NoticeManage = () => import('@/views/tender/notice/index.vue')
 const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
 const KnowledgeBase = () => import('@/views/knowledge/base/index.vue')
@@ -55,7 +56,7 @@ const routes = [
       { path: 'ai/exports', redirect: '/download-center' },
 
       { path: 'tender/sources', component: GenericCrudView, meta: { title: '招标数据源', configKey: 'tenderSource', requiresBusiness: true } },
-      { path: 'tender/notices', component: GenericCrudView, meta: { title: '标讯商机', configKey: 'tenderNotice', requiresBusiness: true } },
+      { path: 'tender/notice', component: NoticeManage, meta: { title: '标讯商机',  requiresBusiness: true } },
       { path: 'tender/reports', component: GenericCrudView, meta: { title: '一键报备', configKey: 'tenderReport', requiresBusiness: true } },
 
       { path: 'knowledge/bases', component: KnowledgeBase, meta: { title: '知识库', requiresBusiness: true } },

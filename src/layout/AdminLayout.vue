@@ -101,7 +101,7 @@ const productMenus = computed(() => [
   { title: '方案查重', path: '/solution-duplicate', icon: Search },
   { title: '知识库', path: '/knowledge/bases', icon: Folder },
   { title: '资料库', path: '/materials', icon: Tickets },
-  { title: '标讯商机', path: '/tender/notices', icon: DataBoard },
+  { title: '标讯商机', path: '/tender/notice', icon: DataBoard },
   { title: '下载中心', path: '/download-center', icon: Download },
   { title: '回收站', path: '/recycle-bin', icon: Delete }
 ])
