@@ -96,7 +96,7 @@ const needEnterpriseApply = computed(() => !isPlatformUser.value && !auth.user?.
 const stats = computed(() => [
   { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/ai-bid' },
   { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/materials' },
-  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word / Markdown 导出', path: '/download-center' },
+  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word导出', path: '/download-center' },
   { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
 ])
 
