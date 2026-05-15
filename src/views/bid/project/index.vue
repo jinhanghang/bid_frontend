@@ -492,8 +492,7 @@
               <template v-else>
                 <div class="tech-preview-head">
                   <strong>预览目录 {{ technicalOutlineLeafCount }}</strong>
-                  <span>一键差异化目录可改变标题内容，减少查重隐患</span>
-                </div>
+                  </div>
                 <el-scrollbar class="tech-preview-scroll">
                   <el-empty description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
                 </el-scrollbar>

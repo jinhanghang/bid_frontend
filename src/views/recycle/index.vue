@@ -11,8 +11,6 @@
         <el-select v-model="filters.bizType" class="type-select" clearable placeholder="请选择类型" @change="reloadFirstPage">
           <el-option label="AI方案" value="AI_SOLUTION" />
           <el-option label="AI标书" value="AI_BID" />
-          <el-option label="AI质检" value="AI_QUALITY" disabled />
-          <el-option label="方案查重" value="DUPLICATE" disabled />
         </el-select>
         <el-input
           v-model="filters.keyword"

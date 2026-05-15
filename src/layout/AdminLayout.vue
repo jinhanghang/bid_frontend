@@ -20,8 +20,7 @@
           </div>
         </div>
       </el-scrollbar>
-
-      <div class="rail-upgrade">升级<br />企业版</div>
+      
     </aside>
 
     <section class="product-main">
@@ -30,7 +29,6 @@
           <div class="page-title">{{ currentTitle }}</div>
         </div>
         <div class="header-right">
-          <div class="quota-pill">剩余总字数：49178</div>
           <el-button link :icon="Refresh" @click="reloadMe">刷新用户</el-button>
           <el-dropdown trigger="click">
             <div class="user-entry">
@@ -61,7 +59,6 @@ import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
-  Collection,
   DataBoard,
   Delete,
   Download,
@@ -70,7 +67,6 @@ import {
   House,
   MagicStick,
   Refresh,
-  Search,
   Tickets
 } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -97,8 +93,6 @@ const productMenus = computed(() => [
   { title: '首页', path: '/dashboard', icon: House },
   { title: 'AI方案', path: '/ai/solutions', icon: MagicStick },
   { title: 'AI标书', path: '/ai-bid', icon: Files },
-  { title: 'AI质检', path: '/ai-quality', icon: Collection },
-  { title: '方案查重', path: '/solution-duplicate', icon: Search },
   { title: '知识库', path: '/knowledge/bases', icon: Folder },
   { title: '资料库', path: '/materials', icon: Tickets },
   { title: '标讯商机', path: '/tender/notice', icon: DataBoard },
@@ -225,19 +219,6 @@ async function logout() {
   transform: translate(8px, -6px) scale(0.8);
 }
 
-.rail-upgrade {
-  width: 52px;
-  margin: 8px 0 18px;
-  padding: 7px 0;
-  border-radius: 14px;
-  color: #fff;
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.25;
-  background: linear-gradient(180deg, #ff7759, #ff3d55);
-  box-shadow: 0 8px 18px rgba(255, 83, 83, 0.22);
-}
-
 .product-main {
   display: flex;
   flex: 1;
@@ -264,15 +245,6 @@ async function logout() {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.quota-pill {
-  padding: 7px 14px;
-  border-radius: 999px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
-  background: linear-gradient(90deg, #ff4f4f, #ff8d4a);
 }
 
 .user-entry {

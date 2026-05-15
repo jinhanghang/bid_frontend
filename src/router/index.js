@@ -17,11 +17,10 @@ const AiResultManage = () => import('@/views/ai/results/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
-const NoticeManage = () => import('@/views/tender/notice/index.vue')
 const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
 const KnowledgeBase = () => import('@/views/knowledge/base/index.vue')
-const ProductPlaceholder = () => import('@/views/common/ProductPlaceholder.vue')
+const NoticeManage = () => import('@/views/tender/notice/index.vue')
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -37,8 +36,6 @@ const routes = [
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '首页' } },
       { path: 'ai-bid', component: BidProject, meta: { title: 'AI标书', requiresBusiness: true } },
-      { path: 'ai-quality', component: ProductPlaceholder, meta: { title: 'AI质检', productName: 'AI质检', productDesc: '用于检查投标文件响应完整性、废标风险、格式规范和评分项覆盖情况。' } },
-      { path: 'solution-duplicate', component: ProductPlaceholder, meta: { title: '方案查重', productName: '方案查重', productDesc: '用于检查方案重复率、相似片段和可降重内容。' } },
       { path: 'materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
       { path: 'download-center', component: DownloadCenter, meta: { title: '下载中心', requiresBusiness: true } },
       { path: 'recycle-bin', component: RecycleBin, meta: { title: '回收站', requiresBusiness: true } },
