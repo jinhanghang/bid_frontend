@@ -4,10 +4,6 @@ export function pageTemplateVariables(params) {
   return request.get('/template-variable/page', { params })
 }
 
-export function listTemplateVariables(params) {
-  return request.get('/template-variable/list', { params })
-}
-
 export function listEnabledTemplateVariables(params) {
   return request.get('/template-variable/list-enabled', { params })
 }

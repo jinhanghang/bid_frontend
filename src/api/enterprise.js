@@ -8,10 +8,6 @@ export function listEnterprises(params) {
   return request.get('/enterprise/list', { params })
 }
 
-export function getEnterprise(id) {
-  return request.get(`/enterprise/${id}`)
-}
-
 export function getCurrentEnterprise() {
   return request.get('/enterprise/me')
 }

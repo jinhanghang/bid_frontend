@@ -9,11 +9,8 @@ const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
-const AiWorkbench = () => import('@/views/ai/workbench/index.vue')
 const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiPromptManage = () => import('@/views/ai/prompts/index.vue')
-const AiTaskManage = () => import('@/views/ai/tasks/index.vue')
-const AiResultManage = () => import('@/views/ai/results/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
@@ -44,17 +41,12 @@ const routes = [
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
 
-      { path: 'ai/workbench', component: AiWorkbench, meta: { title: 'AI生成工作台', requiresBusiness: true } },
       { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
       { path: 'ai/prompts', component: AiPromptManage, meta: { title: 'Prompt模板', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN] } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
-      { path: 'ai/tasks', component: AiTaskManage, meta: { title: '生成任务', requiresBusiness: true } },
-      { path: 'ai/results', component: AiResultManage, meta: { title: '生成结果', requiresBusiness: true } },
       { path: 'ai/exports', redirect: '/download-center' },
 
-      { path: 'tender/sources', component: GenericCrudView, meta: { title: '招标数据源', configKey: 'tenderSource', requiresBusiness: true } },
       { path: 'tender/notice', component: NoticeManage, meta: { title: '标讯商机',  requiresBusiness: true } },
-      { path: 'tender/reports', component: GenericCrudView, meta: { title: '一键报备', configKey: 'tenderReport', requiresBusiness: true } },
 
       { path: 'knowledge/bases', component: KnowledgeBase, meta: { title: '知识库', requiresBusiness: true } },
       { path: 'knowledge/files', component: GenericCrudView, meta: { title: '知识库文件', configKey: 'knowledgeFile', requiresBusiness: true } },

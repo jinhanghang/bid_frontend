@@ -4,10 +4,6 @@ export function pagePromptTemplates(params) {
   return request.get('/prompt-template/page', { params })
 }
 
-export function listPromptTemplates(params) {
-  return request.get('/prompt-template/list', { params })
-}
-
 export function getPromptTemplate(id) {
   return request.get(`/prompt-template/${id}`)
 }

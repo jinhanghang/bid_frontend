@@ -42,7 +42,7 @@
           </div>
         </div>
 
-        <div class="dashboard-main-grid dashboard-main-grid--single">
+        <div class="dashboard-main-grid">
           <div class="card list-card">
             <div class="card-head">
               <div>
@@ -203,7 +203,7 @@ function projectStatusTag(status) {
 
 .dashboard-stats {
   margin-top: 16px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .stat-card {
@@ -224,15 +224,12 @@ function projectStatusTag(status) {
 
 .dashboard-main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-top: 16px;
 }
 
-.process-card,
-.todo-card,
-.list-card,
-.quick-card {
+.list-card {
   padding: 20px;
 }
 
@@ -255,49 +252,11 @@ function projectStatusTag(status) {
   font-size: 13px;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.status-card {
-  padding: 14px;
-  border-radius: 14px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-}
-
-.status-card__label {
-  color: var(--text-sub);
-  font-size: 13px;
-}
-
-.status-card__value {
-  margin-top: 8px;
-  font-size: 24px;
-  font-weight: 900;
-  color: var(--text-main);
-}
-
-.progress-section {
-  margin-top: 16px;
-}
-
-.progress-title {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  color: var(--text-sub);
-}
-
-.todo-list,
 .recent-list {
   display: grid;
   gap: 10px;
 }
 
-.todo-item,
 .recent-item {
   display: flex;
   align-items: center;
@@ -309,22 +268,10 @@ function projectStatusTag(status) {
   border: 1px solid var(--border);
 }
 
-.todo-item.is-warning {
-  background: #fffbeb;
-  border-color: #fde68a;
-}
-
-.todo-item.is-danger {
-  background: #fff7f7;
-  border-color: #fecaca;
-}
-
-.todo-main,
 .recent-main {
   min-width: 0;
 }
 
-.todo-main strong,
 .recent-main strong {
   display: block;
   color: var(--text-main);
@@ -333,7 +280,6 @@ function projectStatusTag(status) {
   white-space: nowrap;
 }
 
-.todo-main span,
 .recent-main span {
   display: block;
   margin-top: 5px;
@@ -352,81 +298,15 @@ function projectStatusTag(status) {
   font-size: 12px;
 }
 
-.quick-card {
-  margin-top: 16px;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.quick-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #f8fafc;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-
-.quick-item:hover {
-  border-color: #2563eb;
-  background: #eff6ff;
-}
-
-.quick-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: #dbeafe;
-  color: #2563eb;
-  font-weight: 900;
-  flex-shrink: 0;
-}
-
-.quick-item strong {
-  display: block;
-  color: var(--text-main);
-}
-
-.quick-item span {
-  display: block;
-  margin-top: 4px;
-  color: var(--text-sub);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 @media (max-width: 1480px) {
-  .dashboard-stats,
-  .quick-grid {
+  .dashboard-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .status-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1080px) {
-  .dashboard-main-grid {
-    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 900px) {
   .enterprise-options,
-  .dashboard-stats,
-  .quick-grid {
+  .dashboard-stats {
     grid-template-columns: 1fr;
   }
 
@@ -436,7 +316,3 @@ function projectStatusTag(status) {
   }
 }
 </style>
-
-.dashboard-main-grid--single {
-  grid-template-columns: 1fr;
-}

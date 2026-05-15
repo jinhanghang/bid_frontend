@@ -4,10 +4,6 @@ export function pageUsers(params) {
   return request.get('/system/user/page', { params })
 }
 
-export function getUser(id) {
-  return request.get(`/system/user/${id}`)
-}
-
 export function createUser(data) {
   return request.post('/system/user', data)
 }
@@ -34,8 +30,4 @@ export function updateUserRoles(id, data) {
 
 export function resetUserPassword(id) {
   return request.put(`/system/user/${id}/password/reset`)
-}
-
-export function changePassword(data) {
-  return request.put('/system/user/password/change', data)
 }
