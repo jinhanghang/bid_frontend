@@ -56,9 +56,14 @@
                   <span class="source-dot" />
                   <span>{{ item.sourceCode || '标讯来源' }}</span>
                 </div>
-                <el-tag size="small" effect="light" :type="statusTagType(item.status)">
-                  {{ statusLabel(item.status) }}
-                </el-tag>
+                <div class="notice-head-tags">
+                  <el-tag size="small" effect="light" :type="statusTagType(item.status)">
+                    {{ statusLabel(item.status) }}
+                  </el-tag>
+                  <el-tag v-if="deadlineBadge(item)" size="small" effect="light" :type="deadlineBadge(item).type">
+                    {{ deadlineBadge(item).label }}
+                  </el-tag>
+                </div>
               </div>
 
               <h2 class="notice-title">{{ item.noticeTitle || item.notice_title || '未命名公告' }}</h2>
@@ -141,6 +146,7 @@
 
         <div class="drawer-tags">
           <el-tag effect="light" :type="statusTagType(detail.status)">{{ statusLabel(detail.status) }}</el-tag>
+          <el-tag v-if="deadlineBadge(detail)" :type="deadlineBadge(detail).type" effect="light">{{ deadlineBadge(detail).label }}</el-tag>
           <el-tag v-if="detail.noticeType" type="primary" effect="plain">{{ detail.noticeType }}</el-tag>
           <el-tag v-if="detail.industry" type="info" effect="plain">{{ detail.industry }}</el-tag>
         </div>
@@ -356,6 +362,17 @@ function deadlineClass(row = {}) {
   if (isNearDeadline(row)) return 'is-urgent'
   return ''
 }
+
+function deadlineBadge(row = {}) {
+  const deadline = parseDate(row.deadline)
+  if (!deadline) return null
+  const diff = deadline.getTime() - Date.now()
+  if (diff < 0) return { label: '已过期', type: 'info' }
+  const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
+  if (days <= 3) return { label: `${days}天内截止`, type: 'danger' }
+  if (days <= 7) return { label: `${days}天截止`, type: 'warning' }
+  return null
+}
 </script>
 
 <style scoped>
@@ -568,7 +585,8 @@ function deadlineClass(row = {}) {
 }
 
 .notice-card.expired {
-  opacity: 0.78;
+  opacity: 0.72;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 .notice-card-head,
@@ -593,6 +611,14 @@ function deadlineClass(row = {}) {
   color: #64748b;
   font-size: 12px;
   font-weight: 700;
+}
+
+.notice-head-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .source-dot {

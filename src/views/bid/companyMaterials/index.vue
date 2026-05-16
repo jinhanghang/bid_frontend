@@ -117,9 +117,14 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="有效期" width="190" show-overflow-tooltip>
+          <el-table-column label="有效期" width="220" show-overflow-tooltip>
             <template #default="{ row }">
-              {{ validityText(row) }}
+              <div class="validity-cell">
+                <span>{{ validityText(row) }}</span>
+                <el-tag v-if="validityTag(row)" :type="validityTag(row).type" effect="light" size="small">
+                  {{ validityTag(row).label }}
+                </el-tag>
+              </div>
             </template>
           </el-table-column>
 
@@ -163,6 +168,7 @@
               </div>
             </div>
             <div v-if="canManageCompanyMaterial" class="editor-actions">
+              <el-tag v-if="formDirty" type="warning" effect="light">有未保存修改</el-tag>
               <el-button :icon="Refresh" @click="resetForm">重置</el-button>
               <el-button type="primary" :loading="saving" @click="saveRow">保存资料</el-button>
             </div>
@@ -297,7 +303,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -325,6 +331,7 @@ const rows = ref([])
 const enterprises = ref([])
 const currentDetail = ref(null)
 const keywordTimer = ref(null)
+const formSnapshot = ref('')
 const formRef = ref()
 
 const filters = reactive({
@@ -371,10 +378,15 @@ const canManageCompanyMaterial = computed(() => {
 
 const currentPageFileCount = computed(() => rows.value.filter((row) => Number(row.fileExists) === 1).length)
 const currentPageLostCount = computed(() => rows.value.filter((row) => row.fileId && Number(row.fileExists) !== 1).length)
+const formDirty = computed(() => editMode.value && formSnapshot.value && formSnapshot.value !== snapshotForm())
 
 onMounted(async () => {
   await loadEnterprises()
   await loadMaterials()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(keywordTimer.value)
 })
 
 function defaultForm() {
@@ -405,10 +417,12 @@ async function loadEnterprises() {
   }
 }
 
-function selectMaterialType(value) {
+async function selectMaterialType(value) {
+  if (!(await confirmDiscardChanges())) return
   filters.materialType = value
   currentDetail.value = null
   editMode.value = false
+  markFormSnapshot()
   reloadFirstPage()
 }
 
@@ -460,17 +474,20 @@ async function loadMaterials(selectId) {
 
 async function selectRow(row) {
   if (!row?.id) return
+  if (currentDetail.value?.id !== row.id && !(await confirmDiscardChanges())) return
   const detail = await getCompanyMaterial(row.id)
   currentDetail.value = detail
   fillForm(detail)
   editMode.value = true
 }
 
-function openCreate() {
+async function openCreate() {
   if (!canManageCompanyMaterial.value) {
     ElMessage.warning('普通用户只能查看企业资料，不能新增资料')
     return
   }
+
+  if (!(await confirmDiscardChanges())) return
 
   currentDetail.value = null
   fillForm({
@@ -482,7 +499,14 @@ function openCreate() {
   nextTick(() => formRef.value?.clearValidate?.())
 }
 
-function resetForm() {
+async function resetForm() {
+  if (formDirty.value) {
+    try {
+      await ElMessageBox.confirm('当前表单有未保存修改，确定重置吗？', '确认重置', { type: 'warning' })
+    } catch (e) {
+      return
+    }
+  }
   if (currentDetail.value?.id) {
     fillForm(currentDetail.value)
   } else {
@@ -498,6 +522,36 @@ function fillForm(row) {
     form.enterpriseId = auth.user?.enterpriseId || form.enterpriseId
   }
   form.status = row?.status === 0 ? 0 : 1
+  markFormSnapshot()
+}
+
+function snapshotForm() {
+  return JSON.stringify({
+    id: form.id || null,
+    enterpriseId: form.enterpriseId || '',
+    materialType: form.materialType || '',
+    title: form.title || '',
+    content: form.content || '',
+    fileId: form.fileId || null,
+    validStartDate: form.validStartDate || '',
+    validEndDate: form.validEndDate || '',
+    status: form.status === 0 ? 0 : 1,
+    remark: form.remark || ''
+  })
+}
+
+function markFormSnapshot() {
+  formSnapshot.value = snapshotForm()
+}
+
+async function confirmDiscardChanges() {
+  if (!formDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前资料有未保存修改，切换后会丢失，是否继续？', '未保存修改', { type: 'warning' })
+    return true
+  } catch (e) {
+    return false
+  }
 }
 
 function normalizeRoleCode(value = '') {
@@ -587,8 +641,12 @@ async function removeRow(row) {
   if (currentDetail.value?.id === row.id) {
     currentDetail.value = null
     editMode.value = false
+    markFormSnapshot()
   }
 
+  if (rows.value.length <= 1 && pager.page > 1) {
+    pager.page -= 1
+  }
   await loadMaterials()
 }
 
@@ -637,6 +695,16 @@ function fileStateTag(row) {
 function validityText(row) {
   if (!row?.validStartDate && !row?.validEndDate) return '-'
   return `${row.validStartDate || '开始不限'} ~ ${row.validEndDate || '长期有效'}`
+}
+
+function validityTag(row) {
+  if (!row?.validEndDate) return null
+  const end = new Date(`${row.validEndDate} 23:59:59`.replace(/-/g, '/'))
+  if (Number.isNaN(end.getTime())) return null
+  const diffDays = Math.ceil((end.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+  if (diffDays < 0) return { label: '已过期', type: 'danger' }
+  if (diffDays <= 30) return { label: `${diffDays}天到期`, type: 'warning' }
+  return null
 }
 
 function fileExtLabel(ext) {
@@ -801,6 +869,19 @@ function formatFileSize(size) {
   margin-top: 4px;
   color: var(--text-sub);
   font-size: 12px;
+}
+
+.validity-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.validity-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-actions {

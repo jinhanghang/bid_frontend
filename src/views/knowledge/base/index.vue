@@ -99,6 +99,15 @@
             :closable="false"
           />
 
+          <el-alert
+            v-if="hasProcessingFiles"
+            class="kb-tip"
+            title="检测到文件正在解析或向量化，系统会自动刷新状态。"
+            type="warning"
+            show-icon
+            :closable="false"
+          />
+
           <el-table
             class="ui-table kb-file-table"
             :data="files"
@@ -157,7 +166,14 @@
               <template #default="{ row }">
                 <div class="table-actions">
                   <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
-                  <el-button v-if="canManageKnowledge" link type="success" @click="rebuildFile(row)">重新入库</el-button>
+                  <el-button
+                    v-if="canManageKnowledge"
+                    link
+                    type="success"
+                    :loading="isRebuilding(row)"
+                    :disabled="isFileProcessing(row)"
+                    @click="rebuildFile(row)"
+                  >重新入库</el-button>
                   <el-button v-if="canManageKnowledge" link type="danger" @click="deleteFile(row)">删除</el-button>
                 </div>
               </template>
@@ -314,7 +330,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatLineRound, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -352,6 +368,8 @@ const enterprises = ref([])
 const selectedBase = ref(null)
 const baseFormRef = ref()
 const timer = ref(null)
+const pollingTimer = ref(null)
+const rebuildingIds = ref(new Set())
 
 const basePager = reactive({
   page: 1,
@@ -410,6 +428,8 @@ const canManageKnowledge = computed(() => {
   return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
 })
 
+const hasProcessingFiles = computed(() => files.value.some(isFileProcessing))
+
 const baseRules = computed(() => {
   const rules = {
     kbName: [{ required: true, message: '请输入知识库名称', trigger: 'blur' }]
@@ -439,6 +459,11 @@ const embeddingStatusMap = {
 onMounted(() => {
   loadBases()
   loadEnterprises()
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(timer.value)
+  stopFilePolling()
 })
 
 function normalizeRoleCode(value = '') {
@@ -541,6 +566,7 @@ async function loadFiles() {
     })
 
     files.value = res?.records || []
+    refreshFilePolling()
   } finally {
     fileLoading.value = false
   }
@@ -685,6 +711,7 @@ async function onKnowledgeFileUploaded(file) {
 
   await loadFiles()
   await loadBases(selectedBase.value.id)
+  startFilePolling()
 }
 
 async function rebuildFile(row) {
@@ -697,9 +724,57 @@ async function rebuildFile(row) {
     type: 'warning'
   })
 
-  await rebuildKnowledgeFile(row.id, true)
-  ElMessage.success('已提交重新入库任务，请稍后刷新查看状态')
-  await loadFiles()
+  setRebuilding(row.id, true)
+  try {
+    await rebuildKnowledgeFile(row.id, true)
+    ElMessage.success('已提交重新入库任务，系统会自动刷新状态')
+    await loadFiles()
+    startFilePolling()
+  } finally {
+    setRebuilding(row.id, false)
+  }
+}
+
+
+function isFileProcessing(row = {}) {
+  return Number(row.parseStatus) === 1 || Number(row.embeddingStatus) === 1
+}
+
+function isRebuilding(row = {}) {
+  return rebuildingIds.value.has(row.id)
+}
+
+function setRebuilding(id, value) {
+  const next = new Set(rebuildingIds.value)
+  if (value) next.add(id)
+  else next.delete(id)
+  rebuildingIds.value = next
+}
+
+function startFilePolling() {
+  if (pollingTimer.value || !selectedBase.value?.id) return
+  pollingTimer.value = window.setInterval(async () => {
+    if (!selectedBase.value?.id) {
+      stopFilePolling()
+      return
+    }
+    await loadFiles()
+    await loadBases(selectedBase.value.id)
+  }, 3000)
+}
+
+function stopFilePolling() {
+  if (!pollingTimer.value) return
+  clearInterval(pollingTimer.value)
+  pollingTimer.value = null
+}
+
+function refreshFilePolling() {
+  if (files.value.some(isFileProcessing)) {
+    startFilePolling()
+  } else {
+    stopFilePolling()
+  }
 }
 
 function openSearchDialog() {

@@ -4,55 +4,84 @@
       <div class="page-title-row">
         <span class="title-mark"></span>
         <span>下载中心</span>
+        <span class="title-tip">AI方案 / AI标书导出的 Word 成果文件统一在这里下载。</span>
       </div>
+
       <div class="toolbar-row">
         <el-input
           v-model="filters.keyword"
           class="search-input"
-          placeholder="请输入文件名"
+          placeholder="输入文件名自动查询"
           clearable
           :prefix-icon="Search"
+          @input="onKeywordInput"
+          @clear="reloadFirstPage"
           @keyup.enter="reloadFirstPage"
         />
-        <el-button type="primary" @click="reloadFirstPage">搜索</el-button>
-        <el-button @click="resetSearch">清空</el-button>
+        <el-button class="refresh-btn" :icon="Refresh" :loading="loading" @click="loadRows">刷新</el-button>
       </div>
 
       <el-table
-        class="simple-table"
+        class="ui-table download-table"
         :data="rows"
         v-loading="loading"
-        height="calc(100vh - 328px)"
+        border
+        stripe
+        height="calc(100vh - 300px)"
         empty-text="暂无下载文件"
       >
         <el-table-column label="文件名" min-width="420" show-overflow-tooltip>
           <template #default="{ row }">
             <div class="file-name-cell">
               <el-icon><Document /></el-icon>
-              <span>{{ row.fileName || '-' }}</span>
+              <div class="file-name-main">
+                <span>{{ row.fileName || '-' }}</span>
+                <small v-if="!isFileAvailable(row)">文件已丢失，请重新导出</small>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="文件大小" width="180">
+
+        <el-table-column label="文件类型" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag type="primary" effect="light">{{ fileTypeLabel(row) }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="文件大小" width="150">
           <template #default="{ row }">{{ fileSize(row.fileSize) }}</template>
         </el-table-column>
-        <el-table-column label="创建时间" width="220">
+
+        <el-table-column label="创建时间" width="190">
           <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="文件状态" width="180">
+
+        <el-table-column label="文件状态" width="160">
           <template #default="{ row }">
-            <span class="state-dot" :class="row.fileState"></span>
-            <span>{{ row.fileStateLabel || '-' }}</span>
+            <el-tag :type="isFileAvailable(row) ? 'success' : 'danger'" effect="light">
+              {{ isFileAvailable(row) ? '可下载' : '文件丢失' }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center">
-          <template #header>
-            <span>操作</span>
-            <el-button class="refresh-btn" text :icon="Refresh" @click="loadRows" />
-          </template>
+
+        <el-table-column label="操作" width="180" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="danger" @click="deleteRow(row)">删除</el-button>
-            <el-button link type="primary" :disabled="Number(row.fileExists) !== 1" @click="downloadRow(row)">下载</el-button>
+            <el-tooltip
+              :disabled="isFileAvailable(row)"
+              content="文件已丢失，请重新导出"
+              placement="top"
+            >
+              <span>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="downloadingId === row.id"
+                  :disabled="!isFileAvailable(row)"
+                  @click="downloadRow(row)"
+                >下载</el-button>
+              </span>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -68,7 +97,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Refresh, Search } from '@element-plus/icons-vue'
 import PageFooterPager from '@/components/PageFooterPager.vue'
@@ -77,21 +106,28 @@ import { fileSize, formatDateTime } from '@/utils/format'
 
 const loading = ref(false)
 const rows = ref([])
+const downloadingId = ref(null)
 const filters = reactive({ keyword: '' })
 const pager = reactive({ page: 1, size: 10, total: 0 })
+let keywordTimer = null
 
 onMounted(() => {
   loadRows()
 })
 
-function reloadFirstPage() {
-  pager.page = 1
-  loadRows()
+onBeforeUnmount(() => {
+  clearTimeout(keywordTimer)
+})
+
+function onKeywordInput() {
+  clearTimeout(keywordTimer)
+  keywordTimer = setTimeout(reloadFirstPage, 300)
 }
 
-function resetSearch() {
-  filters.keyword = ''
-  reloadFirstPage()
+function reloadFirstPage() {
+  clearTimeout(keywordTimer)
+  pager.page = 1
+  loadRows()
 }
 
 async function loadRows() {
@@ -100,7 +136,7 @@ async function loadRows() {
     const res = await pageDownloadFiles({
       pageNum: pager.page,
       pageSize: pager.size,
-      keyword: filters.keyword || undefined
+      keyword: String(filters.keyword || '').trim() || undefined
     })
     rows.value = res?.records || []
     pager.total = Number(res?.total || 0)
@@ -109,13 +145,31 @@ async function loadRows() {
   }
 }
 
+function isFileAvailable(row) {
+  return Number(row?.fileExists) === 1 && String(row?.fileState || '').toLowerCase() !== 'lost'
+}
+
+function fileTypeLabel(row) {
+  const name = String(row?.fileName || '').toLowerCase()
+  if (name.endsWith('.doc') || name.endsWith('.docx')) return 'Word'
+  if (name.endsWith('.pdf')) return 'PDF'
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) return 'Excel'
+  return '文件'
+}
+
 async function downloadRow(row) {
-  if (Number(row.fileExists) !== 1) {
+  if (!isFileAvailable(row)) {
     ElMessage.warning('文件已丢失，请重新导出')
     return
   }
-  const blob = await downloadCenterFile(row.id)
-  downloadBlob(blob, row.fileName || '导出文件.docx')
+
+  downloadingId.value = row.id
+  try {
+    const blob = await downloadCenterFile(row.id)
+    downloadBlob(blob, row.fileName || '导出文件.docx')
+  } finally {
+    downloadingId.value = null
+  }
 }
 
 async function deleteRow(row) {
@@ -126,6 +180,10 @@ async function deleteRow(row) {
   )
   await deleteDownloadFile(row.id)
   ElMessage.success('删除成功')
+
+  if (rows.value.length <= 1 && pager.page > 1) {
+    pager.page -= 1
+  }
   await loadRows()
 }
 
@@ -168,7 +226,7 @@ function sanitizeFileName(name) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 22px;
+  padding-bottom: 18px;
   border-bottom: 1px solid #edf0f5;
   color: #111827;
   font-size: 18px;
@@ -182,40 +240,28 @@ function sanitizeFileName(name) {
   background: #2f6bff;
 }
 
-.page-desc {
-  margin: 18px 0 18px;
-  padding: 14px 16px;
-  border: 1px solid #d7dde8;
-  color: #5f6b7a;
-  font-size: 15px;
-  line-height: 1.8;
-  background: #fff;
+.title-tip {
+  color: #9aa4b2;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .toolbar-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin: 18px 0 14px;
 }
 
 .search-input {
-  width: 260px;
+  width: 360px;
+  max-width: 100%;
 }
 
-.simple-table {
+.download-table {
   flex: 1;
   min-height: 0;
-}
-
-.simple-table :deep(.el-table__header th) {
-  background: #f4f6fa !important;
-  color: #8a94a6;
-  font-weight: 600;
-}
-
-.simple-table :deep(.el-table__cell) {
-  border-bottom-color: #edf0f5 !important;
 }
 
 .file-name-cell {
@@ -223,29 +269,34 @@ function sanitizeFileName(name) {
   align-items: center;
   gap: 8px;
   color: #4b5563;
+  min-width: 0;
 }
 
 .file-name-cell .el-icon {
   color: #2f80ed;
+  flex-shrink: 0;
 }
 
-.state-dot {
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin-right: 7px;
-  border-radius: 50%;
-  vertical-align: middle;
-  background: #22c55e;
+.file-name-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-.state-dot.lost {
-  background: #ef4444;
+.file-name-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name-main small {
+  margin-top: 3px;
+  color: #ef4444;
+  font-size: 12px;
 }
 
 .refresh-btn {
-  margin-left: 4px;
-  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 :deep(.page-footer-pager) {

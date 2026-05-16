@@ -305,25 +305,78 @@
     </section>
 
     <section v-if="showRightPreview" class="right-preview-card">
-      <div v-if="selectedSectionSolutionId === currentSolution?.id && selectedSection?.section?.content" class="section-preview">
+      <div v-if="selectedSectionSolutionId === currentSolution?.id && selectedSectionDisplayContent" class="section-preview">
         <div class="section-preview-head">
-          <h3>{{ selectedSection.title }}</h3>
+          <div class="section-preview-title">
+            <h3>{{ selectedSection.title }}</h3>
+            <div class="section-preview-meta">
+              <span :class="['word-health-text', wordHealthClass(selectedSection)]">{{ sectionContentEditMode ? sectionEditorWordCount : outlineActualWordCount(selectedSection) }} / {{ outlineTargetWordCount(selectedSection) || '-' }} 字</span>
+              <el-tag v-if="!sectionContentEditMode && wordHealthLabel(selectedSection)" size="small" :type="wordHealthType(selectedSection)" effect="light">{{ wordHealthLabel(selectedSection) }}</el-tag>
+              <el-tag v-if="sectionContentEditMode" size="small" :type="sectionContentDirty ? 'warning' : 'info'" effect="light">{{ sectionContentDirty ? '有未保存修改' : '编辑中' }}</el-tag>
+              <el-tag v-else size="small" :type="sectionStatusType(selectedSection)">{{ sectionStatusLabel(selectedSection) }}</el-tag>
+            </div>
+          </div>
           <div class="section-preview-actions">
             <template v-if="sectionContentEditMode">
               <el-button size="small" :disabled="sectionContentSaving" @click="cancelEditSectionContent">取消</el-button>
-              <el-button size="small" type="primary" :loading="sectionContentSaving" @click="saveSectionContent">保存</el-button>
+              <el-button size="small" type="primary" :loading="sectionContentSaving" :disabled="!sectionContentDirty" @click="saveSectionContent">保存</el-button>
             </template>
-            <el-button
-              v-else
-              size="small"
-              type="primary"
-              plain
-              :icon="EditPen"
-              :disabled="!canEditSectionContent"
-              @click="startEditSectionContent"
-            >
-              编辑
-            </el-button>
+            <template v-else>
+              <el-button
+                size="small"
+                plain
+                :disabled="!selectedSectionDisplayContent || !!sectionOptimizing"
+                @click="copySectionContent"
+              >
+                复制正文
+              </el-button>
+              <el-button
+                size="small"
+                plain
+                :loading="sectionOptimizing === 'POLISH'"
+                :disabled="!canOptimizeSectionContent"
+                @click="optimizeSection('POLISH')"
+              >
+                润色本章
+              </el-button>
+              <el-button
+                size="small"
+                plain
+                :loading="sectionOptimizing === 'EXPAND'"
+                :disabled="!canOptimizeSectionContent"
+                @click="optimizeSection('EXPAND')"
+              >
+                扩写本章
+              </el-button>
+              <el-button
+                size="small"
+                plain
+                :loading="sectionOptimizing === 'SHRINK'"
+                :disabled="!canOptimizeSectionContent"
+                @click="optimizeSection('SHRINK')"
+              >
+                缩写本章
+              </el-button>
+              <el-button
+                size="small"
+                plain
+                :loading="sectionOptimizing === 'REWRITE'"
+                :disabled="!canOptimizeSectionContent"
+                @click="optimizeSection('REWRITE')"
+              >
+                重写本章
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :icon="EditPen"
+                :disabled="!canEditSectionContent"
+                @click="startEditSectionContent"
+              >
+                编辑
+              </el-button>
+            </template>
           </div>
         </div>
         <el-input
@@ -335,8 +388,11 @@
           maxlength="200000"
           show-word-limit
           placeholder="请输入章节正文内容"
+          @keydown.ctrl.s.prevent="saveSectionContent"
+          @keydown.meta.s.prevent="saveSectionContent"
         />
-        <div v-else class="section-content-preview">{{ selectedSection.section.content }}</div>
+        <div v-if="sectionContentEditMode" class="section-editor-tip">已启用手动编辑，按 Ctrl + S 可快速保存；切换章节或取消时会提醒是否放弃未保存修改。</div>
+        <div v-else class="section-content-preview">{{ selectedSectionDisplayContent }}</div>
       </div>
       <div v-else class="right-home">
         <h1>AI方案</h1>
@@ -609,7 +665,7 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElOption, ElSelect, ElTag, ElTooltip } from 'element-plus'
+import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, ElTooltip } from 'element-plus'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
@@ -726,6 +782,8 @@ const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
 const sectionNode = ref(null)
 const sectionStreamingText = ref('')
+const sectionOptimizing = ref('')
+const sectionOptimizingNodeId = ref('')
 const overallWritingRequirement = ref('')
 const sectionContentEditMode = ref(false)
 const sectionContentSaving = ref(false)
@@ -813,10 +871,32 @@ const generatePercent = computed(() => {
 })
 
 const showRightPreview = computed(() => mode.value === 'detail' && !!currentSolution.value)
+const selectedSectionContent = computed(() => selectedSection.value?.section?.content || '')
+const sectionContentDirty = computed(() => normalizeSectionContent(sectionContentDraft.value) !== normalizeSectionContent(selectedSectionContent.value))
+const sectionEditorWordCount = computed(() => countTextWords(sectionContentDraft.value || ''))
+const selectedSectionDisplayContent = computed(() => {
+  const streaming = String(sectionStreamingText.value || '')
+  if (isSectionOptimizing(selectedSection.value) && streaming.trim()) {
+    return streaming
+  }
+  return selectedSectionContent.value
+})
 const canEditSectionContent = computed(() => {
   return !!selectedSection.value?.id
     && selectedSectionSolutionId.value === currentSolution.value?.id
+    && !!selectedSectionContent.value
     && !hasRunningTask.value
+    && !sectionGenerating.value
+    && !sectionOptimizing.value
+})
+const canOptimizeSectionContent = computed(() => {
+  return !!selectedSection.value?.id
+    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && !!selectedSectionContent.value
+    && !sectionContentEditMode.value
+    && !hasRunningTask.value
+    && !sectionGenerating.value
+    && !sectionOptimizing.value
 })
 const shellClass = computed(() => ({
   'with-preview': showRightPreview.value,
@@ -1674,8 +1754,24 @@ function pollGenerationTask(taskId) {
   taskTimer = setInterval(tick, 2000)
 }
 
-function selectSectionPreview(node) {
+async function confirmDiscardSectionContentChanges() {
+  if (!sectionContentEditMode.value || !sectionContentDirty.value) return true
+  try {
+    await ElMessageBox.confirm('当前章节正文有未保存修改，是否放弃这些修改？', '未保存修改', {
+      type: 'warning',
+      confirmButtonText: '放弃修改',
+      cancelButtonText: '继续编辑'
+    })
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+async function selectSectionPreview(node) {
   if (!node || !currentSolution.value?.id) return
+  const canLeave = await confirmDiscardSectionContentChanges()
+  if (!canLeave) return
   selectedSection.value = node
   selectedSectionSolutionId.value = currentSolution.value.id
   sectionContentEditMode.value = false
@@ -1691,7 +1787,9 @@ function startEditSectionContent() {
   sectionContentEditMode.value = true
 }
 
-function cancelEditSectionContent() {
+async function cancelEditSectionContent() {
+  const canLeave = await confirmDiscardSectionContentChanges()
+  if (!canLeave) return
   sectionContentDraft.value = selectedSection.value?.section?.content || ''
   sectionContentEditMode.value = false
 }
@@ -1708,6 +1806,10 @@ async function saveSectionContent() {
     return
   }
   const content = normalizeSectionContent(sectionContentDraft.value)
+  if (!sectionContentDirty.value) {
+    ElMessage.info('正文没有修改，无需保存')
+    return
+  }
   if (!content.trim()) {
     ElMessage.warning('正文内容不能为空')
     return
@@ -1725,6 +1827,134 @@ async function saveSectionContent() {
     ElMessage.success('正文保存成功')
   } finally {
     sectionContentSaving.value = false
+  }
+}
+
+async function copySectionContent() {
+  const content = String(selectedSectionDisplayContent.value || '').trim()
+  if (!content) {
+    ElMessage.warning('当前章节暂无正文可复制')
+    return
+  }
+  const title = String(selectedSection.value?.title || '').trim()
+  const text = title ? `${title}
+
+${content}` : content
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      fallbackCopyText(text)
+    }
+    ElMessage.success('章节正文已复制')
+  } catch (e) {
+    try {
+      fallbackCopyText(text)
+      ElMessage.success('章节正文已复制')
+    } catch (err) {
+      ElMessage.error('复制失败，请手动选择正文复制')
+    }
+  }
+}
+
+function fallbackCopyText(text) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', 'readonly')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textarea)
+}
+
+function optimizeActionLabel(type) {
+  if (type === 'EXPAND') return '扩写'
+  if (type === 'SHRINK') return '缩写'
+  if (type === 'REWRITE') return '重写'
+  return '润色'
+}
+
+function countTextWords(text) {
+  const value = String(text || '').trim()
+  if (!value) return 0
+  const chinese = (value.match(/[\u4e00-\u9fa5]/g) || []).length
+  const english = (value.replace(/[\u4e00-\u9fa5]/g, ' ').match(/[A-Za-z0-9]+/g) || []).length
+  return chinese + english
+}
+
+function sectionOptimizeTargetWordCount(type, node, content) {
+  const current = Number(node?.actualWordCount || node?.section?.actualWordCount || 0)
+  const target = Number(node?.targetWordCount || node?.section?.targetWordCount || 0)
+  const base = target > 0 ? target : (current > 0 ? current : countTextWords(content))
+  if (type === 'EXPAND') return Math.max(600, Math.round(base * 1.35))
+  if (type === 'SHRINK') return Math.max(300, Math.round(base * 0.65))
+  return Math.max(300, base || 600)
+}
+
+function sectionOptimizeInstruction(type, title, content, targetWordCount) {
+  const name = String(title || '当前章节').trim()
+  const body = String(content || '').trim()
+  const target = Number(targetWordCount || 0) > 0 ? Number(targetWordCount || 0) : 600
+  if (type === 'EXPAND') {
+    return `请对“${name}”进行扩写。要求：1. 保留原文核心观点和投标响应逻辑；2. 增加实施步骤、保障措施、交付成果、风险控制、服务承诺等内容；3. 语言正式、专业、可直接放入方案文件；4. 目标字数约 ${target} 字；5. 只输出扩写后的章节正文，不要解释。\n\n【已有正文】\n${body}`
+  }
+  if (type === 'SHRINK') {
+    return `请对“${name}”进行缩写。要求：1. 保留关键响应点、技术措施和承诺事项；2. 删除重复、空泛和口号化表达；3. 逻辑清晰、表达凝练；4. 目标字数约 ${target} 字；5. 只输出缩写后的章节正文，不要解释。\n\n【已有正文】\n${body}`
+  }
+  if (type === 'REWRITE') {
+    return `请重新撰写“${name}”。要求：1. 结合招标文件采购需求、评分标准和当前方案定位；2. 参考原文思路但不要机械复述；3. 内容要更正式、更完整、更适合投标/方案文件；4. 目标字数约 ${target} 字；5. 只输出重写后的章节正文，不要解释。\n\n【原章节正文】\n${body}`
+  }
+  return `请对“${name}”进行润色。要求：1. 不改变原文核心意思和承诺边界；2. 优化语句、逻辑衔接和专业表达；3. 去掉口语化、重复和空泛内容；4. 保持正式严谨风格；5. 只输出润色后的章节正文，不要解释。\n\n【已有正文】\n${body}`
+}
+
+async function optimizeSection(type = 'POLISH') {
+  if (!canOptimizeSectionContent.value || !selectedSection.value?.id) return
+  const node = selectedSection.value
+  const content = String(selectedSectionContent.value || '').trim()
+  if (!content) {
+    ElMessage.warning('当前章节暂无正文')
+    return
+  }
+  const targetWordCount = sectionOptimizeTargetWordCount(type, node, content)
+  const label = optimizeActionLabel(type)
+  sectionOptimizing.value = type
+  sectionOptimizingNodeId.value = String(node.id || '')
+  sectionStreamingText.value = ''
+  sectionContentEditMode.value = false
+  try {
+    await streamSection(node.id, {
+      title: node.title,
+      targetWordCount,
+      chartLevel: 'NONE',
+      tableLevel: 'NONE',
+      imageLevel: 'NONE',
+      knowledgeIds: node.knowledgeIds || sectionForm.knowledgeIds || '',
+      fileResourceIds: node.fileResourceIds || '',
+      writingDirection: node.writingDirection || '',
+      writingRequirement: sectionOptimizeInstruction(type, node.title, content, targetWordCount),
+      writingStyle: node.writingStyle || sectionForm.writingStyle || 'GENERAL',
+      overwrite: true
+    }, {
+      onMessage(chunk) {
+        sectionStreamingText.value += chunk
+      },
+      onError(message) {
+        ElMessage.error(message || `${label}失败`)
+      }
+    })
+    await refreshCurrent()
+    selectedSectionSolutionId.value = currentSolution.value?.id || null
+    selectedSection.value = findOutlineNodeById(currentSolution.value?.outlines || [], node.id) || selectedSection.value
+    sectionContentDraft.value = selectedSection.value?.section?.content || ''
+    await loadList()
+    ElMessage.success(`${label}完成`)
+  } finally {
+    sectionOptimizing.value = ''
+    sectionOptimizingNodeId.value = ''
+    sectionStreamingText.value = ''
   }
 }
 
@@ -1817,6 +2047,27 @@ async function onDeleteSolution(item) {
   ElMessage.success('删除成功')
 }
 
+
+function notifySolutionWordExportSuccess(file, fallbackName) {
+  const fileName = file?.originalName || fallbackName || '导出文件.docx'
+  ElNotification({
+    title: '导出成功',
+    type: 'success',
+    duration: 8000,
+    message: h('div', { class: 'word-export-success-notice' }, [
+      h('div', { class: 'word-export-success-name' }, fileName),
+      h('div', { class: 'word-export-success-tip' }, '文件已开始下载，同时已写入下载中心。'),
+      h(ElButton, {
+        size: 'small',
+        type: 'primary',
+        plain: true,
+        class: 'word-export-success-btn',
+        onClick: () => router.push('/download-center')
+      }, () => '查看下载中心')
+    ])
+  })
+}
+
 async function onExportWord() {
   if (exportLoading.value) {
     return
@@ -1831,6 +2082,9 @@ async function onExportWord() {
     ElMessage.warning('请先选择要导出的方案')
     return
   }
+
+  const confirmed = await confirmSolutionExportBeforeDownload()
+  if (!confirmed) return
 
   const solutionId = currentSolution.value.id
   const solutionName = currentSolution.value?.solutionName || 'AI方案'
@@ -1855,7 +2109,7 @@ async function onExportWord() {
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    ElMessage.success('导出成功')
+    notifySolutionWordExportSuccess(file, a.download)
   } finally {
     exportLoading.value = false
   }
@@ -1993,6 +2247,122 @@ function outlineTargetWordCount(node) {
   return node?.targetWordCount || node?.section?.targetWordCount || 0
 }
 
+function wordHealthClass(node) {
+  if (!node || !isOutlineGenerated(node)) return ''
+  const actual = Number(outlineActualWordCount(node) || 0)
+  const target = Number(outlineTargetWordCount(node) || 0)
+  if (!actual || !target) return ''
+  const ratio = actual / target
+  if (ratio < 0.7) return 'too-short'
+  if (ratio > 1.35) return 'too-long'
+  return 'normal'
+}
+
+function wordHealthLabel(node) {
+  const cls = wordHealthClass(node)
+  if (cls === 'too-short') return '偏短'
+  if (cls === 'too-long') return '偏长'
+  if (cls === 'normal') return '字数正常'
+  return ''
+}
+
+function wordHealthType(node) {
+  const cls = wordHealthClass(node)
+  if (cls === 'too-short' || cls === 'too-long') return 'warning'
+  if (cls === 'normal') return 'success'
+  return 'info'
+}
+
+function isSectionOptimizing(node) {
+  return !!sectionOptimizing.value
+    && !!sectionOptimizingNodeId.value
+    && String(node?.id || '') === String(sectionOptimizingNodeId.value || '')
+}
+
+function sectionStatusLabel(node) {
+  if (isSectionOptimizing(node)) return `${optimizeActionLabel(sectionOptimizing.value)}中`
+  if (isOutlineGenerated(node)) return '已完成'
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  if (status === 'GENERATING' || status === 'LOCKED') return '生成中'
+  if (status === 'FAILED') return '失败'
+  if (status === 'STALE') return '待重编'
+  return '未生成'
+}
+
+function sectionStatusType(node) {
+  if (isSectionOptimizing(node)) return 'warning'
+  if (isOutlineGenerated(node)) return 'success'
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  if (status === 'GENERATING' || status === 'LOCKED') return 'warning'
+  if (status === 'FAILED') return 'danger'
+  return 'info'
+}
+
+
+function briefSolutionNodeList(nodes = []) {
+  return nodes
+    .slice(0, 5)
+    .map((item) => item?.title || item?.sectionTitle || '未命名章节')
+    .join('、') + (nodes.length > 5 ? ' 等' : '')
+}
+
+function buildSolutionExportWarnings() {
+  const leaves = flattenLeaf(currentSolution.value?.outlines || [])
+  const warnings = []
+  if (!leaves.length) {
+    warnings.push('当前方案还没有生成目录，导出的 Word 可能为空。')
+    return warnings
+  }
+
+  const unfinished = leaves.filter((item) => !isOutlineGenerated(item))
+  const emptyContent = leaves.filter((item) => isOutlineGenerated(item) && !String(item?.section?.content || '').trim())
+  const noTargetWord = leaves.filter((item) => !Number(outlineTargetWordCount(item) || 0))
+  const tooShort = leaves.filter((item) => {
+    if (!isOutlineGenerated(item)) return false
+    const target = Number(outlineTargetWordCount(item) || 0)
+    const actual = Number(outlineActualWordCount(item) || 0)
+    if (target <= 0 || actual <= 0) return false
+    return actual < Math.max(80, Math.round(target * 0.6))
+  })
+
+  if (unfinished.length) {
+    warnings.push(`仍有 ${unfinished.length} 个章节未生成完成：${briefSolutionNodeList(unfinished)}`)
+  }
+  if (emptyContent.length) {
+    warnings.push(`发现 ${emptyContent.length} 个章节正文为空：${briefSolutionNodeList(emptyContent)}`)
+  }
+  if (noTargetWord.length) {
+    warnings.push(`发现 ${noTargetWord.length} 个章节未设置目标字数：${briefSolutionNodeList(noTargetWord)}`)
+  }
+  if (tooShort.length) {
+    warnings.push(`发现 ${tooShort.length} 个章节生成字数明显偏少：${briefSolutionNodeList(tooShort)}`)
+  }
+
+  return warnings
+}
+
+async function confirmSolutionExportBeforeDownload() {
+  const warnings = buildSolutionExportWarnings()
+  if (!warnings.length) return true
+  try {
+    await ElMessageBox.confirm(
+      h('div', { class: 'solution-export-check-message' }, [
+        h('p', { class: 'solution-export-check-title' }, '导出前检查发现以下问题：'),
+        h('ul', { class: 'solution-export-check-list' }, warnings.map((item, index) => h('li', { key: index }, item))),
+        h('p', { class: 'solution-export-check-tip' }, '可以返回处理后再导出，也可以继续导出当前版本。')
+      ]),
+      '导出前检查',
+      {
+        type: 'warning',
+        confirmButtonText: '继续导出',
+        cancelButtonText: '返回处理'
+      }
+    )
+    return true
+  } catch (e) {
+    return false
+  }
+}
 
 function formatDateTime(value) {
   if (!value) return ''
@@ -2060,8 +2430,12 @@ const OutlineTree = defineComponent({
       if (props.mode === 'generate' && !hasChildren) {
         const generated = isOutlineGenerated(node)
         const failed = isOutlineFailed(node)
-        controls.push(h('span', { class: ['count-text', failed ? 'failed' : ''] }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
-        if (generated) {
+        const optimizing = isSectionOptimizing(node)
+        controls.push(h('span', { class: ['count-text', failed ? 'failed' : '', wordHealthClass(node)] }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
+        if (optimizing) {
+          controls.push(h(ElTag, { size: 'small', type: 'warning', effect: 'light' }, () => `${optimizeActionLabel(sectionOptimizing.value)}中`))
+          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, loading: true, disabled: true }, () => '处理中'))
+        } else if (generated) {
           controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
         } else if (failed) {
@@ -2218,10 +2592,25 @@ const WritingDirectionEditor = defineComponent({
   font-weight: 800;
   color: #06152b;
 }
+.section-preview-title {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.section-preview-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
 .section-preview-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 .section-content-preview {
@@ -2282,7 +2671,12 @@ const WritingDirectionEditor = defineComponent({
 :deep(.tree-controls) { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 :deep(.word-select) { width: 110px; }
 :deep(.count-text) { color: #22c55e; min-width: 78px; text-align: right; }
+:deep(.count-text.too-short), :deep(.count-text.too-long) { color: #f59e0b; }
 :deep(.count-text.failed) { color: #ef4444; }
+.word-health-text { font-weight: 700; color: #16a34a; }
+.word-health-text.too-short,
+.word-health-text.too-long { color: #d97706; }
+.word-health-text.normal { color: #16a34a; }
 :deep(.simple-level) { color: #9ca3af; font-size: 12px; }
 :deep(.direction-editor) { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 5px rgba(15, 23, 42, .06); }
 :deep(.title-input) { flex: 1; }
@@ -2367,4 +2761,60 @@ const WritingDirectionEditor = defineComponent({
 @media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 260px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
 :deep(.tree-row.clickable) { cursor: pointer; }
 :deep(.tree-row.clickable:hover) { background: #f8fafc; }
+
+.solution-export-check-message {
+  color: #303133;
+  line-height: 1.7;
+}
+
+.solution-export-check-title {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.solution-export-check-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #606266;
+}
+
+.solution-export-check-tip {
+  margin: 10px 0 0;
+  color: #909399;
+}
+
+</style>
+
+
+<style scoped>
+.word-export-success-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.word-export-success-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2937;
+  font-weight: 600;
+}
+.word-export-success-tip {
+  color: #64748b;
+  font-size: 13px;
+}
+.word-export-success-btn {
+  align-self: flex-start;
+}
+</style>
+
+
+<style scoped>
+.section-editor-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #8a95a8;
+}
 </style>

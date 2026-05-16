@@ -9,12 +9,81 @@ export function pageBidProjects(params) {
 }
 
 /**
+ * 标书项目详情
+ */
+export function getBidProject(id) {
+  return request.get(`/bid-project/${id}`)
+}
+
+/**
+ * 标书项目生成前检查
+ */
+export function getBidProjectGenerateCheck(id) {
+  return request.get(`/bid-project/${id}/generate-check`)
+}
+
+/**
+ * 新增标书项目
+ */
+export function createBidProject(data) {
+  return request.post('/bid-project', data)
+}
+
+/**
+ * 修改标书项目
+ */
+export function updateBidProject(id, data) {
+  return request.put(`/bid-project/${id}`, data)
+}
+
+/**
+ * 修改标书项目状态
+ */
+export function updateBidProjectStatus(id, data) {
+  return request.put(`/bid-project/${id}/status`, data)
+}
+
+/**
  * 删除标书项目
  */
 export function deleteBidProject(id) {
   return request.delete(`/bid-project/${id}`)
 }
 
+/**
+ * 项目资料分页
+ */
+export function pageProjectMaterials(params) {
+  return request.get('/project-material/page', { params })
+}
+
+/**
+ * 项目资料列表
+ */
+export function listProjectMaterials(params) {
+  return request.get('/project-material/list', { params })
+}
+
+/**
+ * 添加项目资料
+ */
+export function createProjectMaterial(data) {
+  return request.post('/project-material', data)
+}
+
+/**
+ * 项目资料加入知识库
+ */
+export function addProjectMaterialToKnowledge(id, data) {
+  return request.post(`/project-material/${id}/to-knowledge`, data)
+}
+
+/**
+ * 删除项目资料
+ */
+export function deleteProjectMaterial(id) {
+  return request.delete(`/project-material/${id}`)
+}
 /**
  * AI标书：项目工作台详情
  */
@@ -39,6 +108,18 @@ export function startReadTenderProject(id) {
   return request.post(`/bid-project/${id}/workflow/start-read`, null, {
     timeout: 300000
   })
+}
+
+/**
+ * AI标书：从解析结果自动回填项目基础信息。
+ *
+ * 说明：
+ * 1. 不新增页面入口；
+ * 2. 只在当前项目解析完成后，由用户点击按钮触发；
+ * 3. 后端只补空字段，避免覆盖用户手工修改过的项目信息。
+ */
+export function autoFillBidProjectBasicInfo(id) {
+  return request.post(`/bid-project/${id}/workflow/auto-fill-basic-info`)
 }
 
 /**
@@ -121,6 +202,7 @@ export function downloadFileResource(id) {
     timeout: 300000
   })
 }
+
 
 /**
  * AI标书：技术方案单节点修改目标字数。

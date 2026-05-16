@@ -4,9 +4,6 @@ export function pageCompanyMaterials(params) {
   return request.get('/company-material/page', { params })
 }
 
-export function listCompanyMaterials(params) {
-  return request.get('/company-material/list', { params })
-}
 
 export function getCompanyMaterial(id) {
   return request.get(`/company-material/${id}`)
