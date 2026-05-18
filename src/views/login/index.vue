@@ -1,16 +1,10 @@
 <template>
-  <div class="login-page">
+  <div class="login-page" :class="{ 'is-reset-mode': pageMode === 'reset' }">
     <div class="login-bg-shape shape-one"></div>
     <div class="login-bg-shape shape-two"></div>
     <div class="login-bg-shape shape-three"></div>
 
-    <section class="login-card">
-      <header class="brand-header">
-        <div class="brand-logo">
-          <span>AI</span>
-        </div>
-        <div class="brand-name">AI标书</div>
-      </header>
+    <section v-if="pageMode === 'login'" class="login-card">
 
       <h1 class="welcome-title">欢迎使用恒鼎·智慧AI</h1>
 
@@ -166,7 +160,14 @@
         </el-button>
       </el-form>
 
-      <button type="button" class="forget-btn" @click="handleForgetPassword">忘记密码?</button>
+      <button
+        v-if="activeTab === 'password'"
+        type="button"
+        class="forget-btn"
+        @click="handleForgetPassword"
+      >
+        忘记密码?
+      </button>
 
       <div class="other-login">
         <div class="line-title">
@@ -181,6 +182,90 @@
       </div>
     </section>
 
+    <section v-else class="reset-page-card">
+      <button type="button" class="reset-back-btn" aria-label="返回登录" @click="backToLogin">
+        ←
+      </button>
+
+      <h1 class="reset-page-title">找回密码</h1>
+
+      <el-form
+        ref="resetFormRef"
+        :model="resetForm"
+        :rules="resetRules"
+        label-width="0"
+        class="reset-page-form"
+        @submit.prevent
+      >
+        <el-form-item prop="phone">
+          <div class="phone-input-wrap">
+            <div class="area-code">+86</div>
+            <el-input
+              v-model.trim="resetForm.phone"
+              size="large"
+              placeholder="请输入手机号"
+              maxlength="11"
+              @keyup.enter="handleSendResetSmsCode"
+            />
+          </div>
+        </el-form-item>
+
+        <el-form-item prop="smsCode">
+          <div class="sms-code-row">
+            <el-input
+              v-model.trim="resetForm.smsCode"
+              size="large"
+              placeholder="请输入验证码"
+              maxlength="6"
+              @keyup.enter="submitResetPassword"
+            />
+            <el-button
+              class="code-btn"
+              type="primary"
+              size="large"
+              :loading="resetCodeLoading"
+              :disabled="resetCountdown > 0"
+              @click="handleSendResetSmsCode"
+            >
+              {{ resetCountdown > 0 ? `${resetCountdown}s后重试` : '获取验证码' }}
+            </el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item prop="newPassword">
+          <el-input
+            v-model="resetForm.newPassword"
+            size="large"
+            type="password"
+            show-password
+            placeholder="设置登录密码"
+            @keyup.enter="submitResetPassword"
+          />
+        </el-form-item>
+
+        <el-form-item prop="confirmPassword">
+          <el-input
+            v-model="resetForm.confirmPassword"
+            size="large"
+            type="password"
+            show-password
+            placeholder="再次确认登录密码"
+            @keyup.enter="submitResetPassword"
+          />
+        </el-form-item>
+
+        <el-button
+          type="primary"
+          size="large"
+          class="submit-btn reset-submit-btn"
+          :loading="resetLoading"
+          @click="submitResetPassword"
+        >
+          设置密码
+        </el-button>
+      </el-form>
+    </section>
+
     <el-dialog v-model="agreementVisible" :title="agreementTitle" width="520px">
       <div class="agreement-content">
         {{ agreementContent }}
@@ -193,27 +278,33 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getCaptcha, sendSmsCode } from '@/api/auth'
+import { getCaptcha, resetPassword, sendResetPasswordSmsCode, sendSmsCode } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
 
+const pageMode = ref('login')
 const activeTab = ref('password')
 const smsFormRef = ref()
 const passwordFormRef = ref()
+const resetFormRef = ref()
 const loading = ref(false)
 const smsCodeLoading = ref(false)
+const resetCodeLoading = ref(false)
+const resetLoading = ref(false)
 const captchaImage = ref('')
 const countdown = ref(0)
+const resetCountdown = ref(0)
 const agreementVisible = ref(false)
 const agreementType = ref('user')
 
 let countdownTimer = null
+let resetCountdownTimer = null
 
 const phoneReg = /^1[3-9]\d{9}$/
 
@@ -229,6 +320,13 @@ const passwordForm = reactive({
   captchaKey: '',
   captchaCode: '',
   agreementAccepted: true
+})
+
+const resetForm = reactive({
+  phone: '',
+  smsCode: '',
+  newPassword: '',
+  confirmPassword: ''
 })
 
 const smsRules = {
@@ -251,6 +349,35 @@ const passwordRules = {
   captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }]
 }
 
+const resetRules = {
+  phone: [
+    { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: phoneReg, message: '手机号格式不正确', trigger: 'blur' }
+  ],
+  smsCode: [
+    { required: true, message: '请输入短信验证码', trigger: 'blur' },
+    { min: 4, max: 6, message: '验证码长度不正确', trigger: 'blur' }
+  ],
+  newPassword: [
+    { required: true, message: '请输入登录密码', trigger: 'blur' },
+    { min: 6, max: 32, message: '登录密码长度必须在 6 到 32 位之间', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请再次输入登录密码', trigger: 'blur' },
+    { min: 6, max: 32, message: '确认密码长度必须在 6 到 32 位之间', trigger: 'blur' },
+    {
+      validator: (_rule, value, callback) => {
+        if (value !== resetForm.newPassword) {
+          callback(new Error('两次输入的登录密码不一致'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
 const agreementTitle = computed(() => agreementType.value === 'privacy' ? '隐私协议' : '用户协议')
 const agreementContent = computed(() => {
   if (agreementType.value === 'privacy') {
@@ -265,6 +392,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearCountdownTimer()
+  clearResetCountdownTimer()
 })
 
 function switchTab(tab) {
@@ -294,6 +422,18 @@ async function handleSendSmsCode() {
     startCountdown()
   } finally {
     smsCodeLoading.value = false
+  }
+}
+
+async function handleSendResetSmsCode() {
+  await resetFormRef.value.validateField('phone')
+  resetCodeLoading.value = true
+  try {
+    await sendResetPasswordSmsCode({ phone: resetForm.phone })
+    ElMessage.success('验证码已发送')
+    startResetCountdown()
+  } finally {
+    resetCodeLoading.value = false
   }
 }
 
@@ -343,6 +483,28 @@ async function submitPasswordLogin() {
   }
 }
 
+async function submitResetPassword() {
+  await resetFormRef.value.validate()
+  resetLoading.value = true
+  try {
+    await resetPassword({
+      phone: resetForm.phone,
+      smsCode: resetForm.smsCode,
+      newPassword: resetForm.newPassword,
+      confirmPassword: resetForm.confirmPassword
+    })
+    ElMessage.success('密码设置成功，请使用新密码登录')
+    passwordForm.phone = resetForm.phone
+    passwordForm.password = ''
+    passwordForm.captchaCode = ''
+    activeTab.value = 'password'
+    backToLogin(false)
+    await loadCaptcha()
+  } finally {
+    resetLoading.value = false
+  }
+}
+
 function redirectAfterLogin() {
   const redirect = route.query.redirect ? decodeURIComponent(route.query.redirect) : '/dashboard'
   router.replace(redirect)
@@ -359,10 +521,28 @@ function startCountdown() {
   }, 1000)
 }
 
+function startResetCountdown() {
+  clearResetCountdownTimer()
+  resetCountdown.value = 60
+  resetCountdownTimer = window.setInterval(() => {
+    resetCountdown.value -= 1
+    if (resetCountdown.value <= 0) {
+      clearResetCountdownTimer()
+    }
+  }, 1000)
+}
+
 function clearCountdownTimer() {
   if (countdownTimer) {
     window.clearInterval(countdownTimer)
     countdownTimer = null
+  }
+}
+
+function clearResetCountdownTimer() {
+  if (resetCountdownTimer) {
+    window.clearInterval(resetCountdownTimer)
+    resetCountdownTimer = null
   }
 }
 
@@ -371,8 +551,28 @@ function openAgreement(type) {
   agreementVisible.value = true
 }
 
-function handleForgetPassword() {
-  ElMessage.info('请联系管理员重置密码')
+async function handleForgetPassword() {
+  resetForm.phone = passwordForm.phone || smsForm.phone || ''
+  resetForm.smsCode = ''
+  resetForm.newPassword = ''
+  resetForm.confirmPassword = ''
+  pageMode.value = 'reset'
+  await nextTick()
+  resetFormRef.value?.clearValidate?.()
+}
+
+function backToLogin(keepPhone = true) {
+  pageMode.value = 'login'
+  resetForm.smsCode = ''
+  resetForm.newPassword = ''
+  resetForm.confirmPassword = ''
+  resetLoading.value = false
+  resetCodeLoading.value = false
+  clearResetCountdownTimer()
+  resetCountdown.value = 0
+  if (!keepPhone) {
+    resetForm.phone = ''
+  }
 }
 
 function handleAppLogin() {
@@ -469,25 +669,6 @@ function handleAppLogin() {
   gap: 16px;
 }
 
-.brand-logo {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #2f6df6 0%, #5b8cff 100%);
-  color: #fff;
-  font-size: 19px;
-  font-weight: 900;
-  letter-spacing: -1px;
-  box-shadow: 0 10px 22px rgba(48, 109, 246, 0.22);
-}
-
-.brand-logo span {
-  transform: skew(-8deg);
-}
-
 .brand-name {
   font-size: 39px;
   line-height: 1;
@@ -545,18 +726,21 @@ function handleAppLogin() {
   margin-top: 43px;
 }
 
-.login-form :deep(.el-form-item) {
+.login-form :deep(.el-form-item),
+.reset-page-form :deep(.el-form-item) {
   margin-bottom: 24px;
 }
 
-.login-form :deep(.el-input__wrapper) {
+.login-form :deep(.el-input__wrapper),
+.reset-page-form :deep(.el-input__wrapper) {
   min-height: 38px;
   border-radius: 4px;
   box-shadow: 0 0 0 1px #dce5f6 inset;
   background: #fff;
 }
 
-.login-form :deep(.el-input__wrapper.is-focus) {
+.login-form :deep(.el-input__wrapper.is-focus),
+.reset-page-form :deep(.el-input__wrapper.is-focus) {
   box-shadow: 0 0 0 1px #3b6ff6 inset;
 }
 
@@ -635,7 +819,8 @@ function handleAppLogin() {
 
 .link-btn,
 .forget-btn,
-.app-login {
+.app-login,
+.reset-back-btn {
   border: none;
   background: transparent;
   padding: 0;
@@ -713,13 +898,63 @@ function handleAppLogin() {
   line-height: 1.8;
 }
 
+.reset-page-card {
+  position: relative;
+  z-index: 2;
+  width: 600px;
+  min-height: 610px;
+  padding: 66px 72px 62px;
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(31, 56, 88, 0.06);
+}
+
+.reset-back-btn {
+  position: absolute;
+  left: 72px;
+  top: 67px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111827;
+  font-size: 29px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+.reset-page-title {
+  margin: 26px 0 72px;
+  text-align: center;
+  color: #050b17;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+.reset-page-form {
+  width: 456px;
+  margin: 0 auto;
+}
+
+.reset-page-form :deep(.el-input__inner) {
+  font-size: 14px;
+}
+
+.reset-submit-btn {
+  margin-top: 25px;
+}
+
 @media (max-width: 760px) {
   .login-page {
     align-items: flex-start;
     padding: 28px 16px;
   }
 
-  .login-card {
+  .login-card,
+  .reset-page-card {
     width: 100%;
     min-height: auto;
     padding: 38px 24px 34px;
@@ -736,6 +971,20 @@ function handleAppLogin() {
 
   .tab-item.active {
     font-size: 20px;
+  }
+
+  .reset-back-btn {
+    left: 24px;
+    top: 38px;
+  }
+
+  .reset-page-title {
+    margin: 20px 0 42px;
+    font-size: 24px;
+  }
+
+  .reset-page-form {
+    width: 100%;
   }
 
   .sms-code-row,
