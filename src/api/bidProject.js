@@ -194,6 +194,15 @@ export function exportBidProjectTechnicalWord(id) {
 }
 
 /**
+ * AI标书：技术方案导出 PDF
+ */
+export function exportBidProjectTechnicalPdf(id) {
+  return request.post(`/bid-project/${id}/technical-solution/export-pdf`, null, {
+    timeout: 300000
+  })
+}
+
+/**
  * 文件下载
  */
 export function downloadFileResource(id) {

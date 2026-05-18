@@ -4,7 +4,7 @@
       <div class="page-title-row">
         <span class="title-mark"></span>
         <span>下载中心</span>
-        <span class="title-tip">AI方案 / AI标书导出的 Word 成果文件统一在这里下载。</span>
+        <span class="title-tip">AI方案 / AI标书 / AI文档导出的 Word / PDF 成果文件统一在这里下载。</span>
       </div>
 
       <div class="toolbar-row">
@@ -150,6 +150,10 @@ function isFileAvailable(row) {
 }
 
 function fileTypeLabel(row) {
+  const type = String(row?.fileType || '').toLowerCase()
+  if (type === 'word' || type === 'doc' || type === 'docx') return 'Word'
+  if (type === 'pdf') return 'PDF'
+
   const name = String(row?.fileName || '').toLowerCase()
   if (name.endsWith('.doc') || name.endsWith('.docx')) return 'Word'
   if (name.endsWith('.pdf')) return 'PDF'
@@ -166,7 +170,7 @@ async function downloadRow(row) {
   downloadingId.value = row.id
   try {
     const blob = await downloadCenterFile(row.id)
-    downloadBlob(blob, row.fileName || '导出文件.docx')
+    downloadBlob(blob, row.fileName || defaultDownloadFileName(row))
   } finally {
     downloadingId.value = null
   }
@@ -187,6 +191,10 @@ async function deleteRow(row) {
   await loadRows()
 }
 
+function defaultDownloadFileName(row) {
+  return fileTypeLabel(row) === 'PDF' ? '导出文件.pdf' : '导出文件.docx'
+}
+
 function downloadBlob(blob, fileName) {
   const url = window.URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -200,7 +208,7 @@ function downloadBlob(blob, fileName) {
 }
 
 function sanitizeFileName(name) {
-  return String(name || '导出文件.docx').replace(/[\\/:*?"<>|]/g, '_')
+  return String(name || '导出文件').replace(/[\\/:*?"<>|]/g, '_')
 }
 </script>
 

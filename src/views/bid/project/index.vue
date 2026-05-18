@@ -429,13 +429,13 @@
                     </el-scrollbar>
 
                     <div v-if="technicalOutlines.length && !isCurrentTechnicalOutlineGenerating" class="tech-outline-next-tip">
-                      {{ technicalStep >= 5 ? '正文生成完成后，可点击章节查看结果，也可导出 Word。切换页面不会丢失生成进度。' : '目录已生成。请先设置篇幅，再开始生成正文。切换页面不会丢失结果。' }}
+                      {{ technicalStep >= 5 ? '正文生成完成后，可点击章节查看结果，也可导出 Word 或 PDF。切换页面不会丢失生成进度。' : '目录已生成。请先设置篇幅，再开始生成正文。切换页面不会丢失结果。' }}
                     </div>
 
                     <div class="tech-preview-actions detail-actions-like-solution">
                       <el-button size="large" :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">重编全文</el-button>
                       <el-button size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
-                      <el-button size="large" type="success" :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnicalWord">导出Word</el-button>
+                      <el-button size="large" type="success" :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
                     </div>
                   </template>
                 </div>
@@ -838,6 +838,7 @@ import {
   applyBidProjectTechnicalWordPreset,
   deleteBidProject,
   enterTechnicalSolution,
+  exportBidProjectTechnicalPdf,
   exportBidProjectTechnicalWord,
   generateBidProjectTechnicalFull,
   generateBidProjectTechnicalOutline,
@@ -2068,7 +2069,30 @@ function notifyTechnicalWordExportSuccess(file, fallbackName) {
   })
 }
 
-async function exportTechnicalWord() {
+async function chooseExportFormat() {
+  try {
+    await ElMessageBox.confirm(
+      h('div', { class: 'export-format-tip' }, [
+        h('p', '请选择导出文件格式：'),
+        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
+      ]),
+      '选择导出格式',
+      {
+        confirmButtonText: 'Word',
+        cancelButtonText: 'PDF',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: true,
+        closeOnPressEscape: true,
+        type: 'info'
+      }
+    )
+    return 'word'
+  } catch (action) {
+    return action === 'cancel' ? 'pdf' : ''
+  }
+}
+
+async function exportTechnical() {
   if (!selectedProject.value?.id) return
   if (!canExportTechnicalWord.value) {
     ElMessage.warning(fullGenerating.value || isTechnicalRunningByBackend.value ? '技术方案正在生成，完成后再导出' : '仍有章节未生成完成，暂不能导出')
@@ -2076,9 +2100,13 @@ async function exportTechnicalWord() {
   }
   const confirmed = await confirmTechnicalExportBeforeDownload()
   if (!confirmed) return
+  const format = await chooseExportFormat()
+  if (!format) return
   exportingWord.value = true
   try {
-    const file = await exportBidProjectTechnicalWord(selectedProject.value.id)
+    const file = format === 'pdf'
+      ? await exportBidProjectTechnicalPdf(selectedProject.value.id)
+      : await exportBidProjectTechnicalWord(selectedProject.value.id)
     await refreshWorkflow()
     await loadTechnicalSolution()
     if (!file?.id) {
@@ -2089,7 +2117,7 @@ async function exportTechnicalWord() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.originalName || `${technicalForm.solutionName || selectedProject.value.projectName || '技术方案'}-导出.docx`
+    a.download = file.originalName || `${technicalForm.solutionName || selectedProject.value.projectName || '技术方案'}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

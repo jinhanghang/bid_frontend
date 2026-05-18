@@ -9,7 +9,7 @@
               当前账号还没有绑定企业。请先提交企业申请，审核通过后即可使用标书项目、知识库、AI生成等业务功能。
             </template>
             <template v-else>
-              从项目创建、资料准备、AI生成到正式 Word 导出，集中查看当前企业的标书业务进展。
+              从项目创建、资料准备、AI生成到正式 Word/PDF 导出，集中查看当前企业的标书业务进展。
             </template>
           </div>
         </div>
@@ -96,7 +96,7 @@ const needEnterpriseApply = computed(() => !isPlatformUser.value && !auth.user?.
 const stats = computed(() => [
   { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/ai-bid' },
   { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/materials' },
-  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word导出', path: '/download-center' },
+  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word/PDF导出', path: '/download-center' },
   { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
 ])
 

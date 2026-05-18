@@ -100,6 +100,10 @@ export function exportWord(id) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: 180000 })
 }
 
+export function exportPdf(id) {
+  return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', timeout: 180000 })
+}
+
 export function downloadFileResource(id) {
   return request({
     url: `/files/download/${id}`,

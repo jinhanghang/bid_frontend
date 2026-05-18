@@ -283,7 +283,7 @@
               <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
               <el-tooltip
                 :disabled="canExport || exportLoading"
-                content="仍有章节未生成完成，需全部章节完成后才能导出Word"
+                content="仍有章节未生成完成，需全部章节完成后才能导出"
                 placement="top"
               >
                 <span>
@@ -292,7 +292,7 @@
                     type="success"
                     :disabled="!canExport || exportLoading"
                     :loading="exportLoading"
-                    @click="onExportWord"
+                    @click="onExport"
                   >
                     {{ exportButtonText }}
                   </el-button>
@@ -675,6 +675,7 @@ import {
   deleteOutlineNodes,
   deleteSolution,
   downloadFileResource,
+  exportPdf,
   exportWord,
   generateFull,
   generateOutline,
@@ -918,7 +919,7 @@ const generateActionText = computed(() => {
   if (stat.total > 0 && stat.done > 0 && stat.done < stat.total) return '继续生成'
   return '开始生成'
 })
-const exportButtonText = computed(() => exportLoading.value ? '正在导出' : '导出Word')
+const exportButtonText = computed(() => exportLoading.value ? '正在导出' : '导出')
 
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
@@ -2048,8 +2049,8 @@ async function onDeleteSolution(item) {
 }
 
 
-function notifySolutionWordExportSuccess(file, fallbackName) {
-  const fileName = file?.originalName || fallbackName || '导出文件.docx'
+function notifySolutionExportSuccess(file, fallbackName) {
+  const fileName = file?.originalName || fallbackName || '导出文件'
   ElNotification({
     title: '导出成功',
     type: 'success',
@@ -2068,7 +2069,30 @@ function notifySolutionWordExportSuccess(file, fallbackName) {
   })
 }
 
-async function onExportWord() {
+async function chooseExportFormat() {
+  try {
+    await ElMessageBox.confirm(
+      h('div', { class: 'export-format-tip' }, [
+        h('p', '请选择导出文件格式：'),
+        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
+      ]),
+      '选择导出格式',
+      {
+        confirmButtonText: 'Word',
+        cancelButtonText: 'PDF',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: true,
+        closeOnPressEscape: true,
+        type: 'info'
+      }
+    )
+    return 'word'
+  } catch (action) {
+    return action === 'cancel' ? 'pdf' : ''
+  }
+}
+
+async function onExport() {
   if (exportLoading.value) {
     return
   }
@@ -2086,12 +2110,15 @@ async function onExportWord() {
   const confirmed = await confirmSolutionExportBeforeDownload()
   if (!confirmed) return
 
+  const format = await chooseExportFormat()
+  if (!format) return
+
   const solutionId = currentSolution.value.id
   const solutionName = currentSolution.value?.solutionName || 'AI方案'
 
   exportLoading.value = true
   try {
-    const file = await exportWord(solutionId)
+    const file = format === 'pdf' ? await exportPdf(solutionId) : await exportWord(solutionId)
     await refreshCurrent(solutionId)
     await loadList()
 
@@ -2104,12 +2131,12 @@ async function onExportWord() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.originalName || `${solutionName}-导出.docx`
+    a.download = file.originalName || `${solutionName}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    notifySolutionWordExportSuccess(file, a.download)
+    notifySolutionExportSuccess(file, a.download)
   } finally {
     exportLoading.value = false
   }

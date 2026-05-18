@@ -12,6 +12,7 @@
           <el-select v-model="filters.bizType" class="type-select" clearable placeholder="请选择类型" @change="reloadFirstPage">
             <el-option label="AI方案" value="AI_SOLUTION" />
             <el-option label="AI标书" value="AI_BID" />
+            <el-option label="AI文档" value="AI_DOCUMENT" />
           </el-select>
           <el-input
             v-model="filters.keyword"
@@ -210,6 +211,7 @@ async function reloadAfterChange(changedCount = 1) {
 function bizTypeLabel(type) {
   if (type === 'AI_SOLUTION') return 'AI方案'
   if (type === 'AI_BID') return 'AI标书'
+  if (type === 'AI_DOCUMENT') return 'AI文档'
   return type || '-'
 }
 
