@@ -88,6 +88,22 @@ export function getGenerationTask(taskId) {
   return request({ url: `/ai-solution/task/${taskId}`, method: 'get' })
 }
 
+export function listSolutionVersions(id) {
+  return request({ url: `/ai-solution/${id}/versions`, method: 'get' })
+}
+
+export function getSolutionVersion(versionId) {
+  return request({ url: `/ai-solution/version/${versionId}`, method: 'get' })
+}
+
+export function restoreSolutionVersion(id, versionId) {
+  return request({ url: `/ai-solution/${id}/versions/${versionId}/restore`, method: 'post' })
+}
+
+export function restoreSolutionVersionSection(id, versionId, outlineId) {
+  return request({ url: `/ai-solution/${id}/versions/${versionId}/sections/${outlineId}/restore`, method: 'post' })
+}
+
 export function updateSectionContent(outlineId, content) {
   return request({
     url: `/ai-solution/outline/${outlineId}/section-content`,
@@ -98,10 +114,6 @@ export function updateSectionContent(outlineId, content) {
 
 export function exportWord(id) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: 180000 })
-}
-
-export function exportPdf(id) {
-  return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', timeout: 180000 })
 }
 
 export function downloadFileResource(id) {

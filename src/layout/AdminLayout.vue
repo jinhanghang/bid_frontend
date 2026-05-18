@@ -29,6 +29,10 @@
           <div class="page-title">{{ currentTitle }}</div>
         </div>
         <div class="header-right">
+          <div class="quota-pill" @click="goMemberCenter">
+            <span>剩余总字数：{{ formatNumber(quota.availableWords) }}</span>
+            <el-button size="small" type="primary" plain round @click.stop="goMemberCenter">立即充值</el-button>
+          </div>
           <el-button link :icon="Refresh" @click="reloadMe">刷新用户</el-button>
           <el-dropdown trigger="click">
             <div class="user-entry">
@@ -39,7 +43,9 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>{{ userSubText }}</el-dropdown-item>
-                <el-dropdown-item v-if="showManagerEntry" divided @click="goManager">管理后台</el-dropdown-item>
+                <el-dropdown-item divided @click="goMemberCenter">会员中心</el-dropdown-item>
+                <el-dropdown-item v-if="showManagerEntry" @click="goManager">管理后台</el-dropdown-item>
+                <el-dropdown-item v-if="showManagerEntry" @click="goMemberAdmin">会员运营</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -55,7 +61,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
@@ -72,6 +78,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { getMemberSummary } from '@/api/member'
 
 const route = useRoute()
 const router = useRouter()
@@ -89,6 +96,12 @@ const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_A
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
 const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
+
+const quota = reactive({
+  availableWords: 0,
+  freeRemainWords: 0,
+  paidRemainWords: 0
+})
 
 const productMenus = computed(() => [
   { title: '首页', path: '/dashboard', icon: House },
@@ -130,8 +143,36 @@ function normalizeRoleList(values = []) {
 
 async function reloadMe() {
   await auth.loadMe()
+  await loadQuota()
   ElMessage.success('用户信息已刷新')
 }
+
+async function loadQuota() {
+  if (!auth.token) return
+  try {
+    const res = await getMemberSummary()
+    quota.availableWords = Number(res?.availableWords || 0)
+    quota.freeRemainWords = Number(res?.freeRemainWords || 0)
+    quota.paidRemainWords = Number(res?.paidRemainWords || 0)
+  } catch (e) {
+    quota.availableWords = 0
+  }
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString()
+}
+
+function goMemberCenter() {
+  router.push('/member-center')
+}
+
+function goMemberAdmin() {
+  router.push('/member/admin')
+}
+
+onMounted(loadQuota)
+watch(() => route.fullPath, loadQuota)
 
 function goManager() {
   router.push('/system/users')
@@ -247,6 +288,29 @@ async function logout() {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.quota-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff6b57, #ff9f45);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(255, 111, 76, 0.22);
+  cursor: pointer;
+}
+
+.quota-pill :deep(.el-button) {
+  height: 24px;
+  padding: 0 10px;
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.92);
+  color: #f06543;
+  font-weight: 700;
 }
 
 .user-entry {

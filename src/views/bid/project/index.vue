@@ -433,9 +433,10 @@
                     </div>
 
                     <div class="tech-preview-actions detail-actions-like-solution">
-                      <el-button size="large" :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">重编全文</el-button>
-                      <el-button size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
-                      <el-button size="large" type="success" :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalVersionDialog">历史版本</el-button>
+                      <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
+                      <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
+                      <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
                     </div>
                   </template>
                 </div>
@@ -464,7 +465,7 @@
                         <el-button
                           size="small"
                           plain
-                          :disabled="!selectedTechnicalLeafDisplayContent || !!sectionOptimizing"
+                          :disabled="!canCopyTechnicalSection"
                           @click="copyTechnicalSectionContent"
                         >
                           复制正文
@@ -518,6 +519,14 @@
                       </template>
                     </div>
                   </div>
+                  <el-alert
+                    v-if="isTechnicalRewriteRunning"
+                    class="rewrite-preview-alert"
+                    type="warning"
+                    :closable="false"
+                    show-icon
+                    title="当前正在重编全文，以下内容可能是上一版正文，新内容生成成功后会自动覆盖。"
+                  />
                   <el-input
                     v-if="technicalSectionContentEditMode"
                     v-model="technicalSectionContentDraft"
@@ -778,6 +787,51 @@
       </template>
     </el-dialog>
 
+
+    <el-dialog v-model="technicalVersionDialogVisible" title="技术方案历史版本" width="960px" append-to-body class="version-dialog">
+      <div class="version-layout">
+        <div class="version-list-panel" v-loading="technicalVersionLoading">
+          <div
+            v-for="item in technicalVersionList"
+            :key="item.id"
+            :class="['version-card', selectedTechnicalVersion?.id === item.id ? 'active' : '']"
+            @click="selectTechnicalVersion(item)"
+          >
+            <div class="version-card-title">V{{ item.versionNo }} {{ item.versionName || '' }}</div>
+            <div class="version-card-meta">{{ formatDateTime(item.createdAt) }} · {{ item.totalWords || 0 }} 字 · {{ item.sectionCount || 0 }} 章</div>
+            <div class="version-card-remark">{{ item.remark || '自动保存快照' }}</div>
+          </div>
+          <el-empty v-if="!technicalVersionLoading && !technicalVersionList.length" description="暂无历史版本，重编全文或恢复前会自动保存" />
+        </div>
+        <div class="version-preview-panel">
+          <template v-if="selectedTechnicalVersion">
+            <div class="version-preview-head">
+              <div>
+                <div class="version-preview-title">V{{ selectedTechnicalVersion.versionNo }} 快照预览</div>
+                <div class="version-preview-desc">{{ selectedTechnicalVersionSnapshot.solutionName || technicalSolution?.solutionName || '技术方案' }}</div>
+              </div>
+              <el-button type="primary" :loading="technicalVersionRestoring" :disabled="isTechnicalRunningByBackend" @click="onRestoreTechnicalVersion(selectedTechnicalVersion)">恢复此版本</el-button>
+            </div>
+            <div class="version-compare-tip">恢复前系统会再次保存当前技术方案快照，恢复后会覆盖当前章节正文，并标记技术方案成果待更新。</div>
+            <el-scrollbar class="version-section-scroll">
+              <div v-for="section in selectedTechnicalVersionSnapshot.sections" :key="section.outlineId || section.id" class="version-section-item">
+                <div class="version-section-head">
+                  <div>
+                    <div class="version-section-title">{{ section.title || '未命名章节' }}</div>
+                    <div class="version-section-meta">历史版本：{{ section.actualWordCount || countTextWords(section.content || '') }} 字；当前版本：{{ currentTechnicalSectionWordCount(section.outlineId) }} 字</div>
+                  </div>
+                  <el-button size="small" plain :loading="technicalVersionRestoring" :disabled="isTechnicalRunningByBackend" @click="onRestoreTechnicalVersionSection(section)">恢复本章</el-button>
+                </div>
+                <div class="version-section-content">{{ section.content || '暂无正文' }}</div>
+              </div>
+              <el-empty v-if="!selectedTechnicalVersionSnapshot.sections.length" description="该版本没有章节正文快照" />
+            </el-scrollbar>
+          </template>
+          <el-empty v-else description="请选择左侧历史版本查看快照" />
+        </div>
+      </div>
+    </el-dialog>
+
     <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
       <div class="knowledge-selector">
         <div class="knowledge-search-row">
@@ -844,6 +898,10 @@ import {
   generateBidProjectTechnicalOutline,
   getBidProjectTechnicalTask,
   getBidProjectTechnicalSolution,
+  getBidProjectTechnicalVersion,
+  listBidProjectTechnicalVersions,
+  restoreBidProjectTechnicalVersion,
+  restoreBidProjectTechnicalVersionSection,
   getBidProjectWorkflow,
   downloadFileResource,
   pageBidProjects,
@@ -944,6 +1002,13 @@ const selectedKnowledgeBaseCache = ref([])
 const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
 const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
 
+const technicalVersionDialogVisible = ref(false)
+const technicalVersionLoading = ref(false)
+const technicalVersionRestoring = ref(false)
+const technicalVersionList = ref([])
+const selectedTechnicalVersion = ref(null)
+const selectedTechnicalVersionSnapshot = computed(() => parseVersionSnapshot(selectedTechnicalVersion.value?.snapshotJson))
+
 const createDialog = reactive({
   visible: false,
   loading: false
@@ -1040,6 +1105,10 @@ const technicalOutlineLeafCount = computed(() => {
 const technicalLeafNodes = computed(() => flattenTechnicalLeaves(technicalOutlines.value))
 const technicalFinishedLeafCount = computed(() => technicalLeafNodes.value.filter(isTechnicalLeafDone).length)
 const technicalGeneratePercent = computed(() => {
+  const task = technicalSolution.value?.runningTask
+  if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
+    return Math.min(100, Math.max(0, Number(task.progress || 0)))
+  }
   const total = technicalLeafNodes.value.length
   if (!total) return 0
   return Math.round((technicalFinishedLeafCount.value / total) * 100)
@@ -1092,14 +1161,17 @@ const selectedTechnicalLeafDisplayContent = computed(() => {
 const canEditTechnicalOutline = computed(() => {
   return technicalOutlines.value.length > 0
     && !isCurrentTechnicalOutlineGenerating.value
-    && !fullGenerating.value
-    && !isTechnicalRunningByBackend.value
+    && !isTechnicalBusy.value
+})
+const canCopyTechnicalSection = computed(() => {
+  return !!selectedTechnicalLeaf.value?.id
+    && !!selectedTechnicalLeafDisplayContent.value
+    && !isTechnicalBusy.value
 })
 const canEditTechnicalSectionContent = computed(() => {
   return !!selectedTechnicalLeaf.value?.id
     && !!selectedTechnicalLeafContent.value
-    && !fullGenerating.value
-    && !isTechnicalRunningByBackend.value
+    && !isTechnicalBusy.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
 })
@@ -1107,24 +1179,28 @@ const canOptimizeTechnicalSection = computed(() => {
   return !!selectedTechnicalLeaf.value?.id
     && !!selectedTechnicalLeafContent.value
     && !technicalSectionContentEditMode.value
-    && !fullGenerating.value
-    && !isTechnicalRunningByBackend.value
+    && !isTechnicalBusy.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
 })
 const canGenerateTechnicalContent = computed(() => {
+  const allGenerated = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.every(isTechnicalLeafDone)
   return !!selectedProject.value?.id
     && technicalOutlines.value.length > 0
+    && !allGenerated
     && !isCurrentTechnicalOutlineGenerating.value
-    && !fullGenerating.value
-    && !isTechnicalRunningByBackend.value
+    && !isTechnicalBusy.value
 })
 const canRewriteTechnicalAll = computed(() => {
-  return canGenerateTechnicalContent.value && technicalFinishedLeafCount.value > 0
+  return !!selectedProject.value?.id
+    && technicalOutlines.value.length > 0
+    && technicalFinishedLeafCount.value > 0
+    && !isCurrentTechnicalOutlineGenerating.value
+    && !isTechnicalBusy.value
 })
 const canExportTechnicalWord = computed(() => {
   if (!technicalOutlines.value.length) return false
-  if (fullGenerating.value || isTechnicalRunningByBackend.value) return false
+  if (isTechnicalBusy.value) return false
   if (technicalSolution.value?.canExport === true) return true
   return technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.every(isTechnicalLeafDone)
 })
@@ -1132,10 +1208,25 @@ const isTechnicalRunningByBackend = computed(() => {
   const status = String(technicalSolution.value?.runningTask?.status || '').toUpperCase()
   return ['WAITING', 'RUNNING'].includes(status)
 })
+const isTechnicalRewriteRunning = computed(() => {
+  const task = technicalSolution.value?.runningTask
+  return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
+})
+const isTechnicalBusy = computed(() => {
+  return fullGenerating.value
+    || isTechnicalRunningByBackend.value
+    || sectionGenerating.value
+    || !!sectionOptimizing.value
+    || technicalSectionContentSaving.value
+})
 const technicalGenerateButtonText = computed(() => {
-  if (fullGenerating.value || isTechnicalRunningByBackend.value) return '生成中'
+  const task = technicalSolution.value?.runningTask
+  if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
+    return String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' ? '重编中...' : '生成中...'
+  }
+  if (fullGenerating.value || isTechnicalRunningByBackend.value) return '生成中...'
   if (technicalFinishedLeafCount.value > 0 && technicalFinishedLeafCount.value < technicalLeafNodes.value.length) return '继续生成'
-  if (technicalFinishedLeafCount.value === technicalLeafNodes.value.length && technicalLeafNodes.value.length > 0) return '重新生成'
+  if (technicalFinishedLeafCount.value === technicalLeafNodes.value.length && technicalLeafNodes.value.length > 0) return '已全部生成'
   return '开始生成'
 })
 
@@ -1807,8 +1898,12 @@ async function applyTechnicalWordPreset() {
 }
 
 function openTechnicalFullGenerateDialog(action = 'GENERATE') {
-  if (!canGenerateTechnicalContent.value) {
+  const isRewrite = String(action || '').toUpperCase() === 'REWRITE'
+  const allowed = isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value
+  if (!allowed) {
     if (!technicalOutlines.value.length) ElMessage.warning('请先生成目录')
+    else if (isTechnicalBusy.value) ElMessage.warning('技术方案正在生成中，完成后再操作')
+    else if (isRewrite) ElMessage.warning('暂无可重编的章节')
     return
   }
   fullGenerateAction.value = action
@@ -1872,7 +1967,7 @@ async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) 
   }
   if (rewrite && !skipConfirm) {
     try {
-      await ElMessageBox.confirm('重编全文将覆盖已有技术方案正文，是否继续？', '确认重编', { type: 'warning' })
+      await ElMessageBox.confirm('系统会先自动保存当前技术方案版本，再基于当前目录重编全文。新内容生成成功后会覆盖当前章节正文，失败时可从历史版本恢复。是否开始？', '确认重编全文', { type: 'warning', confirmButtonText: '开始重编', cancelButtonText: '取消' })
     } catch (e) {
       return
     }
@@ -2216,27 +2311,45 @@ function isTechnicalNodeOptimizing(node) {
 }
 
 function isTechnicalLeafDone(node) {
-  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  const outlineStatus = String(node?.contentStatus || '').toUpperCase()
+  if (['GENERATING', 'STALE', 'FAILED', 'LOCKED'].includes(outlineStatus)) return false
+  const sectionStatus = String(node?.section?.generateStatus || '').toUpperCase()
   const content = getTechnicalLeafContent(node)
-  return status === 'SUCCESS' || (String(content || '').trim().length > 20 && Number(node?.actualWordCount || node?.section?.actualWordCount || 0) > 0)
+  return outlineStatus === 'SUCCESS'
+    || sectionStatus === 'SUCCESS'
+    || (String(content || '').trim().length > 20 && Number(node?.actualWordCount || node?.section?.actualWordCount || 0) > 0)
 }
 
 function technicalNodeStatusLabel(node) {
   if (isTechnicalNodeOptimizing(node)) return `${optimizeActionLabel(sectionOptimizing.value)}中`
-  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
-  if (status === 'SUCCESS' || isTechnicalLeafDone(node)) return '已完成'
-  if (status === 'GENERATING' || status === 'LOCKED') return '生成中'
-  if (status === 'FAILED') return '失败'
-  if (status === 'STALE') return '待重编'
+  const status = String(node?.contentStatus || '').toUpperCase()
+  if (isTechnicalRewriteRunning.value) {
+    if (status === 'GENERATING' || status === 'LOCKED') return '重编中'
+    if (status === 'SUCCESS') return '已重编'
+    if (status === 'FAILED') return '失败'
+    return '待重编'
+  }
+  const mergedStatus = status || String(node?.section?.generateStatus || '').toUpperCase()
+  if (mergedStatus === 'SUCCESS' || isTechnicalLeafDone(node)) return '已完成'
+  if (mergedStatus === 'GENERATING' || mergedStatus === 'LOCKED') return '生成中'
+  if (mergedStatus === 'FAILED') return '失败'
+  if (mergedStatus === 'STALE') return '待重编'
   return '未生成'
 }
 
 function technicalNodeStatusType(node) {
   if (isTechnicalNodeOptimizing(node)) return 'warning'
-  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
-  if (status === 'SUCCESS' || isTechnicalLeafDone(node)) return 'success'
-  if (status === 'GENERATING' || status === 'LOCKED') return 'warning'
-  if (status === 'FAILED') return 'danger'
+  const status = String(node?.contentStatus || '').toUpperCase()
+  if (isTechnicalRewriteRunning.value) {
+    if (status === 'SUCCESS') return 'success'
+    if (status === 'GENERATING' || status === 'LOCKED') return 'warning'
+    if (status === 'FAILED') return 'danger'
+    return 'info'
+  }
+  const mergedStatus = status || String(node?.section?.generateStatus || '').toUpperCase()
+  if (mergedStatus === 'SUCCESS' || isTechnicalLeafDone(node)) return 'success'
+  if (mergedStatus === 'GENERATING' || mergedStatus === 'LOCKED') return 'warning'
+  if (mergedStatus === 'FAILED') return 'danger'
   return 'info'
 }
 
@@ -2447,6 +2560,10 @@ async function cancelEditTechnicalSectionContent() {
 }
 
 async function copyTechnicalSectionContent() {
+  if (!canCopyTechnicalSection.value) {
+    ElMessage.warning('技术方案正在生成中，完成后再复制正文')
+    return
+  }
   const content = String(selectedTechnicalLeafDisplayContent.value || '').trim()
   if (!content) {
     ElMessage.warning('当前章节暂无正文可复制')
@@ -2575,6 +2692,101 @@ function countTextWords(text) {
   return chinese + english
 }
 
+function formatDateTime(value) {
+  if (!value) return ''
+  return String(value).replace('T', ' ').slice(0, 19)
+}
+
+function parseVersionSnapshot(snapshotJson) {
+  if (!snapshotJson) return { sections: [], outlines: [] }
+  try {
+    const snapshot = typeof snapshotJson === 'string' ? JSON.parse(snapshotJson) : snapshotJson
+    return {
+      ...snapshot,
+      outlines: Array.isArray(snapshot.outlines) ? snapshot.outlines : [],
+      sections: Array.isArray(snapshot.sections) ? snapshot.sections : []
+    }
+  } catch (e) {
+    return { sections: [], outlines: [] }
+  }
+}
+
+function currentTechnicalSectionWordCount(outlineId) {
+  if (!outlineId) return 0
+  const node = findTechnicalOutlineNodeById(technicalOutlines.value || [], outlineId)
+  return outlineActualWordCount(node) || countTextWords(getTechnicalLeafContent(node))
+}
+
+async function openTechnicalVersionDialog() {
+  if (!selectedProject.value?.id || !technicalSolution.value?.id) {
+    ElMessage.warning('请先生成技术方案')
+    return
+  }
+  technicalVersionDialogVisible.value = true
+  technicalVersionLoading.value = true
+  selectedTechnicalVersion.value = null
+  try {
+    technicalVersionList.value = await listBidProjectTechnicalVersions(selectedProject.value.id)
+    if (technicalVersionList.value.length) {
+      await selectTechnicalVersion(technicalVersionList.value[0])
+    }
+  } finally {
+    technicalVersionLoading.value = false
+  }
+}
+
+async function selectTechnicalVersion(item) {
+  if (!item?.id || !selectedProject.value?.id) return
+  selectedTechnicalVersion.value = item
+  if (!item.snapshotJson) {
+    const detail = await getBidProjectTechnicalVersion(selectedProject.value.id, item.id)
+    const index = technicalVersionList.value.findIndex((v) => v.id === item.id)
+    if (index >= 0) technicalVersionList.value[index] = { ...technicalVersionList.value[index], ...detail }
+    selectedTechnicalVersion.value = { ...item, ...detail }
+  }
+}
+
+async function onRestoreTechnicalVersion(item) {
+  if (!selectedProject.value?.id || !item?.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确认恢复到 V${item.versionNo}？系统会先自动保存当前技术方案快照，然后用该版本覆盖当前章节正文。`,
+      '恢复技术方案历史版本',
+      { type: 'warning', confirmButtonText: '恢复版本', cancelButtonText: '取消' }
+    )
+    technicalVersionRestoring.value = true
+    technicalSolution.value = await restoreBidProjectTechnicalVersion(selectedProject.value.id, item.id)
+    hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
+    await refreshWorkflow()
+    technicalVersionDialogVisible.value = false
+    ElMessage.success('技术方案历史版本已恢复')
+  } catch (e) {
+    // 取消或业务异常交给全局拦截器处理。
+  } finally {
+    technicalVersionRestoring.value = false
+  }
+}
+
+async function onRestoreTechnicalVersionSection(section) {
+  if (!selectedProject.value?.id || !selectedTechnicalVersion.value?.id || !section?.outlineId) return
+  try {
+    await ElMessageBox.confirm(
+      `确认只恢复“${section.title || '当前章节'}”？系统会先保存当前技术方案快照，然后用历史版本覆盖该章节正文。`,
+      '恢复技术方案单章节',
+      { type: 'warning', confirmButtonText: '恢复本章', cancelButtonText: '取消' }
+    )
+    technicalVersionRestoring.value = true
+    technicalSolution.value = await restoreBidProjectTechnicalVersionSection(selectedProject.value.id, selectedTechnicalVersion.value.id, section.outlineId)
+    hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
+    await refreshWorkflow()
+    ElMessage.success('章节已恢复')
+  } catch (e) {
+    // 取消或业务异常交给全局拦截器处理。
+  } finally {
+    technicalVersionRestoring.value = false
+  }
+}
+
 async function saveTechnicalSectionContent() {
   if (!selectedTechnicalLeaf.value?.id) return
   const content = normalizeSectionContent(technicalSectionContentDraft.value)
@@ -2618,7 +2830,7 @@ function openTechnicalSectionDialog(node) {
     ElMessage.warning('当前目录节点缺少ID，请重新生成目录后再试')
     return
   }
-  if (fullGenerating.value || isTechnicalRunningByBackend.value) {
+  if (isTechnicalBusy.value) {
     ElMessage.warning('全文正在生成中，请完成后再单独重编章节')
     return
   }
@@ -2832,6 +3044,7 @@ const OutlineTree = defineComponent({
         controls.push(h(ElButton, { link: true, icon: SortDown, onClick: () => emit('move', { node, direction: 'DOWN' }) }))
       }
       if (props.mode === 'generate' && !hasChildren) {
+        const operationDisabled = isTechnicalBusy.value
         const generated = isOutlineGenerated(node)
         const failed = isOutlineFailed(node)
         const optimizing = isTechnicalNodeOptimizing(node)
@@ -2841,13 +3054,13 @@ const OutlineTree = defineComponent({
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, loading: true, disabled: true }, () => '处理中'))
         } else if (generated) {
           controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
-          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
+          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重编'))
         } else if (failed) {
           controls.push(h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败'))
-          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重试'))
+          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重试'))
         } else {
           controls.push(h(ElTag, { size: 'small', type: 'info', effect: 'light' }, () => '未生成'))
-          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '生成'))
+          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '生成'))
         }
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
@@ -4696,16 +4909,139 @@ const WritingDirectionEditor = defineComponent({
 }
 
 .detail-actions-like-solution {
-  justify-content: stretch;
-  gap: 14px;
-  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
 }
 
-.detail-actions-like-solution .el-button {
-  flex: 1;
-  height: 44px;
+.detail-actions-like-solution .detail-action-btn {
+  width: 100%;
+  height: 42px;
   font-size: 15px;
+  font-weight: 700;
+  margin-left: 0 !important;
+}
+.detail-actions-like-solution :deep(.el-button + .el-button) { margin-left: 0 !important; }
+
+.rewrite-preview-alert {
+  margin: 12px 0;
+}
+
+.version-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 520px;
+}
+
+.version-list-panel {
+  border-right: 1px solid #eef2f7;
+  padding-right: 14px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.version-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.version-card:hover,
+.version-card.active {
+  border-color: #2f6bff;
+  background: #f4f8ff;
+}
+
+.version-card-title {
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.version-card-meta,
+.version-card-remark {
+  color: #8492a6;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.version-preview-panel {
+  min-width: 0;
+}
+
+.version-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.version-preview-title {
+  color: #0f172a;
   font-weight: 800;
+  font-size: 18px;
+}
+
+.version-preview-desc {
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.version-compare-tip {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.version-section-scroll {
+  height: 450px;
+}
+
+.version-section-item {
+  border: 1px solid #edf1f7;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.version-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-section-title {
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.version-section-meta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.version-section-content {
+  max-height: 160px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  color: #334155;
+  line-height: 1.7;
+  font-size: 13px;
 }
 
 .full-generate-form .knowledge-setting {

@@ -19,6 +19,8 @@ const EnterpriseManage = () => import('@/views/system/enterprise/index.vue')
 const EnterpriseApply = () => import('@/views/system/enterpriseApply/index.vue')
 const KnowledgeBase = () => import('@/views/knowledge/base/index.vue')
 const NoticeManage = () => import('@/views/tender/notice/index.vue')
+const MemberCenter = () => import('@/views/member/center/index.vue')
+const MemberAdmin = () => import('@/views/member/admin/index.vue')
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -37,6 +39,8 @@ const routes = [
       { path: 'materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
       { path: 'download-center', component: DownloadCenter, meta: { title: '下载中心', requiresBusiness: true } },
       { path: 'recycle-bin', component: RecycleBin, meta: { title: '回收站', requiresBusiness: true } },
+      { path: 'member-center', component: MemberCenter, meta: { title: '会员中心' } },
+      { path: 'member/admin', component: MemberAdmin, meta: { title: '会员运营', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN] } },
 
       { path: 'bid/projects', redirect: '/ai-bid' },
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },

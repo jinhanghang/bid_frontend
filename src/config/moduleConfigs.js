@@ -62,28 +62,46 @@ export const moduleConfigs = {
   aiModel: {
     title: 'AI模型配置',
     baseUrl: '/ai-model-config',
-    keywordPlaceholder: '按服务商 / 模型名称查询',
-    searchFields: ['provider', 'modelName', 'modelType', 'remark'],
+    keywordPlaceholder: '按服务商 / 模型名称 / 使用场景查询',
+    searchFields: ['provider', 'modelName', 'modelType', 'sceneCode', 'remark'],
     columns: [
       { prop: 'id', label: 'ID', width: 90 },
-      { prop: 'provider', label: '服务商', width: 130 },
-      { prop: 'modelName', label: '模型名称', minWidth: 170 },
-      { prop: 'modelType', label: '类型', width: 100 },
+      { prop: 'provider', label: '服务商', width: 120 },
+      { prop: 'modelName', label: '模型名称', minWidth: 200 },
+      { prop: 'modelType', label: '类型', width: 110 },
+      { prop: 'sceneCode', label: '使用场景', minWidth: 180 },
+      { prop: 'aiLevel', label: 'AI等级', width: 110 },
+      { prop: 'defaultFlag', label: '默认', width: 90, type: 'status', map: { 1: ['默认', 'success'], 0: ['否', 'info'] } },
       { prop: 'temperature', label: '温度', width: 90 },
       { prop: 'maxTokens', label: '最大Token', width: 110 },
       { prop: 'sortNo', label: '排序', width: 90 },
       { prop: 'status', label: '状态', width: 90, type: 'status', map: enableMap }
     ],
     formFields: [
-      { prop: 'provider', label: '服务商', required: true },
+      { prop: 'provider', label: '服务商', required: true, default: 'bailian' },
       { prop: 'modelName', label: '模型名称', required: true },
-      { prop: 'apiBase', label: 'API地址' },
-      { prop: 'apiKeyRef', label: '密钥引用' },
       { prop: 'modelType', label: '模型类型', type: 'select', default: 'chat', options: [
-        { label: 'Chat', value: 'chat' }, { label: 'Embedding', value: 'embedding' }, { label: 'Rerank', value: 'rerank' }
+        { label: 'Chat', value: 'chat' }, { label: 'Rerank', value: 'rerank' }
       ] },
+      { prop: 'sceneCode', label: '使用场景', type: 'select', options: [
+        { label: '通用生成', value: 'GENERIC_GENERATE' },
+        { label: '方案文件解析', value: 'SOLUTION_PARSE_EXTRACT' },
+        { label: '方案目录生成', value: 'SOLUTION_OUTLINE_GENERATE' },
+        { label: '编写方向生成', value: 'SOLUTION_DIRECTION_GENERATE' },
+        { label: '章节正文生成', value: 'SOLUTION_SECTION_GENERATE' },
+        { label: '全文生成', value: 'SOLUTION_FULL_GENERATE' },
+        { label: '章节/全文重写', value: 'SOLUTION_REWRITE' },
+        { label: '知识库问答', value: 'KNOWLEDGE_RETRIEVAL_SUMMARY' },
+        { label: '知识库向量化', value: 'KNOWLEDGE_EMBEDDING' }
+      ] },
+      { prop: 'aiLevel', label: 'AI等级', type: 'select', options: [
+        { label: '基础版', value: 'BASIC' }, { label: '标准版', value: 'STANDARD' }, { label: '旗舰版', value: 'FLAGSHIP' }
+      ] },
+      { prop: 'apiBase', label: 'API地址' },
+      { prop: 'apiKeyRef', label: '密钥引用', default: 'DASHSCOPE_API_KEY' },
       { prop: 'temperature', label: '温度参数', type: 'number', default: 0.7 },
       { prop: 'maxTokens', label: '最大Token', type: 'number', default: 8192 },
+      { prop: 'defaultFlag', label: '是否默认', type: 'select', default: 0, options: [{ label: '是', value: 1 }, { label: '否', value: 0 }] },
       { prop: 'sortNo', label: '排序', type: 'number', default: 0 },
       { prop: 'status', label: '状态', type: 'select', default: 1, options: [{ label: '启用', value: 1 }, { label: '停用', value: 0 }] },
       { prop: 'remark', label: '备注', type: 'textarea' }

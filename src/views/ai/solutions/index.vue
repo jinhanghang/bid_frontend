@@ -276,23 +276,27 @@
           <template v-else>
             <el-scrollbar class="detail-scroll">
               <el-progress :percentage="generatePercent" :show-text="false" color="#ff4d4f" />
+              <div v-if="runningTaskText" class="task-running-tip">{{ runningTaskText }}</div>
               <OutlineTree :nodes="currentSolution.outlines" mode="generate" @preview="selectSectionPreview" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
-              <el-button size="large" :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">重编全文</el-button>
-              <el-button size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
+              <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id || hasRunningTask" @click="openVersionDialog">历史版本</el-button>
+              <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">{{ isRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
+              <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
               <el-tooltip
                 :disabled="canExport || exportLoading"
                 content="仍有章节未生成完成，需全部章节完成后才能导出"
                 placement="top"
               >
-                <span>
+                <span class="detail-action-wrap">
                   <el-button
+                    class="detail-action-btn"
                     size="large"
-                    type="success"
+                    type="primary"
+                    plain
                     :disabled="!canExport || exportLoading"
                     :loading="exportLoading"
-                    @click="onExport"
+                    @click="onExportWord"
                   >
                     {{ exportButtonText }}
                   </el-button>
@@ -325,7 +329,7 @@
               <el-button
                 size="small"
                 plain
-                :disabled="!selectedSectionDisplayContent || !!sectionOptimizing"
+                :disabled="!canCopySectionContent"
                 @click="copySectionContent"
               >
                 复制正文
@@ -615,6 +619,50 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="versionDialogVisible" title="历史版本" width="960px" append-to-body class="version-dialog">
+      <div class="version-layout">
+        <div class="version-list-panel" v-loading="versionLoading">
+          <div
+            v-for="item in versionList"
+            :key="item.id"
+            :class="['version-card', selectedVersion?.id === item.id ? 'active' : '']"
+            @click="selectVersion(item)"
+          >
+            <div class="version-card-title">V{{ item.versionNo }} {{ item.versionName || '' }}</div>
+            <div class="version-card-meta">{{ formatDateTime(item.createdAt) }} · {{ item.totalWords || 0 }} 字 · {{ item.sectionCount || 0 }} 章</div>
+            <div class="version-card-remark">{{ item.remark || '自动保存快照' }}</div>
+          </div>
+          <el-empty v-if="!versionLoading && !versionList.length" description="暂无历史版本，重编全文或恢复前会自动保存" />
+        </div>
+        <div class="version-preview-panel">
+          <template v-if="selectedVersion">
+            <div class="version-preview-head">
+              <div>
+                <div class="version-preview-title">V{{ selectedVersion.versionNo }} 快照预览</div>
+                <div class="version-preview-desc">{{ selectedVersionSnapshot.solutionName || currentSolution?.solutionName || 'AI方案' }}</div>
+              </div>
+              <el-button type="primary" :loading="versionRestoring" :disabled="hasRunningTask" @click="onRestoreVersion(selectedVersion)">恢复此版本</el-button>
+            </div>
+            <div class="version-compare-tip">恢复前系统会再次保存当前内容快照，恢复后会覆盖当前章节正文，并标记导出结果为待更新。</div>
+            <el-scrollbar class="version-section-scroll">
+              <div v-for="section in selectedVersionSnapshot.sections" :key="section.outlineId || section.id" class="version-section-item">
+                <div class="version-section-head">
+                  <div>
+                    <div class="version-section-title">{{ section.title || '未命名章节' }}</div>
+                    <div class="version-section-meta">历史版本：{{ section.actualWordCount || countTextWords(section.content || '') }} 字；当前版本：{{ currentSectionWordCount(section.outlineId) }} 字</div>
+                  </div>
+                  <el-button size="small" plain :loading="versionRestoring" :disabled="hasRunningTask" @click="onRestoreVersionSection(section)">恢复本章</el-button>
+                </div>
+                <div class="version-section-content">{{ section.content || '暂无正文' }}</div>
+              </div>
+              <el-empty v-if="!selectedVersionSnapshot.sections.length" description="该版本没有章节正文快照" />
+            </el-scrollbar>
+          </template>
+          <el-empty v-else description="请选择左侧历史版本查看快照" />
+        </div>
+      </div>
+    </el-dialog>
+
     <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
       <div class="knowledge-selector">
         <div class="knowledge-search-row">
@@ -675,15 +723,18 @@ import {
   deleteOutlineNodes,
   deleteSolution,
   downloadFileResource,
-  exportPdf,
   exportWord,
   generateFull,
   generateOutline,
   getGenerationTask,
   getParseTask,
+  getSolutionVersion,
+  listSolutionVersions,
   getSolution,
   moveOutlineNode,
   pageSolutions,
+  restoreSolutionVersion,
+  restoreSolutionVersionSection,
   rewriteFull,
   saveOverallWritingRequirement,
   saveRequirement,
@@ -790,6 +841,12 @@ const sectionContentEditMode = ref(false)
 const sectionContentSaving = ref(false)
 const sectionContentDraft = ref('')
 const exportLoading = ref(false)
+const versionDialogVisible = ref(false)
+const versionLoading = ref(false)
+const versionRestoring = ref(false)
+const versionList = ref([])
+const selectedVersion = ref(null)
+const selectedVersionSnapshot = computed(() => parseVersionSnapshot(selectedVersion.value?.snapshotJson))
 
 const createForm = reactive({
   solutionMode: 'QUICK',
@@ -861,6 +918,10 @@ const leafGenerationStat = computed(() => {
 })
 
 const generatePercent = computed(() => {
+  const task = currentSolution.value?.runningTask
+  if (task && ['WAITING', 'RUNNING'].includes(task.status)) {
+    return Math.min(100, Math.max(0, Number(task.progress || 0)))
+  }
   const stat = leafGenerationStat.value
   if (stat.total) {
     return Math.min(100, Math.round((stat.done * 100) / stat.total))
@@ -882,11 +943,17 @@ const selectedSectionDisplayContent = computed(() => {
   }
   return selectedSectionContent.value
 })
+const canCopySectionContent = computed(() => {
+  return !!selectedSection.value?.id
+    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && !!selectedSectionDisplayContent.value
+    && !isSolutionBusy.value
+})
 const canEditSectionContent = computed(() => {
   return !!selectedSection.value?.id
     && selectedSectionSolutionId.value === currentSolution.value?.id
     && !!selectedSectionContent.value
-    && !hasRunningTask.value
+    && !isSolutionBusy.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
 })
@@ -895,7 +962,7 @@ const canOptimizeSectionContent = computed(() => {
     && selectedSectionSolutionId.value === currentSolution.value?.id
     && !!selectedSectionContent.value
     && !sectionContentEditMode.value
-    && !hasRunningTask.value
+    && !isSolutionBusy.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
 })
@@ -907,12 +974,36 @@ const hasRunningTask = computed(() => {
   const status = currentSolution.value?.runningTask?.status
   return status === 'WAITING' || status === 'RUNNING'
 })
-const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !hasRunningTask.value)
-const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !hasRunningTask.value)
+const isRewriteRunning = computed(() => {
+  const task = currentSolution.value?.runningTask
+  return !!task && task.taskType === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(task.status)
+})
+const isSolutionBusy = computed(() => {
+  return fullGenerating.value
+    || hasRunningTask.value
+    || sectionGenerating.value
+    || !!sectionOptimizing.value
+    || sectionContentSaving.value
+})
+const runningTaskText = computed(() => {
+  const task = currentSolution.value?.runningTask
+  if (!task || !['WAITING', 'RUNNING'].includes(task.status)) return ''
+  if (task.taskType === 'REWRITE_FULL') return `正在重编全文：${task.finishedNodes || 0} / ${task.totalNodes || 0} 章`
+  if (task.taskType === 'GENERATE_FULL') return `正在生成全文：${task.finishedNodes || 0} / ${task.totalNodes || 0} 章`
+  return task.message || '任务执行中'
+})
+const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !isSolutionBusy.value)
+const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !isSolutionBusy.value)
 const allLeafGenerated = computed(() => leafGenerationStat.value.total > 0 && leafGenerationStat.value.done === leafGenerationStat.value.total)
-const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !hasRunningTask.value && !allLeafGenerated.value)
-const canExport = computed(() => currentSolution.value?.canExport === true && allLeafGenerated.value && !hasRunningTask.value)
+const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !isSolutionBusy.value && !allLeafGenerated.value)
+const canExport = computed(() => currentSolution.value?.canExport === true && allLeafGenerated.value && !isSolutionBusy.value)
 const generateActionText = computed(() => {
+  const task = currentSolution.value?.runningTask
+  if (task && ['WAITING', 'RUNNING'].includes(task.status)) {
+    if (task.taskType === 'REWRITE_FULL') return '重编中...'
+    if (task.taskType === 'GENERATE_FULL') return '生成中...'
+    return '处理中...'
+  }
   const stat = leafGenerationStat.value
   if (stat.total > 0 && stat.done === stat.total) return '已全部生成'
   if (stat.total > 0 && stat.failed > 0) return '重试未完成章节'
@@ -1670,7 +1761,7 @@ function openFullGenerateDialog(action = 'GENERATE') {
 
 async function confirmFullGenerate() {
   if (fullGenerateAction.value === 'REWRITE') {
-    await ElMessageBox.confirm('重编全文将覆盖已有章节内容，是否继续？', '确认重编', { type: 'warning' })
+    await ElMessageBox.confirm('系统会先自动保存当前版本，再基于当前目录重编全文。新内容生成成功后会覆盖当前章节正文，失败时可从历史版本恢复。是否开始？', '确认重编全文', { type: 'warning', confirmButtonText: '开始重编', cancelButtonText: '取消' })
   }
 
   fullGenerateSettingVisible.value = false
@@ -1832,6 +1923,10 @@ async function saveSectionContent() {
 }
 
 async function copySectionContent() {
+  if (!canCopySectionContent.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前方案正在生成中，完成后再复制正文')
+    return
+  }
   const content = String(selectedSectionDisplayContent.value || '').trim()
   if (!content) {
     ElMessage.warning('当前章节暂无正文可复制')
@@ -1960,6 +2055,10 @@ async function optimizeSection(type = 'POLISH') {
 }
 
 function openSectionDialog(node) {
+  if (isSolutionBusy.value) {
+    ElMessage.warning(currentSolution.value?.runningMessage || '当前方案正在生成中，完成后再单独操作章节')
+    return
+  }
   sectionNode.value = node
   selectedSection.value = node
   selectedSectionSolutionId.value = currentSolution.value?.id || null
@@ -2049,8 +2148,8 @@ async function onDeleteSolution(item) {
 }
 
 
-function notifySolutionExportSuccess(file, fallbackName) {
-  const fileName = file?.originalName || fallbackName || '导出文件'
+function notifySolutionWordExportSuccess(file, fallbackName) {
+  const fileName = file?.originalName || fallbackName || '导出文件.docx'
   ElNotification({
     title: '导出成功',
     type: 'success',
@@ -2069,36 +2168,13 @@ function notifySolutionExportSuccess(file, fallbackName) {
   })
 }
 
-async function chooseExportFormat() {
-  try {
-    await ElMessageBox.confirm(
-      h('div', { class: 'export-format-tip' }, [
-        h('p', '请选择导出文件格式：'),
-        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
-      ]),
-      '选择导出格式',
-      {
-        confirmButtonText: 'Word',
-        cancelButtonText: 'PDF',
-        distinguishCancelAndClose: true,
-        closeOnClickModal: true,
-        closeOnPressEscape: true,
-        type: 'info'
-      }
-    )
-    return 'word'
-  } catch (action) {
-    return action === 'cancel' ? 'pdf' : ''
-  }
-}
-
-async function onExport() {
+async function onExportWord() {
   if (exportLoading.value) {
     return
   }
 
   if (!canExport.value) {
-    ElMessage.warning(hasRunningTask.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
+    ElMessage.warning(isSolutionBusy.value ? '当前方案正在生成，完成后再导出' : '暂无可导出的正文')
     return
   }
 
@@ -2110,15 +2186,12 @@ async function onExport() {
   const confirmed = await confirmSolutionExportBeforeDownload()
   if (!confirmed) return
 
-  const format = await chooseExportFormat()
-  if (!format) return
-
   const solutionId = currentSolution.value.id
   const solutionName = currentSolution.value?.solutionName || 'AI方案'
 
   exportLoading.value = true
   try {
-    const file = format === 'pdf' ? await exportPdf(solutionId) : await exportWord(solutionId)
+    const file = await exportWord(solutionId)
     await refreshCurrent(solutionId)
     await loadList()
 
@@ -2131,12 +2204,12 @@ async function onExport() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.originalName || `${solutionName}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
+    a.download = file.originalName || `${solutionName}-导出.docx`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    notifySolutionExportSuccess(file, a.download)
+    notifySolutionWordExportSuccess(file, a.download)
   } finally {
     exportLoading.value = false
   }
@@ -2257,8 +2330,11 @@ function flattenLeaf(nodes = []) {
 
 function isOutlineGenerated(node) {
   if (!node) return false
+  const status = String(node.contentStatus || '').toUpperCase()
+  // 重编全文时必须优先看目录节点的当前状态，不能被旧正文 SUCCESS 误判为已完成。
+  if (['GENERATING', 'LOCKED', 'STALE', 'FAILED'].includes(status)) return false
   const sectionOk = node.section?.generateStatus === 'SUCCESS' && !!String(node.section?.content || '').trim()
-  return node.contentStatus === 'SUCCESS' || sectionOk
+  return status === 'SUCCESS' || sectionOk
 }
 
 function isOutlineFailed(node) {
@@ -2308,8 +2384,14 @@ function isSectionOptimizing(node) {
 
 function sectionStatusLabel(node) {
   if (isSectionOptimizing(node)) return `${optimizeActionLabel(sectionOptimizing.value)}中`
-  if (isOutlineGenerated(node)) return '已完成'
   const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  if (isRewriteRunning.value) {
+    if (status === 'GENERATING' || status === 'LOCKED') return '重编中'
+    if (status === 'SUCCESS') return '已重编'
+    if (status === 'FAILED') return '失败'
+    return '待重编'
+  }
+  if (isOutlineGenerated(node)) return '已完成'
   if (status === 'GENERATING' || status === 'LOCKED') return '生成中'
   if (status === 'FAILED') return '失败'
   if (status === 'STALE') return '待重编'
@@ -2318,8 +2400,13 @@ function sectionStatusLabel(node) {
 
 function sectionStatusType(node) {
   if (isSectionOptimizing(node)) return 'warning'
-  if (isOutlineGenerated(node)) return 'success'
   const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  if (isRewriteRunning.value) {
+    if (status === 'SUCCESS') return 'success'
+    if (status === 'FAILED') return 'danger'
+    return 'warning'
+  }
+  if (isOutlineGenerated(node)) return 'success'
   if (status === 'GENERATING' || status === 'LOCKED') return 'warning'
   if (status === 'FAILED') return 'danger'
   return 'info'
@@ -2391,6 +2478,108 @@ async function confirmSolutionExportBeforeDownload() {
   }
 }
 
+
+function parseVersionSnapshot(snapshotJson) {
+  if (!snapshotJson) return { sections: [], outlines: [] }
+  try {
+    const snapshot = typeof snapshotJson === 'string' ? JSON.parse(snapshotJson) : snapshotJson
+    return {
+      ...snapshot,
+      outlines: Array.isArray(snapshot.outlines) ? snapshot.outlines : [],
+      sections: Array.isArray(snapshot.sections) ? snapshot.sections : []
+    }
+  } catch (e) {
+    return { sections: [], outlines: [] }
+  }
+}
+
+async function openVersionDialog() {
+  if (!currentSolution.value?.id) return
+  versionDialogVisible.value = true
+  versionLoading.value = true
+  selectedVersion.value = null
+  try {
+    versionList.value = await listSolutionVersions(currentSolution.value.id)
+    if (versionList.value.length) {
+      await selectVersion(versionList.value[0])
+    }
+  } finally {
+    versionLoading.value = false
+  }
+}
+
+async function selectVersion(item) {
+  if (!item?.id) return
+  selectedVersion.value = item
+  if (!item.snapshotJson) {
+    const detail = await getSolutionVersion(item.id)
+    const index = versionList.value.findIndex((v) => v.id === item.id)
+    if (index >= 0) versionList.value[index] = { ...versionList.value[index], ...detail }
+    selectedVersion.value = { ...item, ...detail }
+  }
+}
+
+
+function currentSectionWordCount(outlineId) {
+  if (!outlineId) return 0
+  const node = findOutlineNodeById(currentSolution.value?.outlines || [], Number(outlineId))
+  return outlineActualWordCount(node) || countTextWords(node?.section?.content || '')
+}
+
+async function onRestoreVersion(item) {
+  if (!currentSolution.value?.id || !item?.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确认恢复到 V${item.versionNo}？系统会先自动保存当前内容快照，然后用该版本覆盖当前章节正文。`,
+      '恢复历史版本',
+      {
+        type: 'warning',
+        confirmButtonText: '恢复版本',
+        cancelButtonText: '取消'
+      }
+    )
+    versionRestoring.value = true
+    const data = await restoreSolutionVersion(currentSolution.value.id, item.id)
+    applySolutionDetail(data)
+    versionDialogVisible.value = false
+    ElMessage.success('历史版本已恢复')
+    await loadList()
+  } catch (e) {
+    if (e !== 'cancel') {
+      // 业务错误由 request 拦截器统一提示，这里只兜底。
+    }
+  } finally {
+    versionRestoring.value = false
+  }
+}
+
+
+async function onRestoreVersionSection(section) {
+  if (!currentSolution.value?.id || !selectedVersion.value?.id || !section?.outlineId) return
+  try {
+    await ElMessageBox.confirm(
+      `确认只恢复“${section.title || '当前章节'}”？系统会先保存当前内容快照，然后用历史版本覆盖该章节正文。`,
+      '恢复单章节',
+      {
+        type: 'warning',
+        confirmButtonText: '恢复本章',
+        cancelButtonText: '取消'
+      }
+    )
+    versionRestoring.value = true
+    const data = await restoreSolutionVersionSection(currentSolution.value.id, selectedVersion.value.id, section.outlineId)
+    applySolutionDetail(data)
+    ElMessage.success('章节已恢复')
+    await loadList()
+  } catch (e) {
+    if (e !== 'cancel') {
+      // request 拦截器会统一提示具体业务错误。
+    }
+  } finally {
+    versionRestoring.value = false
+  }
+}
+
 function formatDateTime(value) {
   if (!value) return ''
   return String(value).replace('T', ' ').slice(0, 19)
@@ -2455,6 +2644,7 @@ const OutlineTree = defineComponent({
         controls.push(h(ElButton, { link: true, icon: SortDown, onClick: () => emit('move', { node, direction: 'DOWN' }) }))
       }
       if (props.mode === 'generate' && !hasChildren) {
+        const operationDisabled = isSolutionBusy.value
         const generated = isOutlineGenerated(node)
         const failed = isOutlineFailed(node)
         const optimizing = isSectionOptimizing(node)
@@ -2463,15 +2653,15 @@ const OutlineTree = defineComponent({
           controls.push(h(ElTag, { size: 'small', type: 'warning', effect: 'light' }, () => `${optimizeActionLabel(sectionOptimizing.value)}中`))
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, loading: true, disabled: true }, () => '处理中'))
         } else if (generated) {
-          controls.push(h(ElTag, { size: 'small', type: 'success', effect: 'light' }, () => '已完成'))
-          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重编'))
+          controls.push(h(ElTag, { size: 'small', type: sectionStatusType(node), effect: 'light' }, () => sectionStatusLabel(node)))
+          controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重编'))
         } else if (failed) {
           const errorMessage = node.errorMessage || node.section?.errorMessage || '章节生成失败，请点击“重试”重新生成'
-          controls.push(h(ElTooltip, { content: errorMessage, placement: 'top', 'show-after': 200 }, { default: () => h(ElTag, { size: 'small', type: 'danger', effect: 'light' }, () => '失败') }))
-          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '重试'))
+          controls.push(h(ElTooltip, { content: errorMessage, placement: 'top', 'show-after': 200 }, { default: () => h(ElTag, { size: 'small', type: sectionStatusType(node), effect: 'light' }, () => sectionStatusLabel(node)) }))
+          controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重试'))
         } else {
-          controls.push(h(ElTag, { size: 'small', type: 'info', effect: 'light' }, () => '未生成'))
-          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, onClick: (event) => { event.stopPropagation(); emit('section-generate', node) } }, () => '生成'))
+          controls.push(h(ElTag, { size: 'small', type: sectionStatusType(node), effect: 'light' }, () => sectionStatusLabel(node)))
+          controls.push(h(ElButton, { size: 'small', type: 'primary', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '生成'))
         }
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
@@ -2580,8 +2770,23 @@ const WritingDirectionEditor = defineComponent({
 .red { color: #ff4d4f; } .green { color: #16b91f; }
 .note { color: #94a3b8; margin-top: 10px; }
 .detail-scroll { flex: 1; padding: 14px 20px; }
-.detail-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; padding: 12px 20px; border-top: 1px solid #e5e7eb; }
-.detail-actions .el-button:nth-child(2) { background: linear-gradient(90deg, #2f6bff, #8158ff); border: 0; }
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+.detail-action-wrap,
+.detail-action-btn { width: 100%; }
+.detail-action-btn {
+  height: 42px;
+  font-weight: 700;
+  margin-left: 0 !important;
+}
+.detail-actions :deep(.el-button + .el-button) { margin-left: 0 !important; }
+.detail-action-wrap :deep(.el-button) { margin-left: 0 !important; }
 .edit-tabs { height: 54px; display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid #e5e7eb; }
 .edit-tabs button { border: 0; background: #fff; font-size: 16px; cursor: pointer; position: relative; }
 .edit-tabs button.active { color: #2f6bff; font-weight: 700; }
@@ -2834,6 +3039,134 @@ const WritingDirectionEditor = defineComponent({
 .word-export-success-btn {
   align-self: flex-start;
 }
+.task-running-tip {
+  margin: 10px 0 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #b26a00;
+  font-size: 13px;
+  border: 1px solid #ffe1a6;
+}
+
+.rewrite-preview-alert {
+  margin-bottom: 12px;
+}
+
+.version-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 520px;
+}
+
+.version-list-panel {
+  border-right: 1px solid #eef2f7;
+  padding-right: 14px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.version-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.version-card:hover,
+.version-card.active {
+  border-color: #2f6bff;
+  background: #f4f8ff;
+}
+
+.version-card-title {
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.version-card-meta,
+.version-card-remark {
+  color: #8492a6;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.version-preview-panel {
+  min-width: 0;
+}
+
+.version-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.version-preview-title {
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.version-preview-desc {
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.version-compare-tip {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.version-section-scroll {
+  height: 450px;
+}
+
+.version-section-item {
+  border: 1px solid #edf1f7;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.version-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-section-title {
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.version-section-meta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.version-section-content {
+  max-height: 160px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  color: #334155;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
 </style>
 
 

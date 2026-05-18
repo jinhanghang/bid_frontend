@@ -184,6 +184,35 @@ export function getBidProjectTechnicalTask(id, taskId) {
   return request.get(`/bid-project/${id}/technical-solution/task/${taskId}`)
 }
 
+
+/**
+ * AI标书：技术方案历史版本列表
+ */
+export function listBidProjectTechnicalVersions(id) {
+  return request.get(`/bid-project/${id}/technical-solution/versions`)
+}
+
+/**
+ * AI标书：技术方案历史版本详情
+ */
+export function getBidProjectTechnicalVersion(id, versionId) {
+  return request.get(`/bid-project/${id}/technical-solution/versions/${versionId}`)
+}
+
+/**
+ * AI标书：恢复技术方案历史版本
+ */
+export function restoreBidProjectTechnicalVersion(id, versionId) {
+  return request.post(`/bid-project/${id}/technical-solution/versions/${versionId}/restore`)
+}
+
+/**
+ * AI标书：恢复技术方案历史版本单章
+ */
+export function restoreBidProjectTechnicalVersionSection(id, versionId, outlineId) {
+  return request.post(`/bid-project/${id}/technical-solution/versions/${versionId}/sections/${outlineId}/restore`)
+}
+
 /**
  * AI标书：技术方案导出 Word
  */
