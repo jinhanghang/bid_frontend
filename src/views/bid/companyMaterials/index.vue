@@ -635,7 +635,9 @@ const recordDialog = reactive({
 })
 
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
-const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
+// 资料库里的企业筛选和企业切换只给超级管理员使用。
+// 企业管理员、普通用户都固定在当前企业范围内，不展示跨企业筛选。
+const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
 const canManageCompanyMaterial = computed(() => canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
 const currentTitle = computed(() => profile.license.companyName || selectedArchive.value?.title || '未命名资料档案')
 const currentEnterpriseName = computed(() => enterprises.value.find((item) => String(item.id) === String(profile.enterpriseId))?.enterpriseName || '')
