@@ -1,190 +1,214 @@
 <template>
-  <div class="page">
-    <div class="page-body kb-page">
-      <!-- 左侧：知识库列表 -->
-      <div class="card card--table kb-left">
-        <div class="list-head">
-          <div class="list-head__left">
-            <el-input
-              v-model="keyword"
-              class="filter-input"
-              placeholder="按知识库名称 / 类型 / 企业名称自动查询"
-              clearable
-              @input="onKeywordInput"
-            />
-          </div>
-          <div class="list-head__right">
-            <el-button class="table-icon-btn" text :icon="Refresh" @click="loadBases" />
-            <el-button v-if="canManageKnowledge" type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
+  <div class="page kb-page-wrap">
+    <div class="kb-shell">
+      <!-- 左侧：我的知识库 -->
+      <aside class="kb-sidebar">
+        <div class="kb-sidebar-head">
+          <div class="kb-sidebar-title">
+            <el-icon><Tickets /></el-icon>
+            <span>我的知识库</span>
           </div>
         </div>
 
-        <el-table
-          class="ui-table"
-          :data="bases"
-          border
-          stripe
-          height="calc(100vh - 224px)"
-          highlight-current-row
-          v-loading="baseLoading"
-          @current-change="selectBase"
-        >
-          <el-table-column prop="kbName" label="知识库名称" min-width="190" show-overflow-tooltip />
-          <el-table-column prop="enterpriseName" label="所属企业" min-width="150" show-overflow-tooltip />
-          <el-table-column prop="kbType" label="类型" width="120">
-            <template #default="{ row }">
-              {{ kbTypeLabel(row.kbType) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="fileCount" label="文件" width="70" align="center" />
-          <el-table-column prop="chunkCount" label="切片" width="70" align="center" />
-          <el-table-column prop="embeddingStatus" label="入库" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light">
-                {{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <StatusTag :value="row.status" :map="enableMap" />
-            </template>
-          </el-table-column>
-          <el-table-column v-if="canManageKnowledge" label="操作" width="180" fixed="right">
-            <template #default="{ row }">
-              <div class="table-actions">
-                <el-button link type="primary" @click.stop="openEditBase(row)">编辑</el-button>
-                <el-button link type="warning" @click.stop="toggleBaseStatus(row)">
-                  {{ Number(row.status) === 1 ? '停用' : '启用' }}
-                </el-button>
-                <el-button link type="danger" @click.stop="deleteBase(row)">删除</el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <PageFooterPager
-          v-model:page="basePager.page"
-          v-model:size="basePager.size"
-          :total="basePager.total"
-          @change="loadBases"
+        <el-input
+          v-model="keyword"
+          class="kb-search"
+          placeholder="搜索知识库"
+          clearable
+          :prefix-icon="Search"
+          @input="onKeywordInput"
         />
-      </div>
 
-      <!-- 右侧：知识库详情和文件列表 -->
-      <div class="card card--table kb-right">
+        <el-scrollbar class="kb-list-scroll" v-loading="baseLoading">
+          <div class="kb-list">
+            <div
+              v-for="item in bases"
+              :key="item.id"
+              class="kb-card"
+              :class="{ active: selectedBase?.id === item.id }"
+              @click="selectBase(item)"
+            >
+              <div class="kb-card-top">
+                <div class="kb-card-name">
+                  <el-icon class="folder-icon"><FolderOpened /></el-icon>
+                  <span>{{ item.kbName }}</span>
+                </div>
+
+                <el-dropdown
+                  v-if="canManageKnowledge"
+                  trigger="click"
+                  @command="(command) => handleBaseCommand(command, item)"
+                >
+                  <el-button class="kb-more" text :icon="MoreFilled" @click.stop />
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="edit">编辑知识库</el-dropdown-item>
+                      <el-dropdown-item command="toggle">
+                        {{ Number(item.status) === 1 ? '停用知识库' : '启用知识库' }}
+                      </el-dropdown-item>
+                      <el-dropdown-item command="delete" divided>删除知识库</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+              </div>
+
+              <div class="kb-card-meta">
+                <span>{{ kbTypeLabel(item.kbType) }}</span>
+                <span>{{ formatTime(item.createTime || item.createdAt) }}</span>
+              </div>
+
+              <div class="kb-card-tags">
+                <span class="kb-mini-tag">{{ item.fileCount || 0 }} 个文件</span>
+                <span class="kb-mini-tag">{{ item.chunkCount || 0 }} 个切片</span>
+                <span v-if="Number(item.status) !== 1" class="kb-mini-tag muted-tag">已停用</span>
+              </div>
+            </div>
+
+            <div v-if="!baseLoading && !bases.length" class="kb-list-empty">
+              暂无知识库
+            </div>
+
+            <div v-if="bases.length" class="kb-list-end">
+              {{ basePager.total > bases.length ? '可通过搜索定位更多知识库' : '—没有更多知识库了—' }}
+            </div>
+          </div>
+        </el-scrollbar>
+
+        <div class="kb-sidebar-footer">
+          <el-button
+            v-if="canManageKnowledge"
+            class="new-base-btn"
+            type="primary"
+            :icon="Plus"
+            @click="openCreateBase"
+          >
+            新建知识库
+          </el-button>
+        </div>
+      </aside>
+
+      <!-- 右侧：详情区域 -->
+      <main class="kb-main">
         <template v-if="selectedBase">
-          <div class="kb-header">
-            <div class="kb-header__main">
-              <div class="kb-title">{{ selectedBase.kbName }}</div>
-              <div class="kb-sub">
+          <!-- 保留现有知识库头部信息和操作入口 -->
+          <section class="kb-detail-head">
+            <div class="kb-title-block">
+              <div class="kb-detail-title">{{ selectedBase.kbName }}</div>
+              <div class="kb-detail-sub">
                 {{ kbTypeLabel(selectedBase.kbType) }}
                 <span v-if="selectedBase.enterpriseName"> · {{ selectedBase.enterpriseName }}</span>
                 <span> · {{ selectedBase.description || '暂无描述' }}</span>
               </div>
             </div>
 
-            <div class="kb-header-actions">
+            <div class="kb-detail-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
               <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
-          </div>
+          </section>
 
-          <el-alert
-            class="kb-tip"
-            :title="canManageKnowledge ? '文件加入知识库后会自动触发：OSS存储 → 文档解析 → 文本切片 → Embedding向量化 → 可检索问答。解析失败时可点击“重新入库”。' : '普通用户可查看、检索和问答知识库；上传、删除、重新入库由企业管理员维护。'"
-            type="success"
-            show-icon
-            :closable="false"
-          />
+          <section class="kb-file-section">
+            <div class="kb-table-head">
+              <div class="kb-table-title">知识库文件</div>
+              <div class="kb-table-summary">
+                共 {{ files.length }} 个文件
+                <span v-if="hasProcessingFiles"> · 有文件正在处理</span>
+              </div>
+              <el-button class="refresh-file-btn" text :icon="Refresh" @click="loadFiles" />
+            </div>
 
-          <el-alert
-            v-if="hasProcessingFiles"
-            class="kb-tip"
-            title="检测到文件正在解析或向量化，系统会自动刷新状态。"
-            type="warning"
-            show-icon
-            :closable="false"
-          />
+            <el-table
+              class="ui-table kb-file-table"
+              :data="files"
+              v-loading="fileLoading"
+              height="calc(100vh - 402px)"
+              empty-text="当前知识库还没有文件，请点击右上角“添加文件”"
+            >
+              <el-table-column prop="fileName" label="文件名" min-width="340" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <div class="file-name-cell">
+                    <el-icon class="file-doc-icon"><Document /></el-icon>
+                    <span class="file-name-text">{{ row.fileName || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
 
-          <el-table
-            class="ui-table kb-file-table"
-            :data="files"
-            border
-            stripe
-            height="calc(100vh - 336px)"
-            v-loading="fileLoading"
-            empty-text="当前知识库还没有文件，请点击右上角“添加文件”"
-          >
-            <el-table-column prop="fileName" label="文件名" min-width="260" show-overflow-tooltip>
-              <template #default="{ row }">
-                <div class="file-name-cell">
-                  <span class="file-icon">文</span>
-                  <span class="file-name-text">{{ row.fileName || '-' }}</span>
-                </div>
-              </template>
-            </el-table-column>
+              <el-table-column prop="fileSize" label="文件大小" width="130">
+                <template #default="{ row }">
+                  {{ formatFileSize(row.fileSize) }}
+                </template>
+              </el-table-column>
 
-            <el-table-column prop="fileType" label="类型" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.fileType || '-' }}
-              </template>
-            </el-table-column>
+              <el-table-column label="上传时间" width="180">
+                <template #default="{ row }">
+                  {{ formatTime(row.createTime || row.createdAt || row.uploadTime) }}
+                </template>
+              </el-table-column>
 
-            <el-table-column prop="fileSize" label="大小" width="110" align="center">
-              <template #default="{ row }">
-                {{ formatFileSize(row.fileSize) }}
-              </template>
-            </el-table-column>
-
-            <el-table-column label="文件状态" width="190">
-              <template #default="{ row }">
-                <div class="status-group">
-                  <el-tag :type="parseStatusMap[Number(row.parseStatus)]?.type || 'info'" effect="light" size="small">
-                    解析：{{ parseStatusMap[Number(row.parseStatus)]?.label || '未知' }}
-                  </el-tag>
-                  <el-tag :type="embeddingStatusMap[Number(row.embeddingStatus)]?.type || 'info'" effect="light" size="small">
-                    向量：{{ embeddingStatusMap[Number(row.embeddingStatus)]?.label || '未知' }}
-                  </el-tag>
+              <el-table-column label="文件状态" width="170">
+                <template #default="{ row }">
+                  <span class="file-state" :class="fileStatusClass(row)">
+                    <span class="state-dot"></span>
+                    {{ fileStatusLabel(row) }}
+                  </span>
                   <el-tooltip v-if="row.errorMsg" :content="row.errorMsg" placement="top">
-                    <el-tag type="danger" effect="light" size="small">错误</el-tag>
+                    <el-tag class="error-tag" type="danger" effect="light" size="small">错误</el-tag>
                   </el-tooltip>
-                </div>
-              </template>
-            </el-table-column>
+                </template>
+              </el-table-column>
 
-            <el-table-column prop="chunkCount" label="切片" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.chunkCount || 0 }}
-              </template>
-            </el-table-column>
-
-            <el-table-column prop="createTime" label="添加时间" width="170" show-overflow-tooltip />
-
-            <el-table-column label="操作" width="180" fixed="right">
-              <template #default="{ row }">
-                <div class="table-actions">
-                  <el-button v-if="row.fileUrl" link type="primary" @click="openFile(row)">查看</el-button>
-                  <el-button
-                    v-if="canManageKnowledge"
-                    link
-                    type="success"
-                    :loading="isRebuilding(row)"
-                    :disabled="isFileProcessing(row)"
-                    @click="rebuildFile(row)"
-                  >重新入库</el-button>
-                  <el-button v-if="canManageKnowledge" link type="danger" @click="deleteFile(row)">删除</el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
+              <el-table-column label="操作" width="190" align="right" fixed="right">
+                <template #default="{ row }">
+                  <div class="table-actions compact-actions">
+                    <el-button
+                      v-if="canManageKnowledge"
+                      link
+                      type="primary"
+                      :loading="isRebuilding(row)"
+                      :disabled="isFileProcessing(row)"
+                      @click.stop="rebuildFile(row)"
+                    >重新入库</el-button>
+                    <el-button v-if="canManageKnowledge" link type="danger" @click.stop="deleteFile(row)">删除</el-button>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+          </section>
         </template>
 
-        <el-empty v-else description="请先新建或选择一个知识库">
-          <el-button v-if="canManageKnowledge" type="primary" :icon="Plus" @click="openCreateBase">新建知识库</el-button>
-        </el-empty>
-      </div>
+        <section v-else class="kb-empty-panel">
+          <div class="empty-hero"></div>
+          <div class="empty-title">沉淀知识资产，驱动组织进化</div>
+          <div class="empty-desc">
+            正文撰写时，可导入知识库文件，让 AI 基于你选定的知识库素材，生成质量更高、更贴合要求的标书内容。
+          </div>
+
+          <div class="empty-feature-row">
+            <div class="empty-feature">
+              <div class="feature-icon blue"><el-icon><Tickets /></el-icon></div>
+              <div class="feature-title">快速复用</div>
+              <div class="feature-desc">历史标书模板、技术方案、资质文件一键调用，减少重复编写</div>
+            </div>
+            <div class="feature-line"></div>
+            <div class="empty-feature">
+              <div class="feature-icon purple"><el-icon><Search /></el-icon></div>
+              <div class="feature-title">智能检索</div>
+              <div class="feature-desc">按行业、项目类型、客户特征快速定位参考案例，缩短准备周期</div>
+            </div>
+            <div class="feature-line"></div>
+            <div class="empty-feature">
+              <div class="feature-icon cyan"><el-icon><ChatLineRound /></el-icon></div>
+              <div class="feature-title">协同加速</div>
+              <div class="feature-desc">多部门共享素材库，打破信息孤岛，并行推进标书制作</div>
+            </div>
+          </div>
+
+          <el-button v-if="canManageKnowledge" class="empty-new-btn" type="primary" :icon="Plus" @click="openCreateBase">
+            新建知识库
+          </el-button>
+        </section>
+      </main>
     </div>
 
     <!-- 新建 / 编辑知识库 -->
@@ -234,11 +258,11 @@
       </template>
     </el-dialog>
 
-    <!-- 添加文件：保留你现在这个上传方式，只是入口放在右上角 -->
+    <!-- 添加文件：保留现有上传组件和入库逻辑 -->
     <el-dialog
       v-model="uploadDialog.visible"
       :title="`给「${selectedBase?.kbName || ''}」添加文件`"
-      width="680px"
+      width="720px"
       destroy-on-close
     >
       <FileUploadBox
@@ -332,13 +356,21 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ChatLineRound, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
+import {
+  ChatLineRound,
+  Document,
+  FolderOpened,
+  MoreFilled,
+  Plus,
+  Refresh,
+  Search,
+  Tickets,
+  Upload,
+  UploadFilled
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
-import PageFooterPager from '@/components/PageFooterPager.vue'
-import StatusTag from '@/components/StatusTag.vue'
-import { enableMap } from '@/config/statusMaps'
 import {
   askKnowledge,
   createKnowledgeBase,
@@ -373,7 +405,7 @@ const rebuildingIds = ref(new Set())
 
 const basePager = reactive({
   page: 1,
-  size: 10,
+  size: 50,
   total: 0
 })
 
@@ -442,19 +474,6 @@ const baseRules = computed(() => {
   return rules
 })
 
-const parseStatusMap = {
-  0: { label: '未解析', type: 'info' },
-  1: { label: '处理中', type: 'warning' },
-  2: { label: '成功', type: 'success' },
-  3: { label: '失败', type: 'danger' }
-}
-
-const embeddingStatusMap = {
-  0: { label: '未处理', type: 'info' },
-  1: { label: '处理中', type: 'warning' },
-  2: { label: '成功', type: 'success' },
-  3: { label: '失败', type: 'danger' }
-}
 
 onMounted(() => {
   loadBases()
@@ -673,6 +692,20 @@ async function deleteBase(row) {
   await loadBases()
 }
 
+async function handleBaseCommand(command, row) {
+  if (command === 'edit') {
+    openEditBase(row)
+    return
+  }
+  if (command === 'toggle') {
+    await toggleBaseStatus(row)
+    return
+  }
+  if (command === 'delete') {
+    await deleteBase(row)
+  }
+}
+
 function openUploadDialog() {
   if (!canManageKnowledge.value) {
     ElMessage.warning('普通用户只能查看、检索知识库，不能添加文件')
@@ -734,7 +767,6 @@ async function rebuildFile(row) {
     setRebuilding(row.id, false)
   }
 }
-
 
 function isFileProcessing(row = {}) {
   return Number(row.parseStatus) === 1 || Number(row.embeddingStatus) === 1
@@ -835,14 +867,6 @@ async function submitAsk() {
   }
 }
 
-function openFile(row) {
-  if (!row.fileUrl) {
-    ElMessage.warning('文件访问地址为空')
-    return
-  }
-  window.open(row.fileUrl, '_blank')
-}
-
 async function deleteFile(row) {
   if (!canManageKnowledge.value) {
     ElMessage.warning('普通用户只能查看、检索知识库，不能删除文件')
@@ -860,6 +884,24 @@ async function deleteFile(row) {
   await loadBases(selectedBase.value?.id)
 }
 
+function fileStatusLabel(row = {}) {
+  const parseStatus = Number(row.parseStatus)
+  const embeddingStatus = Number(row.embeddingStatus)
+  if (parseStatus === 3 || embeddingStatus === 3) return '入库失败'
+  if (parseStatus === 1 || embeddingStatus === 1) return '解析中'
+  if (parseStatus === 2 && embeddingStatus === 2) return '解析成功'
+  if (parseStatus === 2) return '待向量化'
+  return '未解析'
+}
+
+function fileStatusClass(row = {}) {
+  const label = fileStatusLabel(row)
+  if (label === '解析成功') return 'success'
+  if (label === '解析中' || label === '待向量化') return 'processing'
+  if (label === '入库失败') return 'danger'
+  return 'waiting'
+}
+
 function formatFileSize(size) {
   const value = Number(size || 0)
   if (value < 1024) return `${value} B`
@@ -872,57 +914,332 @@ function formatScore(score) {
   const value = Number(score || 0)
   return value.toFixed(4)
 }
+
+function formatTime(value) {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 19)
+}
 </script>
 
 <style scoped>
-.kb-page {
+.kb-page-wrap {
+  height: 100%;
+  padding: 0;
+}
+
+.kb-shell {
   display: grid;
-  grid-template-columns: minmax(560px, 0.95fr) minmax(720px, 1.05fr);
-  gap: 16px;
+  grid-template-columns: 292px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
-.kb-left,
-.kb-right {
+.kb-sidebar,
+.kb-main {
   min-width: 0;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid #e7edf7;
+  box-shadow: 0 18px 44px rgba(31, 41, 55, 0.05);
 }
 
-.kb-header {
+.kb-sidebar {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  padding: 16px 12px 12px;
+  border-radius: 14px;
+}
+
+.kb-sidebar-head {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
   margin-bottom: 12px;
 }
 
-.kb-header__main {
+.kb-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.kb-search {
+  margin-bottom: 12px;
+}
+
+.kb-search :deep(.el-input__wrapper) {
+  height: 38px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #d9e2ef inset;
+}
+
+.kb-list-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.kb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 2px 8px 0;
+}
+
+.kb-card {
+  padding: 12px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f8fbff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.kb-card:hover {
+  background: #f0f6ff;
+  border-color: #d9e8ff;
+}
+
+.kb-card.active {
+  background: #edf4ff;
+  border-color: #cbdcff;
+}
+
+.kb-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kb-card-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #111827;
+  font-weight: 800;
+}
+
+.kb-card-name span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-icon {
+  color: #f59e0b;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.kb-more {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: #64748b;
+}
+
+.kb-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 24px;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.kb-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-left: 24px;
+}
+
+.kb-mini-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: #e8f2ff;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.kb-mini-tag.muted-tag {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.kb-list-empty,
+.kb-list-end {
+  padding: 16px 0 8px;
+  color: #8a95a8;
+  text-align: center;
+  font-size: 13px;
+}
+
+.kb-sidebar-footer {
+  padding-top: 12px;
+}
+
+.new-base-btn {
+  width: 100%;
+  height: 42px;
+  border: none;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
+  font-weight: 700;
+}
+
+.kb-main {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 22px 18px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.kb-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.kb-title-block {
   min-width: 0;
   flex: 1;
 }
 
-.kb-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-  flex-shrink: 0;
+.kb-detail-title {
+  color: #111827;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.28;
 }
 
-.kb-title {
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.3;
-}
-
-.kb-sub {
-  margin-top: 6px;
-  color: var(--text-sub);
+.kb-detail-sub {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 16px;
   line-height: 1.5;
   word-break: break-all;
 }
 
-.kb-tip {
-  margin-bottom: 12px;
+.kb-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.kb-detail-actions .el-button {
+  height: 40px;
+  padding: 0 22px;
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.kb-detail-actions .el-button--primary {
+  height: 44px;
+  min-width: 138px;
+  border-radius: 8px;
+  background: #2f6bff;
+  box-shadow: 0 8px 18px rgba(47, 107, 255, 0.18);
+}
+
+.kb-upload-card {
+  display: flex;
+  min-height: 108px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.kb-upload-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.08);
+}
+
+.kb-upload-card.primary {
+  background: linear-gradient(135deg, #edf4ff, #f4f8ff);
+}
+
+.kb-upload-card.purple {
+  background: linear-gradient(135deg, #f3eaff, #f8f2ff);
+}
+
+.kb-upload-card .el-icon {
+  color: #4d79ff;
+  font-size: 18px;
+}
+
+.kb-file-section {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  padding-top: 0;
+}
+
+.kb-table-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 12px;
+  background: #f8fafc;
+  border-radius: 6px 6px 0 0;
+  border: 1px solid #eef2f7;
+  border-bottom: none;
+}
+
+.kb-table-title {
+  color: #111827;
+  font-weight: 800;
+}
+
+.kb-table-summary {
+  color: #7a869a;
+  font-size: 13px;
+}
+
+.refresh-file-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.kb-file-table {
+  flex: 1;
+}
+
+.kb-file-table :deep(.el-table__header-wrapper th.el-table__cell) {
+  background: #f7f7f8;
+  color: #8a94a6;
+  font-weight: 800;
+}
+
+.kb-file-table :deep(.el-table__cell) {
+  border-color: #f0f2f6;
 }
 
 .file-name-cell {
@@ -932,17 +1249,9 @@ function formatScore(score) {
   min-width: 0;
 }
 
-.file-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: #e8f1ff;
-  color: #2563eb;
-  font-size: 12px;
-  font-weight: 700;
+.file-doc-icon {
+  color: #2f7cff;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -952,18 +1261,158 @@ function formatScore(score) {
   white-space: nowrap;
 }
 
-.status-group {
-  display: flex;
+.file-state {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 14px;
 }
 
-.table-actions {
+.state-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.file-state.success {
+  color: #16a34a;
+}
+
+.file-state.processing {
+  color: #f59e0b;
+}
+
+.file-state.danger {
+  color: #ef4444;
+}
+
+.file-state.waiting {
+  color: #8a94a6;
+}
+
+.error-tag {
+  margin-left: 6px;
+}
+
+.compact-actions {
+  justify-content: flex-end;
+}
+
+.kb-empty-panel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 32px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.empty-hero {
+  position: absolute;
+  top: 0;
+  width: min(720px, 62%);
+  height: 170px;
+  border-radius: 0 0 28px 28px;
+  background:
+    radial-gradient(circle at 82% 48%, rgba(95, 125, 255, 0.18) 0 18px, transparent 19px),
+    radial-gradient(circle at 88% 25%, rgba(100, 221, 255, 0.35) 0 8px, transparent 9px),
+    linear-gradient(135deg, #eef6ff, #f9fbff);
+  opacity: 0.95;
+}
+
+.empty-title {
+  position: relative;
+  margin-top: 58px;
+  color: #1f2937;
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.empty-desc {
+  position: relative;
+  width: min(560px, 90%);
+  margin-top: 16px;
+  color: #8a94a6;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.empty-feature-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr) 96px minmax(0, 1fr);
+  align-items: center;
+  width: min(760px, 96%);
+  margin-top: 48px;
+}
+
+.empty-feature {
   display: flex;
   align-items: center;
-  gap: 8px;
-  white-space: nowrap;
+  flex-direction: column;
+}
+
+.feature-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(47, 107, 255, 0.18);
+}
+
+.feature-icon.blue {
+  background: linear-gradient(135deg, #4f8cff, #2f6bff);
+}
+
+.feature-icon.purple {
+  background: linear-gradient(135deg, #8b7cff, #4f6dff);
+}
+
+.feature-icon.cyan {
+  background: linear-gradient(135deg, #89b6ff, #6f7cff);
+}
+
+.feature-icon .el-icon {
+  font-size: 24px;
+}
+
+.feature-line {
+  height: 1px;
+  background: #dce4f1;
+}
+
+.feature-title {
+  margin-top: 24px;
+  color: #5c6473;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.feature-desc {
+  margin-top: 14px;
+  color: #8a94a6;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.empty-new-btn {
+  position: relative;
+  width: 170px;
+  height: 42px;
+  margin-top: 52px;
+  border: none;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #2563eb, #7c3aed);
+  font-weight: 800;
 }
 
 .dialog-actions {
@@ -1020,24 +1469,38 @@ function formatScore(score) {
   white-space: pre-wrap;
 }
 
-@media (max-width: 1380px) {
-  .kb-page {
-    grid-template-columns: minmax(500px, 0.9fr) minmax(640px, 1.1fr);
+@media (max-width: 1280px) {
+  .kb-shell {
+    grid-template-columns: 270px minmax(0, 1fr);
   }
 
-  .kb-header {
+  .kb-detail-head {
     flex-direction: column;
-    align-items: stretch;
   }
 
-  .kb-header-actions {
+  .kb-detail-actions {
+    width: 100%;
     justify-content: flex-end;
   }
 }
 
-@media (max-width: 1180px) {
-  .kb-page {
+@media (max-width: 980px) {
+  .kb-shell {
     grid-template-columns: 1fr;
+  }
+
+  .kb-sidebar {
+    min-height: 320px;
+  }
+
+
+  .empty-feature-row {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .feature-line {
+    display: none;
   }
 }
 </style>

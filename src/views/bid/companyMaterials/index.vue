@@ -1,311 +1,469 @@
 <template>
-  <div class="page">
-    <div class="page-body company-material-page">
-      <!-- 左侧：分类 -->
-      <div class="card material-category">
-        <div class="category-head">
+  <div class="page material-archive-page">
+    <div class="archive-shell">
+      <aside class="archive-sidebar card">
+        <div class="sidebar-head">
           <div>
-            <div class="section-title">企业资料库</div>
-            <div class="section-desc">统一维护公司简介、资质证书、项目业绩等资料。</div>
+            <div class="sidebar-title">我的资料库</div>
+            <div class="sidebar-desc">企业资料、证书、业绩、财务数据统一维护</div>
           </div>
-          <el-button class="table-icon-btn" text :icon="Refresh" @click="loadMaterials" />
+          <el-button class="icon-btn" text :icon="Refresh" @click="loadArchives(selectedArchive?.id)" />
         </div>
 
-        <div class="category-list">
-          <div
-            v-for="item in materialTypes"
-            :key="item.value"
-            class="category-item"
-            :class="{ active: filters.materialType === item.value }"
-            @click="selectMaterialType(item.value)"
-          >
-            <div class="category-icon">{{ item.short }}</div>
-            <div class="category-info">
-              <strong>{{ item.label }}</strong>
-              <span>{{ item.desc }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 中间：列表 -->
-      <div class="card card--table material-list">
-        <div class="list-head">
-          <div class="list-head__left">
-            <el-input
-              v-model="filters.keyword"
-              class="filter-input"
-              placeholder="按标题 / 内容 / 企业 / 附件名自动查询"
-              clearable
-              @input="onKeywordInput"
-            />
-          </div>
-          <div class="list-head__right">
-            <el-select
-              v-if="canManagePlatform"
-              v-model="filters.enterpriseId"
-              clearable
-              filterable
-              placeholder="所属企业"
-              style="width: 180px"
-              @change="reloadFirstPage"
-            >
-              <el-option
-                v-for="item in enterprises"
-                :key="item.id"
-                :label="item.enterpriseName"
-                :value="item.id"
-              />
-            </el-select>
-            <el-select v-model="filters.fileState" clearable placeholder="附件状态" style="width: 130px" @change="reloadFirstPage">
-              <el-option label="有附件" value="available" />
-              <el-option label="附件丢失" value="lost" />
-              <el-option label="无附件" value="none" />
-            </el-select>
-            <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
-          </div>
-        </div>
-
-        <div class="summary-row">
-          <div class="summary-card">
-            <span>资料总数</span>
-            <strong>{{ pager.total }}</strong>
-          </div>
-          <div class="summary-card">
-            <span>当前页有附件</span>
-            <strong>{{ currentPageFileCount }}</strong>
-          </div>
-          <div class="summary-card is-warning">
-            <span>当前页附件丢失</span>
-            <strong>{{ currentPageLostCount }}</strong>
-          </div>
-        </div>
-
-        <el-table
-          class="ui-table"
-          :data="rows"
-          border
-          stripe
-          highlight-current-row
-          height="calc(100vh - 356px)"
-          v-loading="loading"
-          @current-change="selectRow"
-          @row-dblclick="selectRow"
-        >
-          <el-table-column label="资料标题" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">
-              <div class="title-cell">
-                <div class="title-main">{{ row.title }}</div>
-                <div class="title-sub">{{ row.enterpriseName || '-' }}</div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="资料类型" width="120">
-            <template #default="{ row }">
-              <el-tag :type="materialTypeTag(row.materialType)" effect="light">
-                {{ materialTypeLabel(row.materialType) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="附件" width="110">
-            <template #default="{ row }">
-              <el-tag :type="fileStateTag(row)" effect="light">
-                {{ fileStateLabel(row) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="有效期" width="220" show-overflow-tooltip>
-            <template #default="{ row }">
-              <div class="validity-cell">
-                <span>{{ validityText(row) }}</span>
-                <el-tag v-if="validityTag(row)" :type="validityTag(row).type" effect="light" size="small">
-                  {{ validityTag(row).label }}
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="状态" width="80" align="center">
-            <template #default="{ row }">
-              <el-tag :type="Number(row.status) === 1 ? 'success' : 'info'" effect="light">
-                {{ Number(row.status) === 1 ? '启用' : '停用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-
-          <el-table-column prop="updateTime" label="更新时间" width="170" show-overflow-tooltip />
-
-          <el-table-column label="操作" width="190" fixed="right">
-            <template #default="{ row }">
-              <div class="table-actions">
-                <el-button link type="primary" @click.stop="selectRow(row)">详情</el-button>
-                <el-button link type="success" :disabled="!canOpenFile(row)" @click.stop="openFile(row)">附件</el-button>
-                <el-button v-if="canManageCompanyMaterial" link type="danger" @click.stop="removeRow(row)">删除</el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <PageFooterPager
-          v-model:page="pager.page"
-          v-model:size="pager.size"
-          :total="pager.total"
-          @change="loadMaterials"
+        <el-input
+          v-model="filters.keyword"
+          class="archive-search"
+          placeholder="搜索资料档案"
+          clearable
+          :prefix-icon="Search"
+          @input="onKeywordInput"
         />
-      </div>
 
-      <!-- 右侧：详情编辑 -->
-      <div class="card material-detail">
-        <template v-if="editMode">
-          <div class="editor-head">
-            <div>
-              <div class="section-title">{{ canManageCompanyMaterial ? (form.id ? '编辑企业资料' : '新增企业资料') : '查看企业资料' }}</div>
-              <div class="section-desc">
-                附件会统一上传到 OSS，并写入文件资源；文件资源删除后，这里会显示无附件。
+        <el-select
+          v-if="canManagePlatform"
+          v-model="filters.enterpriseId"
+          class="enterprise-filter"
+          clearable
+          filterable
+          placeholder="按企业筛选"
+          @change="reloadFirstPage"
+        >
+          <el-option
+            v-for="item in enterprises"
+            :key="item.id"
+            :label="item.enterpriseName"
+            :value="item.id"
+          />
+        </el-select>
+
+        <div v-loading="loading" class="archive-list">
+          <div
+            v-for="item in archiveList"
+            :key="item.id"
+            class="archive-card"
+            :class="{ active: selectedArchive?.id === item.id }"
+            @click="selectArchive(item)"
+          >
+            <div class="archive-icon-wrap">
+              <el-icon><FolderOpened /></el-icon>
+            </div>
+            <div class="archive-info">
+              <div class="archive-name">{{ archiveTitle(item) }}</div>
+              <div class="archive-time">{{ item.updateTime || item.createTime || '-' }}</div>
+              <div class="archive-tags">
+                <el-tag size="small" effect="light">{{ materialTypeLabel(item.materialType) }}</el-tag>
+                <el-tag v-if="Number(item.fileExists) === 1" size="small" type="success" effect="light">有附件</el-tag>
+                <el-tag v-else-if="item.fileId" size="small" type="danger" effect="light">附件丢失</el-tag>
               </div>
             </div>
-            <div v-if="canManageCompanyMaterial" class="editor-actions">
-              <el-tag v-if="formDirty" type="warning" effect="light">有未保存修改</el-tag>
-              <el-button :icon="Refresh" @click="resetForm">重置</el-button>
-              <el-button type="primary" :loading="saving" @click="saveRow">保存资料</el-button>
+            <el-dropdown v-if="canManageCompanyMaterial" trigger="click" @click.stop>
+              <span class="archive-more">•••</span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="selectArchive(item)">编辑资料</el-dropdown-item>
+                  <el-dropdown-item divided @click="removeArchive(item)">删除资料</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+
+          <el-empty v-if="!loading && archiveList.length === 0" description="暂无资料档案" :image-size="90" />
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="total-line">共 {{ pager.total }} 个资料档案</div>
+          <el-button v-if="canManageCompanyMaterial" type="primary" class="create-btn" :icon="Plus" @click="openCreate">
+            新建资料档案
+          </el-button>
+        </div>
+      </aside>
+
+      <main class="archive-main card">
+        <template v-if="editMode">
+          <div class="detail-topbar">
+            <div class="back-btn" @click="closeDetail">
+              <el-icon><Back /></el-icon>
+              <span>返回</span>
+            </div>
+            <div class="top-divider"></div>
+            <div class="top-title-wrap">
+              <div class="top-title">{{ currentTitle }}</div>
+              <div class="top-subtitle">
+                {{ selectedArchive?.enterpriseName || currentEnterpriseName || '企业资料' }}
+                <span v-if="profile.meta.description"> · {{ profile.meta.description }}</span>
+              </div>
+            </div>
+            <el-tag v-if="formDirty" type="warning" effect="light">有未保存修改</el-tag>
+            <div class="top-spacer"></div>
+            <div class="top-actions">
+              <el-button :icon="View" :disabled="!canOpenFile(selectedArchive)" @click="openFile(selectedArchive)">查看附件</el-button>
+              <el-button v-if="canManageCompanyMaterial" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
+              <el-button v-if="canManageCompanyMaterial" type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
             </div>
           </div>
 
-          <el-alert
-            v-if="canManageCompanyMaterial && !form.id"
-            class="detail-alert"
-            title="请先保存资料基础信息，再上传附件。"
-            type="info"
-            show-icon
-            :closable="false"
-          />
-
-          <el-form ref="formRef" :model="form" :rules="rules" label-width="112px" class="material-form" :disabled="!canManageCompanyMaterial">
-            <el-form-item v-if="canManagePlatform" label="所属企业" prop="enterpriseId">
-              <el-select v-model="form.enterpriseId" filterable placeholder="请选择企业" style="width: 100%">
-                <el-option
-                  v-for="item in enterprises"
-                  :key="item.id"
-                  :label="item.enterpriseName"
-                  :value="item.id"
-                />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="资料类型" prop="materialType">
-              <el-select v-model="form.materialType" style="width: 100%">
-                <el-option
-                  v-for="item in materialTypes"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="资料标题" prop="title">
-              <el-input v-model="form.title" placeholder="例如：公司简介 / ISO9001证书 / 类似业绩" maxlength="200" show-word-limit />
-            </el-form-item>
-
-            <el-form-item label="正文内容">
-              <el-input
-                v-model="form.content"
-                type="textarea"
-                :rows="8"
-                placeholder="可填写资料正文。后续 AI 生成时会优先引用这里的文本内容。"
-                maxlength="10000"
-                show-word-limit
+          <div v-if="showUpload" class="upload-row">
+            <div class="upload-card">
+              <div class="upload-card__title">上传资料附件</div>
+              <div class="upload-card__desc">一个档案暂关联一个主附件，适合上传营业执照、证书扫描件、业绩合同或财务资料。</div>
+              <FileUploadBox
+                v-if="canManageCompanyMaterial && profile.id"
+                module-type="company_material"
+                :biz-id="profile.id"
+                :private-flag="true"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar"
+                :max-count="1"
+                :max-size-mb="50"
+                tip="支持 PDF、Word、Excel、图片和压缩包；单个文件不超过 50MB。"
+                @success="onUploadSuccess"
               />
-            </el-form-item>
-
-            <el-row :gutter="14">
-              <el-col :span="12">
-                <el-form-item label="有效期开始">
-                  <el-date-picker v-model="form.validStartDate" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="有效期结束">
-                  <el-date-picker v-model="form.validEndDate" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <el-row :gutter="14">
-              <el-col :span="12">
-                <el-form-item label="状态">
-                  <el-select v-model="form.status" style="width: 100%">
-                    <el-option label="启用" :value="1" />
-                    <el-option label="停用" :value="0" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <el-form-item label="备注">
-              <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="内部备注，可为空" maxlength="1000" show-word-limit />
-            </el-form-item>
-          </el-form>
-
-          <div class="file-card">
-            <div class="file-card-head">
-              <div>
-                <div class="assist-title">附件</div>
-                <div class="assist-desc">可上传证书、证明、业绩合同、团队资料等附件。</div>
-              </div>
-              <div class="file-actions">
-                <el-button :disabled="!canOpenFile(currentDetail)" @click="openFile(currentDetail)">查看附件</el-button>
-              </div>
+              <el-alert
+                v-else
+                title="请先保存资料档案，再上传附件。"
+                type="info"
+                show-icon
+                :closable="false"
+              />
             </div>
-
-            <div v-if="currentDetail?.fileId && Number(currentDetail.fileExists) === 1" class="file-info">
-              <div class="file-icon">{{ fileExtLabel(currentDetail.fileExt) }}</div>
-              <div class="file-main">
-                <div class="file-name">{{ currentDetail.originalName || currentDetail.fileName || '附件' }}</div>
-                <div class="file-meta">
-                  文件ID：{{ currentDetail.fileId }} · {{ formatFileSize(currentDetail.fileSize) }} · 可用
+            <div class="file-preview-card">
+              <div class="file-preview-title">当前附件</div>
+              <template v-if="selectedArchive?.fileId && Number(selectedArchive.fileExists) === 1">
+                <div class="file-mini">
+                  <div class="file-ext">{{ fileExtLabel(selectedArchive.fileExt) }}</div>
+                  <div class="file-mini-info">
+                    <strong>{{ selectedArchive.originalName || selectedArchive.fileName || '附件' }}</strong>
+                    <span>{{ formatFileSize(selectedArchive.fileSize) }} · 可下载</span>
+                  </div>
                 </div>
-              </div>
+              </template>
+              <el-empty v-else description="暂无可用附件" :image-size="70" />
             </div>
+          </div>
 
-            <el-alert
-              v-else-if="currentDetail?.fileId"
-              class="detail-alert"
-              title="附件已丢失，请重新上传。"
-              type="warning"
-              show-icon
-              :closable="false"
-            />
+          <div class="workspace">
+            <nav class="section-nav">
+              <div
+                v-for="tab in tabs"
+                :key="tab.key"
+                class="section-nav-item"
+                :class="{ active: activeTab === tab.key }"
+                @click="activeTab = tab.key"
+              >
+                <el-icon><component :is="tab.icon" /></el-icon>
+                <span>{{ tab.label }}</span>
+              </div>
+            </nav>
 
-            <FileUploadBox
-              v-if="canManageCompanyMaterial && form.id"
-              module-type="company_material"
-              :biz-id="form.id"
-              :private-flag="true"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar"
-              :max-count="1"
-              :max-size-mb="50"
-              tip="支持常见文档、图片和压缩包；上传成功后自动关联到当前企业资料。"
-              @success="onUploadSuccess"
-            />
+            <section class="section-panel">
+              <template v-if="activeTab === 'license'">
+                <div class="panel-head">
+                  <div>
+                    <h3>营业执照</h3>
+                    <p>维护企业注册信息，后续标书、AI方案可直接引用。</p>
+                  </div>
+                </div>
+                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                  <div class="form-grid four">
+                    <el-form-item v-if="canManagePlatform" label="所属企业" required>
+                      <el-select v-model="profile.enterpriseId" filterable placeholder="请选择企业" style="width: 100%">
+                        <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
+                      </el-select>
+                    </el-form-item>
+                    <el-form-item label="企业名称" required>
+                      <el-input v-model="profile.license.companyName" placeholder="请输入企业名称" />
+                    </el-form-item>
+                    <el-form-item label="统一信用代码" required>
+                      <el-input v-model="profile.license.creditCode" placeholder="请输入统一社会信用代码" />
+                    </el-form-item>
+                    <el-form-item label="法定代表人" required>
+                      <el-input v-model="profile.license.legalRepresentative" placeholder="请输入法定代表人" />
+                    </el-form-item>
+                    <el-form-item label="注册资金（万元）">
+                      <el-input-number v-model="profile.license.registeredCapital" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="企业性质" required>
+                      <el-select v-model="profile.license.enterpriseNature" placeholder="请选择" style="width: 100%">
+                        <el-option v-for="item in enterpriseNatureOptions" :key="item" :label="item" :value="item" />
+                      </el-select>
+                    </el-form-item>
+                    <el-form-item label="企业注册地址" required>
+                      <el-input v-model="profile.license.registeredAddress" placeholder="请输入注册地址" />
+                    </el-form-item>
+                    <el-form-item label="登记机关">
+                      <el-input v-model="profile.license.registrationAuthority" placeholder="请输入登记机关" />
+                    </el-form-item>
+                    <el-form-item label="成立时间">
+                      <el-date-picker v-model="profile.license.establishDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="登记日期">
+                      <el-date-picker v-model="profile.license.registerDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="营业截止时间">
+                      <el-radio-group v-model="profile.license.businessTerm">
+                        <el-radio label="有限期">有限期</el-radio>
+                        <el-radio label="长期">长期</el-radio>
+                      </el-radio-group>
+                    </el-form-item>
+                    <el-form-item label="企业邮箱">
+                      <el-input v-model="profile.license.email" placeholder="请输入企业邮箱" />
+                    </el-form-item>
+                    <el-form-item label="经营范围" class="col-span-2">
+                      <el-input v-model="profile.license.businessScope" type="textarea" :rows="2" placeholder="请输入经营范围" />
+                    </el-form-item>
+                    <el-form-item label="资料描述" class="col-span-2">
+                      <el-input v-model="profile.meta.description" type="textarea" :rows="2" placeholder="例如：企业资料、恒鼎智慧测试企业、暂无描述" />
+                    </el-form-item>
+                  </div>
+                </el-form>
+              </template>
+
+              <template v-else-if="activeTab === 'company'">
+                <div class="panel-head">
+                  <div>
+                    <h3>企业信息</h3>
+                    <p>补充企业规模、行业、地址、联系方式和投标人员结构。</p>
+                  </div>
+                </div>
+                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                  <div class="form-grid four">
+                    <el-form-item label="企业规模">
+                      <el-select v-model="profile.company.scale" placeholder="请选择" style="width: 100%">
+                        <el-option v-for="item in scaleOptions" :key="item" :label="item" :value="item" />
+                      </el-select>
+                    </el-form-item>
+                    <el-form-item label="行业分类">
+                      <el-input v-model="profile.company.industry" placeholder="请输入行业分类" />
+                    </el-form-item>
+                    <el-form-item label="公司地址">
+                      <el-input v-model="profile.company.address" placeholder="请输入公司地址" />
+                    </el-form-item>
+                    <el-form-item label="公司网址">
+                      <el-input v-model="profile.company.website" placeholder="请输入公司网址" />
+                    </el-form-item>
+                    <el-form-item label="企业联系电话">
+                      <el-input v-model="profile.company.phone" placeholder="请输入联系电话" />
+                    </el-form-item>
+                    <el-form-item label="企业邮政编码">
+                      <el-input v-model="profile.company.postCode" placeholder="请输入邮编" />
+                    </el-form-item>
+                    <el-form-item label="企业传真">
+                      <el-input v-model="profile.company.fax" placeholder="请输入传真" />
+                    </el-form-item>
+                    <el-form-item label="生产安全许可证有效期">
+                      <el-date-picker v-model="profile.company.safetyLicenseRange" type="daterange" range-separator="至" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标员工总人数">
+                      <el-input-number v-model="profile.company.bidStaffTotal" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标高级职称人数">
+                      <el-input-number v-model="profile.company.seniorTitleCount" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标中级职称人数">
+                      <el-input-number v-model="profile.company.middleTitleCount" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标初级职称人数">
+                      <el-input-number v-model="profile.company.juniorTitleCount" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标技工人数">
+                      <el-input-number v-model="profile.company.workerCount" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="投标项目经理人数">
+                      <el-input-number v-model="profile.company.projectManagerCount" :min="0" controls-position="right" style="width: 100%" />
+                    </el-form-item>
+                  </div>
+                </el-form>
+              </template>
+
+              <template v-else-if="activeTab === 'bank'">
+                <div class="panel-head">
+                  <div>
+                    <h3>开户信息</h3>
+                    <p>维护开户名称、银行、账号和开户地址。</p>
+                  </div>
+                </div>
+                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                  <div class="form-grid four">
+                    <el-form-item label="开户名称" required>
+                      <el-input v-model="profile.bank.accountName" placeholder="请输入开户名称" />
+                    </el-form-item>
+                    <el-form-item label="开户银行" required>
+                      <el-input v-model="profile.bank.bankName" placeholder="请输入开户银行" />
+                    </el-form-item>
+                    <el-form-item label="开户账号" required>
+                      <el-input v-model="profile.bank.accountNo" placeholder="请输入开户账号" />
+                    </el-form-item>
+                    <el-form-item label="开户银行地址">
+                      <el-input v-model="profile.bank.bankAddress" placeholder="请输入开户银行地址" />
+                    </el-form-item>
+                    <el-form-item label="开户银行电话">
+                      <el-input v-model="profile.bank.bankPhone" placeholder="请输入开户银行电话" />
+                    </el-form-item>
+                  </div>
+                </el-form>
+              </template>
+
+              <template v-else>
+                <div class="panel-head table-panel-head">
+                  <div>
+                    <h3>{{ activeTableMeta.label }}</h3>
+                    <p>{{ activeTableMeta.desc }}</p>
+                  </div>
+                  <div class="panel-actions">
+                    <el-button :icon="Refresh" @click="loadArchives(selectedArchive?.id)">刷新</el-button>
+                    <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openRecordDialog(activeTab)">新增数据</el-button>
+                  </div>
+                </div>
+
+                <el-table class="ui-table archive-data-table" :data="activeTableRows" border height="calc(100vh - 392px)">
+                  <el-table-column
+                    v-for="col in activeTableMeta.columns"
+                    :key="col.prop"
+                    :prop="col.prop"
+                    :label="col.label"
+                    :width="col.width"
+                    :min-width="col.minWidth || 130"
+                    show-overflow-tooltip
+                  >
+                    <template #default="{ row }">
+                      {{ displayCell(row, col) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="120" fixed="right">
+                    <template #default="{ row, $index }">
+                      <el-button link type="primary" @click="openRecordDialog(activeTab, row, $index)">编辑</el-button>
+                      <el-button v-if="canManageCompanyMaterial" link type="danger" @click="removeRecord(activeTab, $index)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </template>
+
+              <div class="fixed-save-bar" v-if="canManageCompanyMaterial">
+                <el-button @click="resetCurrentArchive">重置</el-button>
+                <el-button type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
+              </div>
+            </section>
           </div>
         </template>
 
-        <el-empty v-else :description="canManageCompanyMaterial ? '请选择左侧资料，或点击新增资料' : '请选择左侧资料查看详情'">
-          <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openCreate">新增资料</el-button>
-        </el-empty>
-      </div>
+        <template v-else>
+          <div class="empty-landing">
+            <div class="landing-card">
+              <div class="landing-step">
+                <div class="landing-icon"><el-icon><Document /></el-icon></div>
+                <strong>选择档案</strong>
+                <span>左侧列表选择资料档案后再进入编辑。</span>
+              </div>
+              <div class="landing-step">
+                <div class="landing-icon"><el-icon><DataAnalysis /></el-icon></div>
+                <strong>分区维护</strong>
+                <span>营业执照、企业信息、证书和业绩分开管理。</span>
+              </div>
+              <div class="landing-step">
+                <div class="landing-icon"><el-icon><Briefcase /></el-icon></div>
+                <strong>沉淀复用</strong>
+                <span>后续标书和 AI 内容可直接引用企业素材。</span>
+              </div>
+            </div>
+            <el-button v-if="canManageCompanyMaterial" class="landing-create-btn" type="primary" :icon="Plus" @click="openCreate">
+              新建资料档案
+            </el-button>
+          </div>
+        </template>
+      </main>
     </div>
+
+    <el-dialog v-model="recordDialog.visible" :title="recordDialogTitle" width="980px" class="material-record-dialog" destroy-on-close>
+      <el-form label-position="top" class="dialog-form">
+        <div class="form-grid three">
+          <el-form-item
+            v-for="field in recordDialog.fields"
+            :key="field.prop"
+            :label="field.label"
+            :required="field.required"
+            :class="{ 'col-span-2': field.span === 2, 'col-span-3': field.span === 3 }"
+          >
+            <el-input
+              v-if="!field.type || field.type === 'input'"
+              v-model="recordDialog.form[field.prop]"
+              :placeholder="`请输入${field.label}`"
+            />
+            <el-input
+              v-else-if="field.type === 'textarea'"
+              v-model="recordDialog.form[field.prop]"
+              type="textarea"
+              :rows="field.rows || 2"
+              :placeholder="`请输入${field.label}`"
+            />
+            <el-input-number
+              v-else-if="field.type === 'number'"
+              v-model="recordDialog.form[field.prop]"
+              :min="0"
+              controls-position="right"
+              style="width: 100%"
+            />
+            <el-select
+              v-else-if="field.type === 'select'"
+              v-model="recordDialog.form[field.prop]"
+              :placeholder="`请选择${field.label}`"
+              style="width: 100%"
+            >
+              <el-option v-for="option in field.options || []" :key="option" :label="option" :value="option" />
+            </el-select>
+            <el-date-picker
+              v-else-if="field.type === 'date'"
+              v-model="recordDialog.form[field.prop]"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择日期"
+              style="width: 100%"
+            />
+            <el-date-picker
+              v-else-if="field.type === 'month'"
+              v-model="recordDialog.form[field.prop]"
+              type="month"
+              value-format="YYYY-MM"
+              placeholder="选择月份"
+              style="width: 100%"
+            />
+            <el-date-picker
+              v-else-if="field.type === 'daterange'"
+              v-model="recordDialog.form[field.prop]"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              value-format="YYYY-MM-DD"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="recordDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="saveRecord">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh } from '@element-plus/icons-vue'
+import {
+  Back,
+  Briefcase,
+  CreditCard,
+  DataAnalysis,
+  Document,
+  Files,
+  FolderOpened,
+  Plus,
+  Refresh,
+  Search,
+  Upload,
+  User,
+  View
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { listEnterprises } from '@/api/enterprise'
 import {
@@ -317,90 +475,232 @@ import {
   updateCompanyMaterial
 } from '@/api/companyMaterial'
 import FileUploadBox from '@/components/FileUploadBox.vue'
-import PageFooterPager from '@/components/PageFooterPager.vue'
 
 const auth = useAuthStore()
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
+const CONTENT_VERSION = 'MATERIAL_ARCHIVE_V1'
 
 const loading = ref(false)
 const saving = ref(false)
 const editMode = ref(false)
-const rows = ref([])
+const showUpload = ref(false)
+const activeTab = ref('license')
+const archiveList = ref([])
 const enterprises = ref([])
-const currentDetail = ref(null)
+const selectedArchive = ref(null)
 const keywordTimer = ref(null)
-const formSnapshot = ref('')
-const formRef = ref()
+const profileSnapshot = ref('')
 
 const filters = reactive({
   keyword: '',
-  enterpriseId: '',
-  materialType: '',
-  fileState: ''
+  enterpriseId: ''
 })
 
 const pager = reactive({
   page: 1,
-  size: 10,
+  size: 100,
   total: 0
 })
 
-const form = reactive(defaultForm())
+const profile = reactive(defaultProfile())
 
-const materialTypes = [
-  { label: '公司简介', value: 'COMPANY_PROFILE', short: '企', desc: '企业介绍、组织架构、主营业务' },
-  { label: '资质证书', value: 'QUALIFICATION', short: '资', desc: '营业执照、体系认证、行业资质' },
-  { label: '人员证书', value: 'PERSON_CERT', short: '人', desc: '项目经理、技术人员证书' },
-  { label: '项目业绩', value: 'CASE', short: '绩', desc: '类似项目、合同、验收材料' },
-  { label: '荣誉奖项', value: 'HONOR', short: '荣', desc: '奖项、荣誉、表彰证明' },
-  { label: '售后服务', value: 'AFTER_SALE', short: '售', desc: '服务承诺、运维体系、响应机制' },
-  { label: '实施团队', value: 'TEAM', short: '团', desc: '团队配置、岗位职责、人员安排' },
-  { label: '其他资料', value: 'OTHER', short: '其', desc: '其他可被 AI 引用的企业材料' }
+const tabs = [
+  { key: 'license', label: '营业执照', icon: Document },
+  { key: 'company', label: '企业信息', icon: Files },
+  { key: 'bank', label: '开户信息', icon: CreditCard },
+  { key: 'members', label: '项目成员', icon: User },
+  { key: 'certificates', label: '企业证书', icon: Document },
+  { key: 'cases', label: '企业业绩', icon: Briefcase },
+  { key: 'financials', label: '财务资料', icon: DataAnalysis }
 ]
 
-const rules = {
-  enterpriseId: [{ required: true, message: '请选择所属企业', trigger: 'change' }],
-  materialType: [{ required: true, message: '请选择资料类型', trigger: 'change' }],
-  title: [{ required: true, message: '请输入资料标题', trigger: 'blur' }]
+const tableMetas = {
+  members: {
+    label: '项目成员',
+    desc: '维护项目经理、技术负责人、法人代表和投标人员信息。',
+    listKey: 'members',
+    columns: [
+      { label: '姓名', prop: 'name', minWidth: 120 },
+      { label: '身份证号码', prop: 'idNumber', minWidth: 170 },
+      { label: '性别', prop: 'gender', width: 90 },
+      { label: '职务', prop: 'position', minWidth: 130 },
+      { label: '是否法人', prop: 'isLegalPerson', width: 100 },
+      { label: '人员归属', prop: 'belong', minWidth: 120 },
+      { label: '人员状态', prop: 'status', minWidth: 110 },
+      { label: '联系方式', prop: 'phone', minWidth: 130 },
+      { label: '劳动合同时间', prop: 'contractRange', minWidth: 190, type: 'range' }
+    ],
+    fields: [
+      { label: '姓名', prop: 'name', required: true },
+      { label: '身份证号码', prop: 'idNumber', required: true },
+      { label: '性别', prop: 'gender', type: 'select', options: ['男', '女'] },
+      { label: '职务', prop: 'position', type: 'select', options: ['法人代表', '项目经理', '技术负责人', '商务负责人', '实施工程师', '售后工程师', '其他'], required: true },
+      { label: '是否法人', prop: 'isLegalPerson', type: 'select', options: ['是', '否'], required: true },
+      { label: '人员归属', prop: 'belong', type: 'select', options: ['总部', '分公司', '项目部', '外聘', '其他'], required: true },
+      { label: '人员状态', prop: 'status', type: 'select', options: ['在职', '离职', '待入职', '停用'] },
+      { label: '联系方式', prop: 'phone' },
+      { label: '个人介绍', prop: 'intro', type: 'textarea', span: 2 },
+      { label: '劳动合同时间', prop: 'contractRange', type: 'daterange' }
+    ]
+  },
+  certificates: {
+    label: '企业证书',
+    desc: '维护企业资质证书、体系认证、行业许可证和证书有效期。',
+    listKey: 'certificates',
+    columns: [
+      { label: '证书编号', prop: 'certNo', minWidth: 150 },
+      { label: '证书名称', prop: 'certName', minWidth: 180 },
+      { label: '证书类别', prop: 'certCategory', minWidth: 140 },
+      { label: '发证机关', prop: 'issuingAuthority', minWidth: 180 },
+      { label: '发证日期', prop: 'issueDate', minWidth: 120 },
+      { label: '有效日期', prop: 'validDate', minWidth: 120 },
+      { label: '证书状态', prop: 'status', minWidth: 110 }
+    ],
+    fields: [
+      { label: '证书编号', prop: 'certNo', required: true },
+      { label: '证书名称', prop: 'certName', required: true },
+      { label: '证书类别', prop: 'certCategory', type: 'select', options: ['营业执照', '体系认证', '行业资质', '安全许可证', '软件著作权', '其他'], required: true },
+      { label: '发证机关', prop: 'issuingAuthority', required: true },
+      { label: '发证日期', prop: 'issueDate', type: 'date', required: true },
+      { label: '有效日期', prop: 'validDate', type: 'date', required: true },
+      { label: '证书状态', prop: 'status', type: 'select', options: ['有效', '即将到期', '已过期', '停用'], required: true }
+    ]
+  },
+  cases: {
+    label: '企业业绩',
+    desc: '维护招投标项目、中标金额、合同金额、结算金额和工程特征指标。',
+    listKey: 'cases',
+    columns: [
+      { label: '招标项目编号', prop: 'projectNo', minWidth: 150 },
+      { label: '招标项目名称', prop: 'projectName', minWidth: 200 },
+      { label: '项目所在地', prop: 'location', minWidth: 140 },
+      { label: '建设单位名称', prop: 'ownerName', minWidth: 180 },
+      { label: '项目状态', prop: 'status', minWidth: 110 },
+      { label: '合同金额（万元）', prop: 'contractAmount', minWidth: 140 }
+    ],
+    fields: [
+      { label: '招标项目编号', prop: 'projectNo', required: true },
+      { label: '招标项目名称', prop: 'projectName', required: true },
+      { label: '项目所在地', prop: 'location' },
+      { label: '业绩分类', prop: 'category' },
+      { label: '建设单位名称', prop: 'ownerName', required: true },
+      { label: '建设单位联系人', prop: 'ownerContact' },
+      { label: '建设单位联系电话', prop: 'ownerPhone' },
+      { label: '项目状态', prop: 'status', type: 'select', options: ['在建', '已完工', '已验收', '已结算'], required: true },
+      { label: '开工日期-竣工日期', prop: 'dateRange', type: 'daterange' },
+      { label: '竣工备案/验收编号', prop: 'completionNo' },
+      { label: '招标金额（万元）', prop: 'tenderAmount', type: 'number' },
+      { label: '中标金额（万元）', prop: 'winAmount', type: 'number' },
+      { label: '合同金额（万元）', prop: 'contractAmount', type: 'number', required: true },
+      { label: '结算金额（万元）', prop: 'settlementAmount', type: 'number' },
+      { label: '实际面积（平方米）', prop: 'area', type: 'number' },
+      { label: '工程质量', prop: 'quality' },
+      { label: '工程造价（万元）', prop: 'cost', type: 'number' },
+      { label: '其他工程特征指标', prop: 'indicators' },
+      { label: '项目负责人', prop: 'projectLeader' },
+      { label: '技术负责人', prop: 'techLeader' },
+      { label: '备注', prop: 'remark', type: 'textarea', span: 3 }
+    ]
+  },
+  financials: {
+    label: '财务资料',
+    desc: '维护资产负债表、利润表、现金流量表、审计报告等财务信息。',
+    listKey: 'financials',
+    columns: [
+      { label: '财务信息类别', prop: 'financialCategory', minWidth: 160 },
+      { label: '财务信息名称', prop: 'financialName', minWidth: 200 },
+      { label: '时间', prop: 'month', minWidth: 120 },
+      { label: '备注', prop: 'remark', minWidth: 220 }
+    ],
+    fields: [
+      { label: '财务信息类别', prop: 'financialCategory', type: 'select', options: ['资产负债表', '利润表', '现金流量表', '审计报告', '纳税证明', '银行资信证明', '其他'], required: true },
+      { label: '财务信息名称', prop: 'financialName', required: true },
+      { label: '时间', prop: 'month', type: 'month', required: true },
+      { label: '备注', prop: 'remark', type: 'textarea', span: 3 }
+    ]
+  }
 }
 
+const enterpriseNatureOptions = ['有限责任公司', '股份有限公司', '国有企业', '集体企业', '合伙企业', '个人独资企业', '其他']
+const scaleOptions = ['20人以下', '20-99人', '100-499人', '500-999人', '1000人以上']
+
+const recordDialog = reactive({
+  visible: false,
+  section: '',
+  index: -1,
+  fields: [],
+  form: {}
+})
+
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
-
-const canManagePlatform = computed(() => {
-  return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
-})
-
-const canManageCompanyMaterial = computed(() => {
-  return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
-})
-
-const currentPageFileCount = computed(() => rows.value.filter((row) => Number(row.fileExists) === 1).length)
-const currentPageLostCount = computed(() => rows.value.filter((row) => row.fileId && Number(row.fileExists) !== 1).length)
-const formDirty = computed(() => editMode.value && formSnapshot.value && formSnapshot.value !== snapshotForm())
+const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
+const canManageCompanyMaterial = computed(() => canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const currentTitle = computed(() => profile.license.companyName || selectedArchive.value?.title || '未命名资料档案')
+const currentEnterpriseName = computed(() => enterprises.value.find((item) => String(item.id) === String(profile.enterpriseId))?.enterpriseName || '')
+const formDirty = computed(() => editMode.value && profileSnapshot.value && profileSnapshot.value !== snapshotProfile())
+const activeTableMeta = computed(() => tableMetas[activeTab.value] || tableMetas.members)
+const activeTableRows = computed(() => profile[activeTableMeta.value.listKey] || [])
+const recordDialogTitle = computed(() => `${recordDialog.index >= 0 ? '编辑' : '新增'}${tableMetas[recordDialog.section]?.label || '数据'}`)
 
 onMounted(async () => {
   await loadEnterprises()
-  await loadMaterials()
+  await loadArchives()
 })
 
-onBeforeUnmount(() => {
-  clearTimeout(keywordTimer.value)
-})
+onBeforeUnmount(() => clearTimeout(keywordTimer.value))
 
-function defaultForm() {
+function defaultProfile() {
   return {
     id: null,
     enterpriseId: '',
-    materialType: 'COMPANY_PROFILE',
-    title: '',
-    content: '',
-    fileId: null,
-    validStartDate: '',
-    validEndDate: '',
     status: 1,
-    remark: ''
+    meta: {
+      description: '',
+      sourceMaterialType: 'COMPANY_PROFILE'
+    },
+    license: {
+      companyName: '',
+      creditCode: '',
+      legalRepresentative: '',
+      registeredCapital: 0,
+      enterpriseNature: '',
+      registeredAddress: '',
+      registrationAuthority: '',
+      establishDate: '',
+      registerDate: '',
+      businessTerm: '长期',
+      email: '',
+      businessScope: ''
+    },
+    company: {
+      scale: '',
+      industry: '',
+      address: '',
+      website: '',
+      phone: '',
+      postCode: '',
+      fax: '',
+      safetyLicenseRange: [],
+      bidStaffTotal: 0,
+      seniorTitleCount: 0,
+      middleTitleCount: 0,
+      juniorTitleCount: 0,
+      workerCount: 0,
+      projectManagerCount: 0
+    },
+    bank: {
+      accountName: '',
+      bankName: '',
+      accountNo: '',
+      bankAddress: '',
+      bankPhone: ''
+    },
+    members: [],
+    certificates: [],
+    cases: [],
+    financials: []
   }
 }
 
@@ -409,21 +709,11 @@ async function loadEnterprises() {
     enterprises.value = []
     return
   }
-
   try {
     enterprises.value = await listEnterprises({ status: 1 })
   } catch (e) {
     enterprises.value = []
   }
-}
-
-async function selectMaterialType(value) {
-  if (!(await confirmDiscardChanges())) return
-  filters.materialType = value
-  currentDetail.value = null
-  editMode.value = false
-  markFormSnapshot()
-  reloadFirstPage()
 }
 
 function onKeywordInput() {
@@ -433,10 +723,10 @@ function onKeywordInput() {
 
 function reloadFirstPage() {
   pager.page = 1
-  loadMaterials()
+  loadArchives()
 }
 
-async function loadMaterials(selectId) {
+async function loadArchives(selectId) {
   loading.value = true
   try {
     const res = await pageCompanyMaterials({
@@ -445,163 +735,186 @@ async function loadMaterials(selectId) {
       pageNum: pager.page,
       pageSize: pager.size,
       keyword: filters.keyword || undefined,
-      enterpriseId: filters.enterpriseId || undefined,
-      materialType: filters.materialType || undefined,
-      fileState: filters.fileState || undefined
+      enterpriseId: filters.enterpriseId || undefined
     })
-
-    rows.value = res?.records || []
+    archiveList.value = res?.records || []
     pager.total = Number(res?.total || 0)
 
-    if (selectId) {
-      const target = rows.value.find((item) => String(item.id) === String(selectId))
-      if (target) await selectRow(target)
-    } else if (rows.value.length) {
-      const stillVisible = currentDetail.value
-        ? rows.value.some((item) => String(item.id) === String(currentDetail.value.id))
-        : false
-      if (!stillVisible) {
-        await selectRow(rows.value[0])
+    const targetId = selectId || selectedArchive.value?.id
+    if (targetId) {
+      const target = archiveList.value.find((item) => String(item.id) === String(targetId))
+      if (target) {
+        await selectArchive(target, { skipConfirm: true })
+        return
       }
-    } else {
-      currentDetail.value = null
-      editMode.value = false
+    }
+
+    // 进入资料库页面时不再默认打开第一条资料档案，先让用户在左侧自行选择。
+    if (!archiveList.value.length && !formDirty.value) {
+      closeDetail()
     }
   } finally {
     loading.value = false
   }
 }
 
-async function selectRow(row) {
+async function selectArchive(row, options = {}) {
   if (!row?.id) return
-  if (currentDetail.value?.id !== row.id && !(await confirmDiscardChanges())) return
+  if (!options.skipConfirm && selectedArchive.value?.id !== row.id && !(await confirmDiscardChanges())) return
   const detail = await getCompanyMaterial(row.id)
-  currentDetail.value = detail
-  fillForm(detail)
+  selectedArchive.value = detail
+  fillProfileFromMaterial(detail)
   editMode.value = true
+  showUpload.value = false
+  activeTab.value = 'license'
 }
 
 async function openCreate() {
   if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看企业资料，不能新增资料')
+    ElMessage.warning('普通用户只能查看资料库，不能新增资料')
     return
   }
-
   if (!(await confirmDiscardChanges())) return
-
-  currentDetail.value = null
-  fillForm({
-    ...defaultForm(),
-    enterpriseId: canManagePlatform.value ? (filters.enterpriseId || '') : (auth.user?.enterpriseId || ''),
-    materialType: filters.materialType || 'COMPANY_PROFILE'
+  selectedArchive.value = null
+  fillProfile({
+    ...defaultProfile(),
+    enterpriseId: canManagePlatform.value ? (filters.enterpriseId || '') : (auth.user?.enterpriseId || '')
   })
   editMode.value = true
-  nextTick(() => formRef.value?.clearValidate?.())
+  activeTab.value = 'license'
+  showUpload.value = false
+  await nextTick()
 }
 
-async function resetForm() {
-  if (formDirty.value) {
-    try {
-      await ElMessageBox.confirm('当前表单有未保存修改，确定重置吗？', '确认重置', { type: 'warning' })
-    } catch (e) {
-      return
+function closeDetail() {
+  editMode.value = false
+  selectedArchive.value = null
+  fillProfile(defaultProfile())
+  markProfileSnapshot()
+}
+
+async function resetCurrentArchive() {
+  if (!formDirty.value) return
+  try {
+    await ElMessageBox.confirm('确定放弃当前未保存修改吗？', '重置确认', { type: 'warning' })
+  } catch (e) {
+    return
+  }
+  if (selectedArchive.value?.id) {
+    fillProfileFromMaterial(selectedArchive.value)
+  } else {
+    fillProfile(defaultProfile())
+  }
+}
+
+function fillProfileFromMaterial(material) {
+  const parsed = parseMaterialContent(material)
+  fillProfile(parsed)
+}
+
+function fillProfile(next = {}) {
+  const clean = defaultProfile()
+  const merged = deepMerge(clean, next)
+  Object.assign(profile, merged)
+  profile.members = Array.isArray(merged.members) ? merged.members : []
+  profile.certificates = Array.isArray(merged.certificates) ? merged.certificates : []
+  profile.cases = Array.isArray(merged.cases) ? merged.cases : []
+  profile.financials = Array.isArray(merged.financials) ? merged.financials : []
+  markProfileSnapshot()
+}
+
+function parseMaterialContent(material = {}) {
+  const base = defaultProfile()
+  base.id = material.id || null
+  base.enterpriseId = material.enterpriseId || (canManagePlatform.value ? filters.enterpriseId : auth.user?.enterpriseId) || ''
+  base.status = material.status === 0 ? 0 : 1
+  base.meta.sourceMaterialType = material.materialType || 'COMPANY_PROFILE'
+  base.meta.description = material.remark || ''
+  base.license.companyName = material.title || ''
+  base.license.establishDate = material.validStartDate || ''
+  base.license.registerDate = material.validStartDate || ''
+
+  if (!material.content) return base
+
+  try {
+    const parsed = JSON.parse(material.content)
+    if (parsed?.version === CONTENT_VERSION && parsed.profile) {
+      return deepMerge(base, parsed.profile)
     }
+    if (parsed?.license || parsed?.company || parsed?.bank) {
+      return deepMerge(base, parsed)
+    }
+  } catch (e) {
+    // 兼容旧资料正文，作为描述保留。
   }
-  if (currentDetail.value?.id) {
-    fillForm(currentDetail.value)
-  } else {
-    fillForm(defaultForm())
-  }
+
+  base.meta.description = material.content
+  base.license.businessScope = material.content
+  return base
 }
 
-function fillForm(row) {
-  Object.assign(form, defaultForm(), row || {})
-  if (canManagePlatform.value) {
-    form.enterpriseId = form.enterpriseId || filters.enterpriseId || ''
-  } else {
-    form.enterpriseId = auth.user?.enterpriseId || form.enterpriseId
-  }
-  form.status = row?.status === 0 ? 0 : 1
-  markFormSnapshot()
+function snapshotProfile() {
+  return JSON.stringify(normalizeProfileForSave())
 }
 
-function snapshotForm() {
-  return JSON.stringify({
-    id: form.id || null,
-    enterpriseId: form.enterpriseId || '',
-    materialType: form.materialType || '',
-    title: form.title || '',
-    content: form.content || '',
-    fileId: form.fileId || null,
-    validStartDate: form.validStartDate || '',
-    validEndDate: form.validEndDate || '',
-    status: form.status === 0 ? 0 : 1,
-    remark: form.remark || ''
-  })
+function markProfileSnapshot() {
+  profileSnapshot.value = snapshotProfile()
 }
 
-function markFormSnapshot() {
-  formSnapshot.value = snapshotForm()
+function normalizeProfileForSave() {
+  return JSON.parse(JSON.stringify(profile))
 }
 
 async function confirmDiscardChanges() {
   if (!formDirty.value) return true
   try {
-    await ElMessageBox.confirm('当前资料有未保存修改，切换后会丢失，是否继续？', '未保存修改', { type: 'warning' })
+    await ElMessageBox.confirm('当前资料档案有未保存修改，切换后会丢失，是否继续？', '未保存修改', { type: 'warning' })
     return true
   } catch (e) {
     return false
   }
 }
 
-function normalizeRoleCode(value = '') {
-  return String(value)
-    .trim()
-    .toUpperCase()
-    .replace(/^ROLE[_-]?/, '')
-    .replace(/[^A-Z0-9]/g, '')
-}
-
-function normalizeRoleList(values = []) {
-  if (!Array.isArray(values)) return []
-  return values.map((item) => {
-    if (typeof item === 'string') return normalizeRoleCode(item)
-    return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
-  }).filter(Boolean)
-}
-
-async function saveRow() {
+async function saveArchive() {
   if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看企业资料，不能保存修改')
+    ElMessage.warning('普通用户只能查看资料库，不能保存修改')
+    return
+  }
+  if (!profile.enterpriseId && canManagePlatform.value) {
+    ElMessage.warning('请选择所属企业')
+    activeTab.value = 'license'
+    return
+  }
+  if (!profile.license.companyName) {
+    ElMessage.warning('请输入企业名称')
+    activeTab.value = 'license'
     return
   }
 
-  await formRef.value?.validate()
-
   saving.value = true
   try {
+    const payloadProfile = normalizeProfileForSave()
     const payload = {
-      enterpriseId: canManagePlatform.value ? form.enterpriseId : auth.user?.enterpriseId,
-      materialType: form.materialType,
-      title: form.title,
-      content: form.content || null,
-      fileId: form.fileId || null,
-      validStartDate: form.validStartDate || null,
-      validEndDate: form.validEndDate || null,
-      status: form.status,
-      remark: form.remark || null
+      enterpriseId: canManagePlatform.value ? payloadProfile.enterpriseId : (auth.user?.enterpriseId || payloadProfile.enterpriseId),
+      materialType: payloadProfile.meta.sourceMaterialType || 'COMPANY_PROFILE',
+      title: payloadProfile.license.companyName,
+      content: JSON.stringify({ version: CONTENT_VERSION, profile: payloadProfile }, null, 2),
+      fileId: selectedArchive.value?.fileId || null,
+      validStartDate: payloadProfile.license.establishDate || null,
+      validEndDate: payloadProfile.license.businessTerm === '长期' ? null : (payloadProfile.license.registerDate || null),
+      status: payloadProfile.status,
+      remark: payloadProfile.meta.description || null
     }
 
-    let savedId = form.id
-    if (form.id) {
-      await updateCompanyMaterial(form.id, payload)
-      ElMessage.success('企业资料已保存')
+    let savedId = profile.id
+    if (profile.id) {
+      await updateCompanyMaterial(profile.id, payload)
+      ElMessage.success('资料档案已保存')
     } else {
       savedId = await createCompanyMaterial(payload)
-      ElMessage.success('企业资料已创建，请继续上传附件')
+      ElMessage.success('资料档案已创建')
     }
-
-    await loadMaterials(savedId)
+    await loadArchives(savedId)
   } finally {
     saving.value = false
   }
@@ -609,45 +922,106 @@ async function saveRow() {
 
 async function onUploadSuccess(file) {
   if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看企业资料，不能上传附件')
+    ElMessage.warning('普通用户只能查看资料库，不能上传附件')
     return
   }
-
-  if (!form.id) {
-    ElMessage.warning('请先保存资料基础信息')
+  if (!profile.id) {
+    ElMessage.warning('请先保存资料档案')
     return
   }
-
-  await attachCompanyMaterialFile(form.id, file.id)
-  ElMessage.success('附件已关联')
-  await loadMaterials(form.id)
+  await attachCompanyMaterialFile(profile.id, file.id)
+  ElMessage.success('附件已关联到资料档案')
+  await loadArchives(profile.id)
 }
 
-async function removeRow(row) {
+async function removeArchive(row) {
   if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看企业资料，不能删除资料')
+    ElMessage.warning('普通用户只能查看资料库，不能删除资料')
     return
   }
-
-  await ElMessageBox.confirm(
-    `确认删除企业资料「${row.title}」吗？这只删除资料记录，不会删除文件资源和OSS文件。`,
-    '删除确认',
-    { type: 'warning' }
-  )
-
+  await ElMessageBox.confirm(`确认删除资料档案「${archiveTitle(row)}」吗？`, '删除确认', { type: 'warning' })
   await deleteCompanyMaterial(row.id)
-  ElMessage.success('企业资料已删除')
+  ElMessage.success('资料档案已删除')
+  if (selectedArchive.value?.id === row.id) closeDetail()
+  await loadArchives()
+}
 
-  if (currentDetail.value?.id === row.id) {
-    currentDetail.value = null
-    editMode.value = false
-    markFormSnapshot()
-  }
+function openRecordDialog(section, row = null, index = -1) {
+  const meta = tableMetas[section]
+  if (!meta) return
+  recordDialog.section = section
+  recordDialog.index = index
+  recordDialog.fields = meta.fields
+  recordDialog.form = buildRecordForm(meta.fields, row)
+  recordDialog.visible = true
+}
 
-  if (rows.value.length <= 1 && pager.page > 1) {
-    pager.page -= 1
+function buildRecordForm(fields = [], row = null) {
+  const target = {}
+  fields.forEach((field) => {
+    if (field.type === 'number') target[field.prop] = 0
+    else if (field.type === 'daterange') target[field.prop] = []
+    else target[field.prop] = ''
+  })
+  return Object.assign(target, row || {})
+}
+
+function saveRecord() {
+  const meta = tableMetas[recordDialog.section]
+  if (!meta) return
+  const missing = meta.fields.find((field) => field.required && !recordDialog.form[field.prop])
+  if (missing) {
+    ElMessage.warning(`请填写${missing.label}`)
+    return
   }
-  await loadMaterials()
+  const list = profile[meta.listKey]
+  const row = JSON.parse(JSON.stringify(recordDialog.form))
+  if (recordDialog.index >= 0) {
+    list.splice(recordDialog.index, 1, row)
+  } else {
+    list.push(row)
+  }
+  recordDialog.visible = false
+}
+
+async function removeRecord(section, index) {
+  const meta = tableMetas[section]
+  if (!meta) return
+  try {
+    await ElMessageBox.confirm('确认删除这条数据吗？', '删除确认', { type: 'warning' })
+  } catch (e) {
+    return
+  }
+  profile[meta.listKey].splice(index, 1)
+}
+
+function displayCell(row, col) {
+  if (col.prop === 'action') return ''
+  const value = row?.[col.prop]
+  if (col.type === 'range') {
+    return Array.isArray(value) && value.length ? value.join(' 至 ') : '-'
+  }
+  if (Array.isArray(value)) return value.join(' 至 ')
+  return value === undefined || value === null || value === '' ? '-' : value
+}
+
+function archiveTitle(item) {
+  const parsed = parseMaterialContent(item)
+  return parsed.license.companyName || item?.title || '未命名资料档案'
+}
+
+function materialTypeLabel(value) {
+  const map = {
+    COMPANY_PROFILE: '企业档案',
+    QUALIFICATION: '资质证书',
+    PERSON_CERT: '人员证书',
+    CASE: '项目业绩',
+    HONOR: '荣誉奖项',
+    AFTER_SALE: '售后服务',
+    TEAM: '实施团队',
+    OTHER: '其他资料'
+  }
+  return map[value] || value || '企业档案'
 }
 
 function openFile(row) {
@@ -662,53 +1036,8 @@ function canOpenFile(row) {
   return Boolean(row?.fileUrl && row?.fileId && Number(row.fileExists) === 1)
 }
 
-function materialTypeLabel(value) {
-  return materialTypes.find((item) => item.value === value)?.label || value || '-'
-}
-
-function materialTypeTag(value) {
-  const map = {
-    COMPANY_PROFILE: 'primary',
-    QUALIFICATION: 'success',
-    PERSON_CERT: 'warning',
-    CASE: 'danger',
-    HONOR: 'warning',
-    AFTER_SALE: 'success',
-    TEAM: 'primary',
-    OTHER: 'info'
-  }
-  return map[value] || 'info'
-}
-
-function fileStateLabel(row) {
-  if (!row?.fileId) return '无附件'
-  if (Number(row.fileExists) === 1) return '可用'
-  return '已丢失'
-}
-
-function fileStateTag(row) {
-  if (!row?.fileId) return 'info'
-  if (Number(row.fileExists) === 1) return 'success'
-  return 'danger'
-}
-
-function validityText(row) {
-  if (!row?.validStartDate && !row?.validEndDate) return '-'
-  return `${row.validStartDate || '开始不限'} ~ ${row.validEndDate || '长期有效'}`
-}
-
-function validityTag(row) {
-  if (!row?.validEndDate) return null
-  const end = new Date(`${row.validEndDate} 23:59:59`.replace(/-/g, '/'))
-  if (Number.isNaN(end.getTime())) return null
-  const diffDays = Math.ceil((end.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
-  if (diffDays < 0) return { label: '已过期', type: 'danger' }
-  if (diffDays <= 30) return { label: `${diffDays}天到期`, type: 'warning' }
-  return null
-}
-
 function fileExtLabel(ext) {
-  const value = String(ext || 'F').toUpperCase()
+  const value = String(ext || 'FILE').toUpperCase()
   return value.length > 4 ? value.slice(0, 4) : value
 }
 
@@ -719,263 +1048,557 @@ function formatFileSize(size) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / 1024 / 1024).toFixed(1)} MB`
 }
+
+function deepMerge(target, source) {
+  const output = Array.isArray(target) ? [...target] : { ...target }
+  if (!source || typeof source !== 'object') return output
+  Object.keys(source).forEach((key) => {
+    const value = source[key]
+    if (Array.isArray(value)) {
+      output[key] = [...value]
+    } else if (value && typeof value === 'object') {
+      output[key] = deepMerge(output[key] && typeof output[key] === 'object' ? output[key] : {}, value)
+    } else if (value !== undefined) {
+      output[key] = value
+    }
+  })
+  return output
+}
+
+function normalizeRoleCode(value = '') {
+  return String(value).trim().toUpperCase().replace(/^ROLE[_-]?/, '').replace(/[^A-Z0-9]/g, '')
+}
+
+function normalizeRoleList(values = []) {
+  if (!Array.isArray(values)) return []
+  return values.map((item) => {
+    if (typeof item === 'string') return normalizeRoleCode(item)
+    return normalizeRoleCode(item?.roleCode || item?.code || item?.authority || item?.name || '')
+  }).filter(Boolean)
+}
 </script>
 
 <style scoped>
-.company-material-page {
+.material-archive-page {
+  height: 100%;
+  min-height: 0;
+  padding: 18px 0 0 18px;
+  overflow: hidden;
+}
+
+.archive-shell {
   display: grid;
-  grid-template-columns: 280px minmax(560px, 1fr) minmax(420px, 0.85fr);
-  gap: 16px;
+  grid-template-columns: 310px minmax(0, 1fr);
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
 }
 
-.material-category,
-.material-list,
-.material-detail {
+.archive-sidebar,
+.archive-main {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
-.material-category,
-.material-detail {
-  padding: 18px;
+.archive-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
 }
 
-.category-head,
-.editor-head,
-.file-card-head {
+.sidebar-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
   gap: 12px;
+  align-items: flex-start;
 }
 
-.section-title {
+.sidebar-title {
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 900;
   color: var(--text-main);
 }
 
-.section-desc,
-.assist-desc {
-  margin-top: 6px;
+.sidebar-desc {
+  margin-top: 5px;
+  font-size: 12px;
   color: var(--text-sub);
-  line-height: 1.6;
-  font-size: 13px;
+  line-height: 1.5;
 }
 
-.category-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
+.icon-btn {
+  width: 30px;
+  height: 30px;
 }
 
-.category-item {
+.archive-search,
+.enterprise-filter {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.archive-list {
+  margin-top: 14px;
+  flex: 1;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.archive-card {
+  position: relative;
   display: flex;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
+  gap: 12px;
+  padding: 13px 10px;
+  border: 1px solid transparent;
   border-radius: 14px;
   background: #f8fafc;
   cursor: pointer;
   transition: all 0.18s ease;
+  margin-bottom: 10px;
 }
 
-.category-item:hover,
-.category-item.active {
-  border-color: #2563eb;
-  background: #eff6ff;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+.archive-card:hover,
+.archive-card.active {
+  border-color: #8ab4ff;
+  background: #edf5ff;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.10);
 }
 
-.category-icon {
-  width: 34px;
-  height: 34px;
+.archive-icon-wrap {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
   border-radius: 12px;
-  background: #dbeafe;
+  background: linear-gradient(135deg, #dbeafe, #f3e8ff);
   color: #2563eb;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 18px;
+}
+
+.archive-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.archive-name {
   font-weight: 900;
-  flex-shrink: 0;
+  color: #1f2937;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.category-info {
-  min-width: 0;
-}
-
-.category-info strong {
-  display: block;
-  color: var(--text-main);
-  line-height: 1.2;
-}
-
-.category-info span {
-  display: block;
+.archive-time {
   margin-top: 5px;
-  color: var(--text-sub);
   font-size: 12px;
-  line-height: 1.35;
-}
-
-.list-head__right {
-  gap: 8px;
-}
-
-.summary-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.summary-card {
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: #f8fafc;
-}
-
-.summary-card span {
-  display: block;
   color: var(--text-sub);
-  font-size: 13px;
-  margin-bottom: 4px;
 }
 
-.summary-card strong {
-  display: block;
-  color: var(--text-main);
-  font-size: 20px;
-  font-weight: 800;
+.archive-tags {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.summary-card.is-warning strong {
-  color: #dc2626;
+.archive-more {
+  color: #6b7280;
+  font-weight: 900;
+  line-height: 1;
 }
 
-.title-cell {
-  min-width: 0;
+.sidebar-footer {
+  border-top: 1px solid #edf2f7;
+  padding-top: 12px;
 }
 
-.title-main {
-  font-weight: 800;
-  color: var(--text-main);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.title-sub {
-  margin-top: 4px;
-  color: var(--text-sub);
+.total-line {
   font-size: 12px;
+  color: var(--text-sub);
+  margin-bottom: 10px;
+  text-align: center;
 }
 
-.validity-cell {
+.create-btn {
+  width: 100%;
+  height: 42px;
+}
+
+.archive-main {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.validity-cell span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.table-actions {
-  display: flex;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.editor-actions,
-.file-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.detail-alert {
-  margin-top: 14px;
-}
-
-.material-form {
-  margin-top: 16px;
-}
-
-.file-card {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #f8fafc;
-}
-
-.assist-title {
-  font-weight: 800;
-  color: var(--text-main);
-}
-
-.file-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 12px 0;
-  padding: 12px;
-  border-radius: 12px;
+  flex-direction: column;
   background: #fff;
-  border: 1px solid #e5e7eb;
 }
 
-.file-icon {
+.detail-topbar {
+  min-height: 64px;
+  padding: 10px 22px;
+  border-bottom: 1px solid #eef2f7;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  cursor: pointer;
+  color: #111827;
+}
+
+.top-divider {
+  width: 4px;
+  height: 28px;
+  border-radius: 10px;
+  background: #2563eb;
+}
+
+.top-title-wrap {
+  min-width: 0;
+}
+
+.top-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: #111827;
+  line-height: 1.25;
+}
+
+.top-subtitle {
+  margin-top: 3px;
+  max-width: 620px;
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-spacer {
+  flex: 1;
+}
+
+.top-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.upload-row {
+  margin: 14px 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+}
+
+.upload-card,
+.file-preview-card {
+  border: 1px dashed #b7cdfd;
+  background: #f7fbff;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.upload-card__title,
+.file-preview-title {
+  font-weight: 900;
+  color: #1f2937;
+}
+
+.upload-card__desc {
+  margin: 6px 0 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.file-mini {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.file-ext {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: #e0ecff;
+  background: #dbeafe;
   color: #2563eb;
+  font-weight: 900;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 900;
-  flex-shrink: 0;
 }
 
-.file-main {
+.file-mini-info {
   min-width: 0;
 }
 
-.file-name {
-  font-weight: 800;
-  color: var(--text-main);
+.file-mini-info strong,
+.file-mini-info span {
+  display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.file-meta {
-  margin-top: 4px;
-  color: var(--text-sub);
+.file-mini-info span {
+  color: #64748b;
   font-size: 12px;
+  margin-top: 4px;
 }
 
-@media (max-width: 1480px) {
-  .company-material-page {
-    grid-template-columns: 240px minmax(0, 1fr);
+.workspace {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.section-nav {
+  border-right: 1px solid #eef2f7;
+  padding: 16px 12px;
+  background: #fbfdff;
+}
+
+.section-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: #334155;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  font-weight: 700;
+}
+
+.section-nav-item + .section-nav-item {
+  margin-top: 6px;
+}
+
+.section-nav-item:hover,
+.section-nav-item.active {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.section-panel {
+  position: relative;
+  min-width: 0;
+  padding: 20px 22px 74px;
+  overflow: auto;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.panel-head h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #111827;
+}
+
+.panel-head p {
+  margin: 6px 0 0;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px 18px;
+}
+
+.form-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.col-span-2 {
+  grid-column: span 2;
+}
+
+.col-span-3 {
+  grid-column: span 3;
+}
+
+.archive-data-table {
+  width: 100%;
+}
+
+.fixed-save-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 58px;
+  border-top: 1px solid #eef2f7;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.empty-landing {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 34px;
+}
+
+.landing-card {
+  transform: translateY(-25%);
+  position: relative;
+  width: min(720px, 72%);
+  min-height: 150px;
+  border-radius: 22px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  padding: 20px 28px;
+  background:
+    radial-gradient(circle at 84% 28%, rgba(37, 99, 235, 0.13), transparent 9%),
+    radial-gradient(circle at 92% 72%, rgba(99, 102, 241, 0.13), transparent 11%),
+    linear-gradient(135deg, #f8fbff 0%, #edf6ff 52%, #e8f2ff 100%);
+  box-shadow: 0 14px 36px rgba(37, 99, 235, 0.08);
+}
+
+.landing-card::after {
+  content: '';
+  position: absolute;
+  right: 58px;
+  top: -128px;
+  width: 320px;
+  height: 320px;
+  border: 1px solid rgba(37, 99, 235, 0.10);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.landing-step {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+}
+
+.landing-step + .landing-step::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 24px;
+  bottom: 24px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(37, 99, 235, 0.16), transparent);
+}
+
+.landing-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.12);
+}
+
+.landing-icon .el-icon {
+  font-size: 26px;
+}
+
+.landing-step strong {
+  font-size: 16px;
+  color: #1f2937;
+}
+
+.landing-step span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.landing-create-btn {
+  min-width: 150px;
+  height: 38px;
+  margin-top: 4px;
+  transform: translateY(-8px);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+}
+
+@media (max-width: 1280px) {
+  .archive-shell {
+    grid-template-columns: 280px minmax(0, 1fr);
   }
 
-  .material-detail {
-    grid-column: 1 / -1;
+  .form-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .upload-row {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 920px) {
-  .company-material-page {
+  .archive-shell,
+  .workspace {
     grid-template-columns: 1fr;
   }
 
-  .summary-row {
+  .section-nav {
+    border-right: 0;
+    border-bottom: 1px solid #eef2f7;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-steps,
+  .form-grid.three,
+  .form-grid.four {
     grid-template-columns: 1fr;
+  }
+
+  .col-span-2,
+  .col-span-3 {
+    grid-column: span 1;
   }
 }
 </style>
