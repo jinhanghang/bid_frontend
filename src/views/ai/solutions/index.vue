@@ -169,7 +169,7 @@
                   <span class="required">采购需求：</span>
                   <el-button size="small" :loading="parseLoading" @click="reExtractFromParse">从招标文件重新提取</el-button>
                 </div>
-                <el-input v-model="requirementForm.purchaseRequirement" type="textarea" :rows="8" maxlength="100000" show-word-limit placeholder="请上传招标文件后自动提取，也可手工粘贴采购需求" />
+                <el-input v-model="requirementForm.purchaseRequirement" type="textarea" :rows="12" maxlength="100000" show-word-limit placeholder="请上传招标文件后自动提取，也可手工粘贴采购需求" />
               </div>
 
               <div class="form-section">
@@ -177,7 +177,7 @@
                   <span>评分标准 / 技术评分项：</span>
                   <el-button size="small" @click="scoreDialogVisible = true">查看/编辑评分项</el-button>
                 </div>
-                <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="5" maxlength="100000" show-word-limit placeholder="评分标准：没有评分项时可留空，系统会按采购需求生成目录" />
+                <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="9" maxlength="100000" show-word-limit placeholder="评分标准：没有评分项时可留空，系统会按采购需求生成目录" />
               </div>
 
             </div>
@@ -286,7 +286,7 @@
                     plain
                     :disabled="!canExport || exportLoading"
                     :loading="exportLoading"
-                    @click="onExportWord"
+                    @click="onExport"
                   >
                     {{ exportButtonText }}
                   </el-button>
@@ -581,7 +581,7 @@
         </el-form-item>
         <el-form-item label="暗标：">
           <div class="blind-setting">
-            <el-switch v-model="fullGenerateForm.blindBidEnabled" />
+            <el-switch v-model="fullGenerateForm.blindBidEnabled" @change="handleFullGenerateBlindChange" />
             <el-input
               v-if="fullGenerateForm.blindBidEnabled"
               v-model="fullGenerateForm.blindBidRequirement"
@@ -713,6 +713,7 @@ import {
   deleteOutlineNodes,
   deleteSolution,
   downloadFileResource,
+  exportPdf,
   exportWord,
   generateFull,
   generateOutline,
@@ -800,9 +801,11 @@ const streamingOutlineId = ref(null)
 const fullGenerating = ref(false)
 const fullGenerateSettingVisible = ref(false)
 const fullGenerateAction = ref('GENERATE')
+const DEFAULT_BLIND_BID_REQUIREMENT = '输出内容中不得出现投标人的名称、企业标识、人员名称、企业独享的符号或图案等任何可识别投标人身份的信息。不得在页眉、页脚、正文、表格、图片说明、附件名称中出现可识别投标人身份的信息。'
+
 const fullGenerateForm = reactive({
-  blindBidEnabled: true,
-  blindBidRequirement: '输出内容中不得出现投标人的名称、企业标识、人员名称、企业独享的符号或图案等任何可识别投标人身份的信息',
+  blindBidEnabled: false,
+  blindBidRequirement: '',
   writingStyle: 'GENERAL',
   knowledgeIds: [],
   fileResourceIds: [],
@@ -1404,16 +1407,22 @@ async function onGenerateOutline() {
     return
   }
 
-  // 这里必须先记住用户当前页面上选择的 AI 等级。
-  // 原来的逻辑会先 getSolution 再 applySolutionDetail，如果草稿表里还是 BASIC，
-  // 就会把用户刚选的 FLAGSHIP 覆盖回 BASIC，导致后面保存需求、生成目录都走基础版。
-  const selectedAiLevelBeforeRefresh = createForm.aiLevel
+  // 这里必须先记住用户当前页面上选择的类型和 AI 等级。
+  // 原来的逻辑会先 getSolution 再 applySolutionDetail，如果草稿表里还是 SERVICE/BASIC，
+  // 就会把用户刚选的“工程-房建工程/旗舰版”覆盖回旧值，导致后面保存需求、生成目录仍按旧类型走。
+  const selectedFormBeforeRefresh = {
+    solutionType: createForm.solutionType,
+    solutionSubType: createForm.solutionSubType,
+    aiLevel: createForm.aiLevel,
+    writingStyle: createForm.writingStyle
+  }
 
   const latest = await getSolution(currentSolution.value.id)
   applySolutionDetail(latest)
-  if (selectedAiLevelBeforeRefresh) {
-    createForm.aiLevel = selectedAiLevelBeforeRefresh
-  }
+  if (selectedFormBeforeRefresh.solutionType) createForm.solutionType = selectedFormBeforeRefresh.solutionType
+  if (selectedFormBeforeRefresh.solutionSubType) createForm.solutionSubType = selectedFormBeforeRefresh.solutionSubType
+  if (selectedFormBeforeRefresh.aiLevel) createForm.aiLevel = selectedFormBeforeRefresh.aiLevel
+  if (selectedFormBeforeRefresh.writingStyle) createForm.writingStyle = selectedFormBeforeRefresh.writingStyle
   applyModeByBackendState(latest)
   resumeOutlineTaskIfNeeded()
 
@@ -1731,6 +1740,22 @@ function removeSelectedKnowledgeBase(id, target = 'full') {
   selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => Number(item.id) !== removeId)
 }
 
+
+function handleFullGenerateBlindChange(enabled) {
+  if (enabled) {
+    if (!String(fullGenerateForm.blindBidRequirement || '').trim()) {
+      fullGenerateForm.blindBidRequirement = DEFAULT_BLIND_BID_REQUIREMENT
+    }
+  } else {
+    fullGenerateForm.blindBidRequirement = ''
+  }
+}
+
+function resetFullGenerateBlindSetting() {
+  fullGenerateForm.blindBidEnabled = false
+  fullGenerateForm.blindBidRequirement = ''
+}
+
 function openFullGenerateDialog(action = 'GENERATE') {
   if (!currentSolution.value?.outlines?.length) {
     ElMessage.warning('请先生成目录')
@@ -1748,6 +1773,7 @@ function openFullGenerateDialog(action = 'GENERATE') {
   }
 
   fullGenerateAction.value = action
+  resetFullGenerateBlindSetting()
   fullGenerateForm.writingStyle = currentSolution.value?.writingStyle || createForm.writingStyle || 'GENERAL'
   fullGenerateForm.knowledgeIds = collectSolutionKnowledgeIds(currentSolution.value)
   fullGenerateForm.chartLevel = 'NONE'
@@ -2146,7 +2172,7 @@ async function onDeleteSolution(item) {
 }
 
 
-function notifySolutionWordExportSuccess(file, fallbackName) {
+function notifySolutionExportSuccess(file, fallbackName) {
   const fileName = file?.originalName || fallbackName || '导出文件.docx'
   ElNotification({
     title: '导出成功',
@@ -2166,7 +2192,30 @@ function notifySolutionWordExportSuccess(file, fallbackName) {
   })
 }
 
-async function onExportWord() {
+async function chooseSolutionExportFormat() {
+  try {
+    await ElMessageBox.confirm(
+      h('div', { class: 'export-format-tip' }, [
+        h('p', '请选择导出文件格式：'),
+        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
+      ]),
+      '选择导出格式',
+      {
+        confirmButtonText: 'Word',
+        cancelButtonText: 'PDF',
+        distinguishCancelAndClose: true,
+        closeOnClickModal: true,
+        closeOnPressEscape: true,
+        type: 'info'
+      }
+    )
+    return 'word'
+  } catch (action) {
+    return action === 'cancel' ? 'pdf' : ''
+  }
+}
+
+async function onExport() {
   if (exportLoading.value) {
     return
   }
@@ -2184,17 +2233,20 @@ async function onExportWord() {
   const confirmed = await confirmSolutionExportBeforeDownload()
   if (!confirmed) return
 
+  const format = await chooseSolutionExportFormat()
+  if (!format) return
+
   const solutionId = currentSolution.value.id
   const solutionName = currentSolution.value?.solutionName || 'AI方案'
 
   exportLoading.value = true
   try {
-    const file = await exportWord(solutionId)
+    const file = format === 'pdf' ? await exportPdf(solutionId) : await exportWord(solutionId)
     await refreshCurrent(solutionId)
     await loadList()
 
     if (!file?.id) {
-      ElMessage.warning('导出成功，但未返回文件ID，请到文件资源中查看')
+      ElMessage.warning('导出成功，但未返回文件ID，请到下载中心查看')
       return
     }
 
@@ -2202,16 +2254,17 @@ async function onExportWord() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.originalName || `${solutionName}-导出.docx`
+    a.download = file.originalName || `${solutionName}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    notifySolutionWordExportSuccess(file, a.download)
+    notifySolutionExportSuccess(file, a.download)
   } finally {
     exportLoading.value = false
   }
 }
+
 
 function syncSolutionCard(data) {
   if (!data?.id) return
@@ -2422,7 +2475,7 @@ function buildSolutionExportWarnings() {
   const leaves = flattenLeaf(currentSolution.value?.outlines || [])
   const warnings = []
   if (!leaves.length) {
-    warnings.push('当前方案还没有生成目录，导出的 Word 可能为空。')
+    warnings.push('当前方案还没有生成目录，导出的文件可能为空。')
     return warnings
   }
 
@@ -3037,6 +3090,16 @@ const WritingDirectionEditor = defineComponent({
 .word-export-success-btn {
   align-self: flex-start;
 }
+
+.export-format-tip p {
+  margin: 0;
+  line-height: 24px;
+}
+.export-format-sub {
+  color: #64748b;
+  font-size: 13px;
+}
+
 .task-running-tip {
   margin: 10px 0 8px;
   padding: 8px 12px;

@@ -119,6 +119,10 @@ export function exportWord(id) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: NO_TIMEOUT })
 }
 
+export function exportPdf(id) {
+  return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', timeout: NO_TIMEOUT })
+}
+
 export function downloadFileResource(id) {
   return request({
     url: `/files/download/${id}`,

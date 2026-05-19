@@ -210,10 +210,7 @@
                     </el-select>
                     <el-select v-model="technicalForm.solutionSubType" placeholder="不限" class="tech-select">
                       <el-option label="不限" value="不限" />
-                      <el-option label="系统集成" value="系统集成" />
-                      <el-option label="软件开发" value="软件开发" />
-                      <el-option label="运维服务" value="运维服务" />
-                      <el-option label="设备采购" value="设备采购" />
+                      <el-option v-for="sub in technicalSubTypes" :key="sub" :label="sub" :value="sub" />
                     </el-select>
                   </div>
                 </div>
@@ -274,7 +271,7 @@
                     :rows="3"
                     maxlength="10000"
                     show-word-limit
-                    placeholder="生成目录时使用，例如：重点突出无人值守流程、减少人工干预、风险防控、系统对接、落地交付能力等"
+                    placeholder="生成技术方案目录时使用，例如：重点突出技术响应、评分项对应关系、实施措施、系统对接、风险防控、验收交付和售后服务等"
                   />
                 </div>
 
@@ -730,7 +727,7 @@
         </el-form-item>
         <el-form-item label="暗标：">
           <div class="blind-setting">
-            <el-switch v-model="fullGenerateForm.blindBidEnabled" />
+            <el-switch v-model="fullGenerateForm.blindBidEnabled" @change="handleFullGenerateBlindChange" />
             <el-input
               v-if="fullGenerateForm.blindBidEnabled"
               v-model="fullGenerateForm.blindBidRequirement"
@@ -757,12 +754,6 @@
             <el-radio-button label="STANDARD">标准</el-radio-button>
             <el-radio-button label="DETAILED">详细</el-radio-button>
           </el-radio-group>
-        </el-form-item>
-        <el-form-item label="响应强化：">
-          <div class="generate-preference-list">
-            <el-checkbox v-model="fullGenerateForm.strengthenScoreResponse">强化评分响应</el-checkbox>
-            <el-checkbox v-model="fullGenerateForm.strengthenLocalService">强化本地化服务</el-checkbox>
-          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -865,7 +856,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from 'element-plus'
 import { listKnowledgeBases } from '@/api/knowledge'
@@ -965,14 +956,14 @@ const sectionForm = reactive({
   overwrite: true
 })
 
+const DEFAULT_BLIND_BID_REQUIREMENT = '输出内容中不得出现投标人的名称、企业标识、人员名称、企业独享的符号或图案等任何可识别投标人身份的信息。不得在页眉、页脚、正文、表格、图片说明、附件名称中出现可识别投标人身份的信息。'
+
 const fullGenerateForm = reactive({
   knowledgeIds: [],
   blindBidEnabled: false,
   blindBidRequirement: '',
   writingStyle: 'GENERAL',
-  contentDepth: 'STANDARD',
-  strengthenScoreResponse: true,
-  strengthenLocalService: false
+  contentDepth: 'STANDARD'
 })
 const fullGenerateSettingVisible = ref(false)
 const fullGenerateAction = ref('GENERATE')
@@ -1010,6 +1001,17 @@ const aiLevels = [
   { value: 'STANDARD', label: '标准版', desc: '深度优化逻辑结构，提升方案专业水准。' },
   { value: 'FLAGSHIP', label: '旗舰版', desc: '精准对标评分项，增强中标表达。' }
 ]
+
+// AI标书项目复用 AI方案引擎，方案类型不能只在界面上显示。
+// 这里让二级类型跟随一级类型变化，避免选择“工程”时还只能选“系统集成/软件开发”等 IT 子类型。
+const technicalSubTypeMap = {
+  SERVICE: ['物业管理', '审计服务', '广告印刷', '车辆维修', '医疗服务', '咨询服务', '运维服务'],
+  ENGINEERING: ['房建工程', '拆除工程', '水利工程', '市政工程', '电信工程', '装饰装修工程', '园林绿化工程'],
+  GOODS: ['食堂采购', '安防设备', '百货采购', '建筑采购', '水果采购', '生活用品', '办公设备', '设备采购'],
+  SUPERVISION: ['房建监理', '市政监理', '水利监理'],
+  IT: ['软件开发', '信息安全', '系统集成', '运维服务'],
+  OTHER: ['其他']
+}
 const technicalStep = ref(1)
 const technicalMode = ref('PRECISE')
 const technicalGeneratingOutline = ref(false)
@@ -1029,6 +1031,14 @@ const technicalForm = reactive({
   scoreRequirement: '',
   outlineMode: 'SCORE_ITEM',
   outlineRequirement: ''
+})
+const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
+
+watch(() => technicalForm.solutionType, () => {
+  const allowed = technicalSubTypes.value || []
+  if (technicalForm.solutionSubType !== '不限' && !allowed.includes(technicalForm.solutionSubType)) {
+    technicalForm.solutionSubType = '不限'
+  }
 })
 
 
@@ -1061,9 +1071,7 @@ function resetTechnicalWorkspace() {
     blindBidEnabled: false,
     blindBidRequirement: '',
     writingStyle: 'GENERAL',
-    contentDepth: 'STANDARD',
-    strengthenScoreResponse: true,
-    strengthenLocalService: false
+    contentDepth: 'STANDARD'
   })
 }
 
@@ -1888,6 +1896,22 @@ async function applyTechnicalWordPreset() {
   }
 }
 
+
+function handleFullGenerateBlindChange(enabled) {
+  if (enabled) {
+    if (!String(fullGenerateForm.blindBidRequirement || '').trim()) {
+      fullGenerateForm.blindBidRequirement = DEFAULT_BLIND_BID_REQUIREMENT
+    }
+  } else {
+    fullGenerateForm.blindBidRequirement = ''
+  }
+}
+
+function resetFullGenerateBlindSetting() {
+  fullGenerateForm.blindBidEnabled = false
+  fullGenerateForm.blindBidRequirement = ''
+}
+
 function openTechnicalFullGenerateDialog(action = 'GENERATE') {
   const isRewrite = String(action || '').toUpperCase() === 'REWRITE'
   const allowed = isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value
@@ -1898,6 +1922,7 @@ function openTechnicalFullGenerateDialog(action = 'GENERATE') {
     return
   }
   fullGenerateAction.value = action
+  resetFullGenerateBlindSetting()
   fullGenerateSettingVisible.value = true
 }
 
@@ -1912,8 +1937,6 @@ function fullGeneratePreferenceText() {
   if (depth === 'BRIEF') lines.push('内容深度：简洁版，表达聚焦、避免冗长铺陈，但关键响应点不能缺失。')
   else if (depth === 'DETAILED') lines.push('内容深度：详细版，充分展开实施路径、方法步骤、保障措施、交付成果和风险控制。')
   else lines.push('内容深度：标准版，兼顾专业性、可读性和落地性。')
-  if (fullGenerateForm.strengthenScoreResponse) lines.push('强化评分响应：章节内容需要主动贴合评分标准，体现响应点、实施方法、成果证明和可量化优势。')
-  if (fullGenerateForm.strengthenLocalService) lines.push('强化本地化服务：适当突出本地响应、现场服务、快速到场、驻场/巡检、售后闭环等服务能力。')
   if (fullGenerateForm.blindBidEnabled) {
     lines.push('暗标要求：全文不得出现投标单位名称、人员姓名、具体企业标识、联系方式等可能暴露身份的信息。')
     if (String(fullGenerateForm.blindBidRequirement || '').trim()) {
@@ -2029,7 +2052,7 @@ function startTechnicalTaskPolling(projectId, taskId) {
   clearInterval(technicalTaskPoller.value)
   technicalTaskPoller.value = setInterval(() => {
     pollTechnicalGenerationTask(projectId, taskId, true)
-  }, 3000)
+  }, 1000)
 }
 
 async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
@@ -2041,6 +2064,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
       fullGenerating.value = true
       if (String(selectedProject.value?.id || '') === String(projectId || '')) {
         await loadTechnicalSolution()
+        selectLatestTechnicalPreviewLeaf()
         await refreshWorkflow()
       }
       return
@@ -2807,6 +2831,20 @@ function selectFirstGeneratedTechnicalLeaf() {
   if (leaf) selectedTechnicalLeaf.value = leaf
 }
 
+function selectLatestTechnicalPreviewLeaf() {
+  const leaves = technicalLeafNodes.value || []
+  if (!leaves.length) return
+
+  // 全文生成时每秒刷新一次目录。优先让右侧预览自动跟随“正在生成”的章节；
+  // 如果当前没有正在生成的章节，则选中最后一个已有正文的章节，让用户不用一直盯着空白页。
+  const generating = leaves.find((node) => ['GENERATING', 'LOCKED'].includes(String(node?.contentStatus || '').toUpperCase()))
+  const generated = [...leaves].reverse().find(isTechnicalLeafDone)
+  const target = generating || generated || leaves[0]
+  if (target?.id && String(selectedTechnicalLeaf.value?.id || '') !== String(target.id || '')) {
+    selectedTechnicalLeaf.value = target
+  }
+}
+
 function findTechnicalOutlineNodeById(nodes = [], id) {
   for (const node of nodes || []) {
     if (String(node.id || '') === String(id || '')) return node
@@ -2874,70 +2912,6 @@ async function generateTechnicalSection() {
   }
 }
 
-
-function buildDefaultTechnicalOutlines() {
-  const rich = technicalMode.value === 'RICH'
-  const baseWordCount = rich ? 500 : 300
-  return [
-    {
-      title: '第一章 技术方案完整性',
-      children: [
-        {
-          title: '第一节 功能覆盖范围',
-          children: [
-            { title: '车辆预约与进厂核验', wordCount: baseWordCount },
-            { title: '自动称重与皮重管理', wordCount: baseWordCount },
-            { title: '毛重采集与净重计算', wordCount: baseWordCount },
-            { title: '异常记录与处理机制', wordCount: baseWordCount }
-          ]
-        },
-        {
-          title: '第二节 系统架构',
-          children: [
-            { title: 'B/S架构设计', wordCount: baseWordCount },
-            { title: '系统模块划分', wordCount: baseWordCount },
-            { title: '高可用性与扩展性设计', wordCount: baseWordCount },
-            { title: '数据安全与防护措施', wordCount: baseWordCount }
-          ]
-        }
-      ]
-    },
-    {
-      title: '第二章 实施计划与风险控制',
-      children: [
-        {
-          title: '第一节 实施阶段',
-          children: [
-            { title: '项目启动与需求确认', wordCount: baseWordCount },
-            { title: '系统部署与接口联调', wordCount: baseWordCount },
-            { title: '现场测试与试运行', wordCount: baseWordCount }
-          ]
-        },
-        {
-          title: '第二节 风险识别与控制策略',
-          children: [
-            { title: '技术实施风险管控', wordCount: baseWordCount },
-            { title: '数据迁移和接口风险控制', wordCount: baseWordCount },
-            { title: '用户培训与验收保障', wordCount: baseWordCount }
-          ]
-        }
-      ]
-    },
-    {
-      title: '第三章 运维服务能力',
-      children: [
-        {
-          title: '第一节 售后服务体系',
-          children: [
-            { title: '服务组织与响应机制', wordCount: baseWordCount },
-            { title: '巡检维护与问题闭环', wordCount: baseWordCount },
-            { title: '培训计划与持续改进', wordCount: baseWordCount }
-          ]
-        }
-      ]
-    }
-  ]
-}
 
 function startPolling() {
   clearInterval(poller.value)
@@ -4269,12 +4243,6 @@ const WritingDirectionEditor = defineComponent({
   line-height: 1.3;
 }
 
-.generate-preference-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  align-items: center;
-}
 
 </style>
 
