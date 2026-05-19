@@ -180,16 +180,6 @@
                 <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="5" maxlength="100000" show-word-limit placeholder="评分标准：没有评分项时可留空，系统会按采购需求生成目录" />
               </div>
 
-              <div class="form-section">
-                <div class="form-label required">目录要求：</div>
-                <el-radio-group v-model="outlineForm.outlineMode" class="outline-mode">
-                  <el-radio-button label="SCORE_ITEM">评分项</el-radio-button>
-                  <el-radio-button label="CUSTOM_CHAPTER">定制章</el-radio-button>
-                  <el-radio-button label="REQUIREMENT">按采购需求生成</el-radio-button>
-                </el-radio-group>
-                <el-input v-model="requirementForm.outlineRequirement" type="textarea" :rows="4" maxlength="100000" show-word-limit placeholder="可补充目录要求，例如必须包含项目背景、系统功能、交付计划、运维保障等" />
-              </div>
-
             </div>
 
             <div class="create-right">
@@ -197,7 +187,7 @@
                 <strong>预览目录 {{ outlineLeafCount }}</strong>
               </div>
               <el-scrollbar class="preview-scroll">
-                <el-empty v-if="!previewOutlines.length" description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
+                <el-empty v-if="!previewOutlines.length" description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                 <OutlineTree v-else :nodes="previewOutlines" simple />
               </el-scrollbar>
               <div class="preview-actions">
@@ -1414,8 +1404,16 @@ async function onGenerateOutline() {
     return
   }
 
+  // 这里必须先记住用户当前页面上选择的 AI 等级。
+  // 原来的逻辑会先 getSolution 再 applySolutionDetail，如果草稿表里还是 BASIC，
+  // 就会把用户刚选的 FLAGSHIP 覆盖回 BASIC，导致后面保存需求、生成目录都走基础版。
+  const selectedAiLevelBeforeRefresh = createForm.aiLevel
+
   const latest = await getSolution(currentSolution.value.id)
   applySolutionDetail(latest)
+  if (selectedAiLevelBeforeRefresh) {
+    createForm.aiLevel = selectedAiLevelBeforeRefresh
+  }
   applyModeByBackendState(latest)
   resumeOutlineTaskIfNeeded()
 

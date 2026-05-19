@@ -1,6 +1,9 @@
 import request from '@/utils/request'
 import { getToken } from '@/utils/storage'
 
+// AI读标/生成/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
+const NO_TIMEOUT = 0
+
 /**
  * 标书项目分页
  */
@@ -97,7 +100,7 @@ export function getBidProjectWorkflow(id) {
 export function uploadTenderProject(formData) {
   return request.post('/bid-project/workflow/upload-tender', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -106,7 +109,7 @@ export function uploadTenderProject(formData) {
  */
 export function startReadTenderProject(id) {
   return request.post(`/bid-project/${id}/workflow/start-read`, null, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -148,7 +151,7 @@ export function getBidProjectTechnicalSolution(id) {
  */
 export function generateBidProjectTechnicalOutline(id, data) {
   return request.post(`/bid-project/${id}/technical-solution/outline/generate`, data, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -164,7 +167,7 @@ export function applyBidProjectTechnicalWordPreset(id, data) {
  */
 export function generateBidProjectTechnicalFull(id, data = {}) {
   return request.post(`/bid-project/${id}/technical-solution/content/generate-full`, data, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -173,7 +176,7 @@ export function generateBidProjectTechnicalFull(id, data = {}) {
  */
 export function rewriteBidProjectTechnicalFull(id, data = {}) {
   return request.post(`/bid-project/${id}/technical-solution/content/rewrite-full`, data, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -218,7 +221,7 @@ export function restoreBidProjectTechnicalVersionSection(id, versionId, outlineI
  */
 export function exportBidProjectTechnicalWord(id) {
   return request.post(`/bid-project/${id}/technical-solution/export-word`, null, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -227,7 +230,7 @@ export function exportBidProjectTechnicalWord(id) {
  */
 export function exportBidProjectTechnicalPdf(id) {
   return request.post(`/bid-project/${id}/technical-solution/export-pdf`, null, {
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -237,7 +240,7 @@ export function exportBidProjectTechnicalPdf(id) {
 export function downloadFileResource(id) {
   return request.get(`/files/download/${id}`, {
     responseType: 'blob',
-    timeout: 300000
+    timeout: NO_TIMEOUT
   })
 }
 

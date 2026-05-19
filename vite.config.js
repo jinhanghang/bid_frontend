@@ -20,7 +20,10 @@ export default defineConfig(({ mode }) => {
         // 开发环境前端请求 /ai_bid/api/** 时，会被代理到 Spring Boot。
         [apiBase]: {
           target: proxyTarget,
-          changeOrigin: true
+          changeOrigin: true,
+          // AI生成接口可能持续数分钟甚至更久，开发代理不主动断开。
+          timeout: 0,
+          proxyTimeout: 0
         }
       }
     }

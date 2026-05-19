@@ -1,6 +1,9 @@
 import request from '@/utils/request'
 import { getToken } from '@/utils/storage'
 
+// AI生成/解析/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
+const NO_TIMEOUT = 0
+
 export function pageSolutions(params) {
   return request({ url: '/ai-solution/page', method: 'get', params })
 }
@@ -28,7 +31,7 @@ export function uploadAndParseTenderFile(file, data = {}) {
     method: 'post',
     data: form,
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 180000
+    timeout: NO_TIMEOUT
   })
 }
 
@@ -45,7 +48,7 @@ export function saveOverallWritingRequirement(id, overallWritingRequirement) {
 }
 
 export function generateOutline(id, data) {
-  return request({ url: `/ai-solution/${id}/outline/generate`, method: 'post', data, timeout: 180000 })
+  return request({ url: `/ai-solution/${id}/outline/generate`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
 export function applyWordCountPreset(id, data) {
@@ -77,11 +80,11 @@ export function moveOutlineNode(outlineId, direction) {
 }
 
 export function generateFull(id, data = {}) {
-  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post', data })
+  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
 export function rewriteFull(id, data = {}) {
-  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post', data })
+  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
 export function getGenerationTask(taskId) {
@@ -113,7 +116,7 @@ export function updateSectionContent(outlineId, content) {
 }
 
 export function exportWord(id) {
-  return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: 180000 })
+  return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: NO_TIMEOUT })
 }
 
 export function downloadFileResource(id) {
@@ -121,7 +124,7 @@ export function downloadFileResource(id) {
     url: `/files/download/${id}`,
     method: 'get',
     responseType: 'blob',
-    timeout: 180000
+    timeout: NO_TIMEOUT
   })
 }
 

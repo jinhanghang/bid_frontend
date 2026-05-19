@@ -308,22 +308,6 @@
                   />
                 </div>
 
-                <div class="tech-form-section">
-                  <div class="tech-label required">目录要求：</div>
-                  <el-radio-group v-model="technicalForm.outlineMode" class="tech-outline-mode">
-                    <el-radio-button label="SCORE_ITEM">评分项</el-radio-button>
-                    <el-radio-button label="CUSTOM_CHAPTER">定制章</el-radio-button>
-                    <el-radio-button label="REQUIREMENT">按采购需求生成</el-radio-button>
-                  </el-radio-group>
-                  <el-input
-                    v-model="technicalForm.outlineRequirement"
-                    type="textarea"
-                    :rows="4"
-                    maxlength="100000"
-                    show-word-limit
-                    placeholder="可补充目录要求，例如必须包含项目背景、系统功能、交付计划、运维保障、数据安全等"
-                  />
-                </div>
               </template>
 
               <template v-else>
@@ -411,7 +395,7 @@
                         <strong>正在生成技术方案目录</strong>
                         <p>系统正在结合采购需求、评分标准和编写方向生成目录，请不要重复点击。</p>
                       </div>
-                      <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
+                      <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                       <template v-else>
                         <el-progress
                           :percentage="technicalGeneratePercent"
@@ -552,7 +536,7 @@
                   <strong>预览目录 {{ technicalOutlineLeafCount }}</strong>
                   </div>
                 <el-scrollbar class="tech-preview-scroll">
-                  <el-empty description="暂无目录，请在左侧输入目录要求，点击下方生成按钮" />
+                  <el-empty description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                 </el-scrollbar>
                 <div class="tech-preview-actions">
                   <el-button :type="technicalMode === 'PRECISE' ? 'primary' : 'default'" plain :disabled="isCurrentTechnicalOutlineGenerating" @click="technicalMode = 'PRECISE'">精准模式</el-button>
@@ -1024,7 +1008,7 @@ const techSteps = [
 const aiLevels = [
   { value: 'BASIC', label: '基础版', desc: '快速生成基础内容，满足常规投标需求。' },
   { value: 'STANDARD', label: '标准版', desc: '深度优化逻辑结构，提升方案专业水准。' },
-  { value: 'PREMIUM', label: '旗舰版', desc: '精准对标评分项，增强中标表达。' }
+  { value: 'FLAGSHIP', label: '旗舰版', desc: '精准对标评分项，增强中标表达。' }
 ]
 const technicalStep = ref(1)
 const technicalMode = ref('PRECISE')
@@ -1643,6 +1627,13 @@ function mapSolutionOutlineNode(node) {
   }
 }
 
+function normalizeAiLevel(value) {
+  const text = String(value || '').trim().toUpperCase()
+  if (text === 'PREMIUM') return 'FLAGSHIP'
+  if (['BASIC', 'STANDARD', 'FLAGSHIP'].includes(text)) return text
+  return 'BASIC'
+}
+
 function hydrateTechnicalSolutionForm() {
   const projectName = selectedProject.value?.projectName || '技术方案'
   const solution = technicalSolution.value || {}
@@ -1650,7 +1641,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionName = solution.solutionName || (projectName.includes('技术方案') ? projectName : `${projectName}技术方案`)
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
-  technicalForm.aiLevel = solution.aiLevel || technicalForm.aiLevel
+  technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel || technicalForm.aiLevel)
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
@@ -1731,7 +1722,7 @@ async function generateTechnicalOutline() {
       solutionName: technicalForm.solutionName,
       solutionType: technicalForm.solutionType,
       solutionSubType: technicalForm.solutionSubType,
-      aiLevel: technicalForm.aiLevel,
+      aiLevel: normalizeAiLevel(technicalForm.aiLevel),
       writingStyle: 'GENERAL',
       outlineWritingDirection: technicalForm.outlineWritingDirection,
       purchaseRequirement: technicalForm.purchaseRequirement,
