@@ -675,7 +675,7 @@ function pollGenerationTask(taskId) {
       await loadDocuments()
       if (status === 'SUCCESS') ElMessage.success('全文生成完成')
       else if (status === 'PARTIAL') ElMessage.warning('生成完成，但存在失败章节，请检查后重试')
-      else if (status === 'FAILED') ElMessage.error(task.errorMessage || '全文生成失败')
+      else if (status === 'FAILED') ElMessage.error('全文生成失败，请稍后重试或联系管理员')
     }
   }
   tick()
@@ -707,7 +707,7 @@ async function onRegenerateSection() {
         sectionDraft.value += chunk
       },
       onError(message) {
-        ElMessage.error(message || '章节生成失败')
+        ElMessage.error('章节生成失败，请稍后重试')
       }
     })
     await refreshCurrent()

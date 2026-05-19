@@ -5,11 +5,11 @@ import { getToken } from '@/utils/storage'
 const NO_TIMEOUT = 0
 
 export function pageSolutions(params) {
-  return request({ url: '/ai-solution/page', method: 'get', params })
+  return request({ url: '/ai-solution/page', method: 'get', params, timeout: NO_TIMEOUT })
 }
 
 export function getSolution(id) {
-  return request({ url: `/ai-solution/${id}`, method: 'get' })
+  return request({ url: `/ai-solution/${id}`, method: 'get', timeout: NO_TIMEOUT })
 }
 
 export function createSolution(data) {
@@ -36,7 +36,7 @@ export function uploadAndParseTenderFile(file, data = {}) {
 }
 
 export function getParseTask(taskId) {
-  return request({ url: `/ai-solution/parse/task/${taskId}`, method: 'get' })
+  return request({ url: `/ai-solution/parse/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT })
 }
 
 export function saveRequirement(id, data) {
@@ -88,7 +88,7 @@ export function rewriteFull(id, data = {}) {
 }
 
 export function getGenerationTask(taskId) {
-  return request({ url: `/ai-solution/task/${taskId}`, method: 'get' })
+  return request({ url: `/ai-solution/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT })
 }
 
 export function listSolutionVersions(id) {

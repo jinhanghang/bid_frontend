@@ -753,6 +753,10 @@ let parseTimer = null
 let taskTimer = null
 let outlineTimer = null
 const notifiedTaskIds = new Set()
+const SOLUTION_TASK_PENDING_KEY = 'ai_solution_generation_task_pending'
+const solutionTaskPending = reactive({ solutionId: '', taskId: '' })
+const solutionTaskPollingBusy = ref(false)
+const solutionTaskPollErrorCount = ref(0)
 
 const createStep = ref(0)
 const parseTask = ref(null)
@@ -1020,6 +1024,7 @@ watch(
 
 onMounted(async () => {
   await loadList()
+  restoreSolutionTaskPending()
 })
 
 onBeforeUnmount(() => {
@@ -1146,7 +1151,8 @@ function applySolutionDetail(data) {
 function resumeRunningTaskIfNeeded() {
   const task = currentSolution.value?.runningTask
   if (task?.id && ['WAITING', 'RUNNING'].includes(task.status)) {
-    pollGenerationTask(task.id)
+    fullGenerating.value = true
+    markSolutionTaskPending(currentSolution.value?.id || task.solutionId, task.id)
   }
 }
 
@@ -1191,8 +1197,9 @@ function pollOutlineStatus(solutionId) {
         ElMessage.success('目录生成完成')
       }
     } catch (e) {
-      clearInterval(outlineTimer)
-      outlineTimer = null
+      // 目录生成期间详情查询可能偶发失败，不能清掉“目录生成中”状态。
+      // 后端任务仍可能在继续执行，保留轮询，下一次成功后再刷新页面。
+      outlineGenerating.value = true
     }
   }
 
@@ -1815,59 +1822,118 @@ async function startFullGenerate(rewrite = false) {
       ? await rewriteFull(currentSolution.value.id, payload)
       : await generateFull(currentSolution.value.id, payload)
 
-    pollGenerationTask(task.id)
+    if (task?.id) {
+      markSolutionTaskPending(currentSolution.value.id, task.id)
+      pollGenerationTask(task.id, false)
+    }
     await refreshCurrent()
   } catch (e) {
     fullGenerating.value = false
   }
 }
 
-function pollGenerationTask(taskId) {
-  if (!taskId) return
-  clearInterval(taskTimer)
+function markSolutionTaskPending(solutionId, taskId) {
+  if (!solutionId || !taskId) return
+  solutionTaskPending.solutionId = String(solutionId)
+  solutionTaskPending.taskId = String(taskId)
+  solutionTaskPollErrorCount.value = 0
+  localStorage.setItem(SOLUTION_TASK_PENDING_KEY, JSON.stringify({ solutionId: String(solutionId), taskId: String(taskId) }))
+  startSolutionTaskPolling(taskId)
+}
 
-  const tick = async () => {
-    try {
-      const task = await getGenerationTask(taskId)
-
-      if (['WAITING', 'RUNNING'].includes(task.status)) {
-        fullGenerating.value = true
-        await refreshCurrent()
-        await loadList()
-        return
-      }
-
-      clearInterval(taskTimer)
-      taskTimer = null
-      fullGenerating.value = false
-
-      // 后端任务刚落 SUCCESS 时，方案状态和统计可能还在最后一次事务刷新中。
-      // 等一小会儿再重新拉详情和列表，避免页面仍显示旧状态。
-      await sleep(600)
-      await refreshCurrent()
-      await loadList()
-
-      if (!notifiedTaskIds.has(task.id)) {
-        notifiedTaskIds.add(task.id)
-        if (task.status === 'FAILED') {
-          ElMessage.error(task.errorMessage || task.message || '生成失败')
-        } else if (task.status === 'CANCELED') {
-          ElMessage.warning(task.message || '生成已取消')
-        } else if (task.status === 'PARTIAL') {
-          ElMessage.warning(task.errorMessage || task.message || '部分章节未生成完成，请查看失败章节后重试')
-        } else {
-          ElMessage.success(task.message || '生成完成')
-        }
-      }
-    } catch (e) {
-      clearInterval(taskTimer)
-      taskTimer = null
-      fullGenerating.value = false
-    }
+function clearSolutionTaskPending(taskId) {
+  if (String(solutionTaskPending.taskId || '') === String(taskId || '')) {
+    solutionTaskPending.solutionId = ''
+    solutionTaskPending.taskId = ''
+    localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
   }
+  clearInterval(taskTimer)
+  taskTimer = null
+}
 
-  tick()
-  taskTimer = setInterval(tick, 2000)
+function restoreSolutionTaskPending() {
+  const raw = localStorage.getItem(SOLUTION_TASK_PENDING_KEY)
+  if (!raw) return
+  try {
+    const data = JSON.parse(raw)
+    if (data?.taskId) {
+      solutionTaskPending.solutionId = String(data.solutionId || '')
+      solutionTaskPending.taskId = String(data.taskId)
+      solutionTaskPollErrorCount.value = 0
+      fullGenerating.value = true
+      startSolutionTaskPolling(data.taskId)
+    }
+  } catch (e) {
+    localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
+  }
+}
+
+function startSolutionTaskPolling(taskId) {
+  clearInterval(taskTimer)
+  pollGenerationTask(taskId, true)
+  taskTimer = setInterval(() => {
+    pollGenerationTask(taskId, true)
+  }, 3000)
+}
+
+async function pollGenerationTask(taskId, silent = true) {
+  if (!taskId || solutionTaskPollingBusy.value) return
+  solutionTaskPollingBusy.value = true
+  try {
+    const task = await getGenerationTask(taskId)
+    solutionTaskPollErrorCount.value = 0
+    const status = String(task?.status || '').toUpperCase()
+    const taskSolutionId = task?.solutionId || solutionTaskPending.solutionId
+
+    if (['WAITING', 'RUNNING'].includes(status)) {
+      fullGenerating.value = true
+      if (!activeSolutionId.value || String(activeSolutionId.value) === String(taskSolutionId || '')) {
+        await refreshCurrent()
+      }
+      await loadList()
+      return
+    }
+
+    clearSolutionTaskPending(taskId)
+    fullGenerating.value = false
+
+    // 后端任务刚落 SUCCESS 时，方案状态和统计可能还在最后一次事务刷新中。
+    // 等一小会儿再重新拉详情和列表，避免页面仍显示旧状态。
+    await sleep(600)
+    if (!activeSolutionId.value || String(activeSolutionId.value) === String(taskSolutionId || '')) {
+      await refreshCurrent()
+    }
+    await loadList()
+
+    if (!silent && !notifiedTaskIds.has(task.id)) {
+      notifiedTaskIds.add(task.id)
+      if (status === 'FAILED') {
+        ElMessage.error(task.errorMessage || task.message || '生成失败')
+      } else if (status === 'CANCELED') {
+        ElMessage.warning(task.message || '生成已取消')
+      } else if (status === 'PARTIAL') {
+        ElMessage.warning(task.errorMessage || task.message || '部分章节未生成完成，请查看失败章节后重试')
+      } else {
+        ElMessage.success(task.message || '生成完成')
+      }
+    }
+  } catch (e) {
+    // 生成任务查询偶发超时/失败时，不能清掉“生成中”状态。
+    // 后端异步任务仍可能在继续执行，保留 localStorage 任务记录并继续轮询。
+    const status = e?.response?.status
+    solutionTaskPollErrorCount.value += 1
+    fullGenerating.value = true
+    if (status === 404) {
+      clearSolutionTaskPending(taskId)
+      fullGenerating.value = false
+      return
+    }
+    if (!silent && solutionTaskPollErrorCount.value === 1) {
+      ElMessage.warning('生成任务仍在后台执行，状态查询暂时失败，系统会继续自动刷新')
+    }
+  } finally {
+    solutionTaskPollingBusy.value = false
+  }
 }
 
 async function confirmDiscardSectionContentChanges() {
@@ -2699,7 +2765,7 @@ const OutlineTree = defineComponent({
         const generated = isOutlineGenerated(node)
         const failed = isOutlineFailed(node)
         const optimizing = isSectionOptimizing(node)
-        controls.push(h('span', { class: ['count-text', failed ? 'failed' : '', wordHealthClass(node)] }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}`))
+        controls.push(h('span', { class: ['count-text', failed ? 'failed' : '', wordHealthClass(node)] }, `${outlineActualWordCount(node)} / ${outlineTargetWordCount(node)}字`))
         if (optimizing) {
           controls.push(h(ElTag, { size: 'small', type: 'warning', effect: 'light' }, () => `${optimizeActionLabel(sectionOptimizing.value)}中`))
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, loading: true, disabled: true }, () => '处理中'))
@@ -2717,7 +2783,7 @@ const OutlineTree = defineComponent({
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap' }, [
-        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: 'tree-controls' }, controls)]),
+        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
         hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
@@ -3237,5 +3303,117 @@ const WritingDirectionEditor = defineComponent({
   font-size: 12px;
   line-height: 20px;
   color: #8a95a8;
+}
+</style>
+
+<style scoped>
+/* 统一 AI方案生成页目录树与右侧预览样式：固定状态列宽，避免字数、状态、按钮挤在一起 */
+.solution-shell :deep(.outline-tree) {
+  font-size: 14px;
+  color: #334155;
+}
+
+.solution-shell :deep(.tree-node-wrap) {
+  width: 100%;
+}
+
+.solution-shell :deep(.tree-row) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  box-sizing: border-box;
+}
+
+.solution-shell :deep(.tree-row.generate-row) {
+  min-height: 40px;
+  padding-right: 0;
+}
+
+.solution-shell :deep(.tree-title) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.solution-shell :deep(.tree-title.parent) {
+  font-size: 15px;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.solution-shell :deep(.tree-title.leaf) {
+  font-size: 14px;
+  font-weight: 400;
+  color: #64748b;
+}
+
+.solution-shell :deep(.tree-controls) {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.solution-shell :deep(.tree-controls:empty) {
+  display: none;
+}
+
+.solution-shell :deep(.tree-controls.generate-controls) {
+  width: 220px;
+  min-width: 220px;
+  display: grid;
+  grid-template-columns: 100px 62px 48px;
+  column-gap: 6px;
+  align-items: center;
+  justify-items: end;
+}
+
+.solution-shell :deep(.tree-controls.generate-controls .count-text) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100px;
+  min-width: 100px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 22px;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.solution-shell :deep(.tree-controls.generate-controls .el-tag) {
+  width: 58px;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.solution-shell :deep(.tree-controls.generate-controls .el-button) {
+  width: 46px;
+  min-width: 46px;
+  height: 26px;
+  margin-left: 0 !important;
+  padding: 0;
+  font-size: 12px;
+}
+
+.solution-shell .section-preview {
+  padding: 24px 28px;
+}
+
+.solution-shell .section-preview-head h3 {
+  font-size: 22px;
+  line-height: 1.45;
+}
+
+.solution-shell .section-content-preview {
+  font-size: 17px;
+  line-height: 1.9;
 }
 </style>

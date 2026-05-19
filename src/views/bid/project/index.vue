@@ -915,6 +915,9 @@ const technicalOutlinePoller = ref(null)
 const technicalOutlinePendingProjectId = ref('')
 const technicalTaskPoller = ref(null)
 const technicalTaskPending = reactive({ projectId: '', taskId: '' })
+const technicalTaskPollingBusy = ref(false)
+const technicalTaskPollErrorCount = ref(0)
+const technicalSolutionLoadErrorCount = ref(0)
 const TECH_OUTLINE_PENDING_KEY = 'ai_bid_technical_outline_pending_project_id'
 const TECH_TASK_PENDING_KEY = 'ai_bid_technical_task_pending'
 const lastAutoExtractParseKey = ref('')
@@ -1590,11 +1593,17 @@ async function loadTechnicalSolution() {
   if (!selectedProject.value?.id) return
   try {
     technicalSolution.value = await getBidProjectTechnicalSolution(selectedProject.value.id)
+    technicalSolutionLoadErrorCount.value = 0
     hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
     syncTechnicalOverallRequirement()
   } catch (e) {
-    technicalSolution.value = null
-    technicalOutlines.value = []
+    // 查询超时/网络抖动时保留旧目录和旧任务状态，不清空页面。
+    // 清空会造成“切换页面后生成状态没了”的错觉。
+    technicalSolutionLoadErrorCount.value += 1
+    if (!technicalSolution.value && !technicalOutlines.value.length) {
+      technicalSolution.value = null
+      technicalOutlines.value = []
+    }
   }
 }
 
@@ -2018,6 +2027,7 @@ function markTechnicalTaskPending(projectId, taskId) {
   if (!projectId || !taskId) return
   technicalTaskPending.projectId = String(projectId)
   technicalTaskPending.taskId = String(taskId)
+  technicalTaskPollErrorCount.value = 0
   localStorage.setItem(TECH_TASK_PENDING_KEY, JSON.stringify({ projectId: String(projectId), taskId: String(taskId) }))
   startTechnicalTaskPolling(projectId, taskId)
 }
@@ -2040,6 +2050,7 @@ function restoreTechnicalTaskPending() {
     if (data?.projectId && data?.taskId) {
       technicalTaskPending.projectId = String(data.projectId)
       technicalTaskPending.taskId = String(data.taskId)
+      technicalTaskPollErrorCount.value = 0
       fullGenerating.value = true
       startTechnicalTaskPolling(data.projectId, data.taskId)
     }
@@ -2050,15 +2061,18 @@ function restoreTechnicalTaskPending() {
 
 function startTechnicalTaskPolling(projectId, taskId) {
   clearInterval(technicalTaskPoller.value)
+  pollTechnicalGenerationTask(projectId, taskId, true)
   technicalTaskPoller.value = setInterval(() => {
     pollTechnicalGenerationTask(projectId, taskId, true)
-  }, 1000)
+  }, 3000)
 }
 
 async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
-  if (!projectId || !taskId) return
+  if (!projectId || !taskId || technicalTaskPollingBusy.value) return
+  technicalTaskPollingBusy.value = true
   try {
     const task = await getBidProjectTechnicalTask(projectId, taskId)
+    technicalTaskPollErrorCount.value = 0
     const status = String(task?.status || '').toUpperCase()
     if (['WAITING', 'RUNNING'].includes(status)) {
       fullGenerating.value = true
@@ -2087,8 +2101,21 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
       else ElMessage.success(task?.message || '技术方案正文生成完成')
     }
   } catch (e) {
-    clearTechnicalTaskPending(projectId, taskId)
-    fullGenerating.value = false
+    // 生成中的查询接口偶发超时，不能把本地“生成中”状态清掉。
+    // 否则用户切换菜单回来，会误以为后台任务没了，但实际上后端还在继续生成。
+    const status = e?.response?.status
+    technicalTaskPollErrorCount.value += 1
+    fullGenerating.value = true
+    if (status === 404) {
+      clearTechnicalTaskPending(projectId, taskId)
+      fullGenerating.value = false
+      return
+    }
+    if (!silent && technicalTaskPollErrorCount.value === 1) {
+      ElMessage.warning('生成任务仍在后台执行，状态查询暂时失败，系统会继续自动刷新')
+    }
+  } finally {
+    technicalTaskPollingBusy.value = false
   }
 }
 
@@ -3030,7 +3057,7 @@ const OutlineTree = defineComponent({
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap' }, [
-        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: 'tree-controls' }, controls)]),
+        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
         hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
@@ -5696,5 +5723,131 @@ const WritingDirectionEditor = defineComponent({
   font-size: 12px;
   line-height: 20px;
   color: #8a95a8;
+}
+</style>
+
+<style scoped>
+/* 统一 AI标书技术方案生成页样式：对齐 AI方案的目录树、字数列、状态列和右侧正文预览 */
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 800;
+  color: #111827;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px 40px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #334155;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.outline-tree) {
+  font-size: 14px !important;
+  color: #334155 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row) {
+  min-height: 38px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.generate-row) {
+  min-height: 40px !important;
+  padding-right: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title) {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  line-height: 22px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.parent) {
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  color: #1f2937 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.leaf) {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  color: #64748b !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls) {
+  width: 220px !important;
+  min-width: 220px !important;
+  display: grid !important;
+  grid-template-columns: 100px 62px 48px !important;
+  column-gap: 6px !important;
+  align-items: center !important;
+  justify-items: end !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .count-text) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  width: 100px !important;
+  min-width: 100px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 22px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .el-tag) {
+  width: 58px !important;
+  justify-content: center !important;
+  padding: 0 6px !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .el-button) {
+  width: 46px !important;
+  min-width: 46px !important;
+  height: 26px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .bid-tech-right .section-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px 28px;
+}
+
+.ai-bid-page .bid-tech-right .section-preview-title h3 {
+  font-size: 22px;
+  line-height: 1.45;
+}
+
+.ai-bid-page .bid-tech-right .section-content-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.9;
 }
 </style>

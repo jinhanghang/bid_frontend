@@ -5,6 +5,27 @@ import { getToken, clearAuthStorage } from '@/utils/storage'
 
 let loginExpiredNotified = false
 
+const AI_GENERIC_ERROR_MESSAGE = 'AI任务执行失败，请稍后重试或检查模型配置/额度'
+
+function isAiModuleRequest(config) {
+  const url = String(config?.url || '')
+  return url.includes('/ai-solution') || url.includes('/ai-document') || url.includes('/technical-solution')
+}
+
+function isRawAiFailureMessage(message) {
+  const text = String(message || '')
+  if (!text) return true
+  if (text.length > 80) return true
+  return /HTTP状态码|request_id|requestId|trace|Exception|Error:|java\.|stack|timeout|exceeded|Quota|exhausted|DashScope|百炼|Chat接口|model|403|500|调用失败/i.test(text)
+}
+
+function safeResponseMessage(config, message, fallback = '接口请求失败') {
+  const text = message || fallback
+  if (isAiModuleRequest(config) && isRawAiFailureMessage(text)) return AI_GENERIC_ERROR_MESSAGE
+  return text
+}
+
+
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/ai_bid/api',
   timeout: 120000
@@ -28,7 +49,7 @@ service.interceptors.response.use(
     const body = response.data
     if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'code')) {
       if (body.code === 0) return body.data
-      const message = body.message || '接口请求失败'
+      const message = safeResponseMessage(response.config, body.message, '接口请求失败')
       ElMessage.error(message)
       return Promise.reject(new Error(message))
     }
@@ -36,7 +57,7 @@ service.interceptors.response.use(
   },
   (error) => {
     const status = error?.response?.status
-    const message = error?.response?.data?.message || error?.message || '网络异常，请检查后端服务是否启动'
+    const message = safeResponseMessage(error?.config, error?.response?.data?.message || error?.message, '网络异常，请检查后端服务是否启动')
 
     if (status === 401) {
       clearAuthStorage()
@@ -51,7 +72,7 @@ service.interceptors.response.use(
     }
 
     if (status === 403) {
-      ElMessage.error('没有权限访问该功能')
+      ElMessage.error(isAiModuleRequest(error?.config) ? message : '没有权限访问该功能')
       return Promise.reject(error)
     }
 
