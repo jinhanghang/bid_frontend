@@ -162,22 +162,78 @@
 
       <template v-else-if="activeDoc === 'BID_DOCUMENT'">
         <div class="doc-workspace bid-doc-workspace">
-          <div class="word-toolbar">
-            <strong>投标文件</strong>
-            <el-select v-model="supplierId" placeholder="请选择供应商" clearable style="width: 220px">
-              <el-option label="请先维护供应商信息" value="__placeholder" disabled />
-            </el-select>
-            <el-button type="primary" plain @click="smartFillBidDocument">智能填空</el-button>
-          </div>
-          <div class="word-menu">文件　首页　插入　绘图　布局　视图</div>
-          <div class="word-editor">
-            <div class="paper">
+          <div class="doc-head bid-doc-head">
+            <div>
               <h2>投标文件</h2>
-              <p class="paper-tip">第一阶段先提供供应商选择与商务资料填充入口，完整 Word 智能填空后续接入。</p>
-              <p>项目名称：{{ selectedProject?.projectName || '-' }}</p>
-              <p>招标文件：{{ selectedProject?.tenderFileName || workflow?.parseTask?.fileName || '-' }}</p>
-              <p>解析状态：{{ parseStatusLabel }}</p>
+              <p>先关联企业资料档案，再结合解析报告自动生成商务标基础内容。</p>
             </div>
+            <div class="bid-doc-actions">
+              <el-button :icon="Refresh" @click="refreshBidDocument">刷新</el-button>
+              <el-button plain @click="openCompanyMaterialSelector">选择资料档案</el-button>
+              <el-button
+                type="primary"
+                :loading="bidDocumentFilling"
+                :disabled="!canFillBidDocument"
+                @click="smartFillBidDocument"
+              >智能填空</el-button>
+            </div>
+          </div>
+
+          <div class="bid-doc-status-grid">
+            <div class="bid-doc-status-card" :class="{ success: isParseSuccess }">
+              <strong>招标解析</strong>
+              <span>{{ parseStatusLabel }}</span>
+              <p>{{ isParseSuccess ? '已完成读标，可用于商务标填空。' : '请先在解析报告中完成读标。' }}</p>
+            </div>
+            <div class="bid-doc-status-card" :class="{ success: hasCompanyMaterial }">
+              <strong>企业资料</strong>
+              <span>{{ selectedProject?.companyMaterialName || '未关联' }}</span>
+              <p>{{ hasCompanyMaterial ? '将作为商务标和技术方案生成的企业资料来源。' : '请从资料库选择当前项目所属企业的资料档案。' }}</p>
+            </div>
+            <div class="bid-doc-status-card" :class="{ success: bidDocumentContent }">
+              <strong>智能填空</strong>
+              <span>{{ bidDocumentStatusLabel }}</span>
+              <p>{{ bidDocumentContent ? '已生成内容，可继续调整并保存。' : '生成后将在下方显示 Markdown 内容。' }}</p>
+            </div>
+          </div>
+
+          <div class="company-material-ref-card">
+            <div>
+              <strong>企业资料引用</strong>
+              <p v-if="hasCompanyMaterial">
+                已关联：{{ selectedProject?.companyMaterialName }}
+                <span v-if="selectedProject?.companyMaterialEnterpriseName">（{{ selectedProject.companyMaterialEnterpriseName }}）</span>
+              </p>
+              <p v-else>当前项目尚未关联企业资料档案，商务标智能填空会缺少企业资质、业绩、人员、财务等信息。</p>
+            </div>
+            <div class="company-material-actions">
+              <el-button type="primary" plain @click="openCompanyMaterialSelector">{{ hasCompanyMaterial ? '更换资料' : '选择资料' }}</el-button>
+              <el-button v-if="hasCompanyMaterial" type="danger" plain @click="unbindSelectedCompanyMaterial">解除关联</el-button>
+            </div>
+          </div>
+
+          <div class="bid-doc-editor-card">
+            <div class="bid-doc-editor-head">
+              <div>
+                <strong>投标文件智能填空结果</strong>
+                <p>第一版以 Markdown 形式保存商务标基础内容，后续可接 Word 导出和在线编辑。</p>
+              </div>
+              <el-button
+                type="primary"
+                plain
+                :loading="bidDocumentSaving"
+                :disabled="!bidDocumentDraft.trim()"
+                @click="saveBidDocumentDraft"
+              >保存内容</el-button>
+            </div>
+            <el-input
+              v-model="bidDocumentDraft"
+              type="textarea"
+              :rows="18"
+              maxlength="200000"
+              show-word-limit
+              placeholder="点击“智能填空”后，系统会根据解析报告和企业资料生成投标文件基础内容。"
+            />
           </div>
         </div>
       </template>
@@ -550,6 +606,39 @@
     </section>
 
     <el-dialog v-model="createDialog.visible" title="新建项目" width="680px" destroy-on-close>
+      <div v-if="isPlatformUser" class="create-admin-fields">
+        <el-select
+          v-model="createDialog.enterpriseId"
+          filterable
+          clearable
+          placeholder="请选择所属企业"
+          class="create-admin-select"
+          @change="onCreateEnterpriseChange"
+        >
+          <el-option
+            v-for="item in enterpriseOptions"
+            :key="item.id"
+            :label="item.enterpriseName || item.name"
+            :value="item.id"
+          />
+        </el-select>
+        <el-select
+          v-model="createDialog.ownerUserId"
+          filterable
+          clearable
+          placeholder="请选择项目负责人"
+          class="create-admin-select"
+          :disabled="!createDialog.enterpriseId"
+        >
+          <el-option
+            v-for="item in ownerUserOptions"
+            :key="item.id"
+            :label="item.fullName || item.username || item.phone"
+            :value="item.id"
+          />
+        </el-select>
+      </div>
+
       <el-upload
         ref="uploadRef"
         class="tender-upload"
@@ -807,6 +896,39 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="companyMaterialDialog.visible" title="选择企业资料档案" width="760px" append-to-body>
+      <div class="company-material-selector" v-loading="companyMaterialDialog.loading">
+        <el-alert
+          v-if="!selectedProject?.enterpriseId"
+          title="当前项目未设置所属企业，请先完善项目所属企业后再关联企业资料。"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+        <div v-else class="company-material-option-list">
+          <div
+            v-for="item in companyMaterialOptions"
+            :key="item.id"
+            class="company-material-option"
+            :class="{ active: String(companyMaterialDialog.selectedId || '') === String(item.id) }"
+            @click="companyMaterialDialog.selectedId = item.id"
+          >
+            <div>
+              <strong>{{ item.title }}</strong>
+              <p>{{ materialTypeLabel(item.materialType) }} · {{ item.enterpriseName || '-' }}</p>
+              <span>{{ item.remark || item.content || '暂无摘要' }}</span>
+            </div>
+            <el-tag :type="item.status === 1 ? 'success' : 'info'" effect="light">{{ item.status === 1 ? '启用' : '停用' }}</el-tag>
+          </div>
+          <el-empty v-if="!companyMaterialDialog.loading && !companyMaterialOptions.length" description="当前项目所属企业暂无可用企业资料档案" />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="companyMaterialDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="companyMaterialDialog.saving" :disabled="!companyMaterialDialog.selectedId" @click="confirmCompanyMaterialBind">确定关联</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
       <div class="knowledge-selector">
         <div class="knowledge-search-row">
@@ -858,11 +980,20 @@
 <script setup>
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from 'element-plus'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { listEnterprises } from '@/api/enterprise'
+import { pageUsers } from '@/api/systemUser'
 import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   enterBidDocument,
+  bindBidProjectCompanyMaterial,
+  fillBidDocument,
+  getBidDocument,
+  listBidProjectCompanyMaterialOptions,
+  saveBidDocument,
+  unbindBidProjectCompanyMaterial,
   autoFillBidProjectBasicInfo,
   applyBidProjectTechnicalWordPreset,
   deleteBidProject,
@@ -896,6 +1027,7 @@ import {
 } from '@/api/bidProject'
 
 const router = useRouter()
+const auth = useAuthStore()
 
 const keyword = ref('')
 const projectLoading = ref(false)
@@ -906,9 +1038,17 @@ const workflow = ref(null)
 const activeDoc = ref('')
 const uploadFiles = ref([])
 const uploadRef = ref()
-const supplierId = ref('')
 const readTenderLoading = ref(false)
 const autoFillLoading = ref(false)
+const bidDocumentLoading = ref(false)
+const bidDocumentFilling = ref(false)
+const bidDocumentSaving = ref(false)
+const bidDocumentDraft = ref('')
+const bidDocumentDetail = ref(null)
+const companyMaterialOptions = ref([])
+const companyMaterialDialog = reactive({ visible: false, loading: false, saving: false, selectedId: null })
+const enterpriseOptions = ref([])
+const ownerUserOptions = ref([])
 const timer = ref(null)
 const poller = ref(null)
 const technicalOutlinePoller = ref(null)
@@ -989,7 +1129,9 @@ const selectedTechnicalVersionSnapshot = computed(() => parseVersionSnapshot(sel
 
 const createDialog = reactive({
   visible: false,
-  loading: false
+  loading: false,
+  enterpriseId: null,
+  ownerUserId: null
 })
 
 const techSteps = [
@@ -1069,13 +1211,14 @@ function resetTechnicalWorkspace() {
     outlineMode: 'SCORE_ITEM',
     outlineRequirement: ''
   })
-  Object.assign(fullGenerateForm, {
-    knowledgeIds: [],
-    blindBidEnabled: false,
-    blindBidRequirement: '',
-    writingStyle: 'GENERAL',
-    contentDepth: 'STANDARD'
-  })
+  resetBidDocumentWorkspace()
+}
+
+function resetBidDocumentWorkspace() {
+  bidDocumentDetail.value = null
+  bidDocumentDraft.value = ''
+  companyMaterialOptions.value = []
+  Object.assign(companyMaterialDialog, { visible: false, loading: false, saving: false, selectedId: null })
 }
 
 const workflowDocuments = computed(() => workflow.value?.documents || defaultDocuments(selectedProject.value))
@@ -1087,6 +1230,21 @@ const parseStatusLabel = computed(() => {
   const doc = workflowDocuments.value.find((item) => item.type === 'PARSE_REPORT')
   return doc?.statusLabel || '-'
 })
+const isPlatformUser = computed(() => {
+  const roles = auth.roleCodes || []
+  return roles.includes('SUPERADMIN') || roles.includes('PLATFORMADMIN') || roles.includes('SUPER_ADMIN') || roles.includes('PLATFORM_ADMIN')
+})
+const hasCompanyMaterial = computed(() => Boolean(selectedProject.value?.companyMaterialId))
+const bidDocumentContent = computed(() => bidDocumentDetail.value?.content || selectedProject.value?.contentMarkdown || '')
+const bidDocumentStatusLabel = computed(() => {
+  const status = String(bidDocumentDetail.value?.bidDocStatus || selectedProject.value?.bidDocStatus || '').toUpperCase()
+  if (status === 'DONE') return '已生成'
+  if (status === 'FILLING') return '生成中'
+  if (status === 'FAILED') return '生成失败'
+  if (status === 'WAIT_CREATE') return '待填空'
+  return '待解析'
+})
+const canFillBidDocument = computed(() => isParseSuccess.value && hasCompanyMaterial.value && !bidDocumentFilling.value)
 const technicalOutlineLeafCount = computed(() => {
   let count = 0
   technicalOutlines.value.forEach((chapter) => {
@@ -1390,12 +1548,30 @@ async function refreshWorkflow() {
   autoFillTechnicalRequirementAfterParse(false)
 }
 
-function openCreateProject() {
+async function openCreateProject() {
   resetUploadFile()
+  createDialog.enterpriseId = null
+  createDialog.ownerUserId = null
   createDialog.visible = true
+  if (isPlatformUser.value) {
+    await loadCreateEnterprises()
+  }
   nextTick(() => {
     uploadRef.value?.clearFiles?.()
   })
+}
+
+async function loadCreateEnterprises() {
+  const list = await listEnterprises({ status: 1 })
+  enterpriseOptions.value = Array.isArray(list) ? list : (list?.records || [])
+}
+
+async function onCreateEnterpriseChange(value) {
+  createDialog.ownerUserId = null
+  ownerUserOptions.value = []
+  if (!value) return
+  const res = await pageUsers({ pageNum: 1, pageSize: 200, enterpriseId: value, status: 1 })
+  ownerUserOptions.value = res?.records || []
 }
 
 function closeCreateDialog() {
@@ -1437,6 +1613,18 @@ async function uploadTenderOnly() {
   try {
     const formData = new FormData()
     formData.append('file', file)
+    if (isPlatformUser.value) {
+      if (!createDialog.enterpriseId) {
+        ElMessage.warning('请选择所属企业')
+        return
+      }
+      if (!createDialog.ownerUserId) {
+        ElMessage.warning('请选择项目负责人')
+        return
+      }
+      formData.append('enterpriseId', createDialog.enterpriseId)
+      formData.append('ownerUserId', createDialog.ownerUserId)
+    }
     const res = await uploadTenderProject(formData)
     ElMessage.success('项目已创建，请点击解析报告中的“开始读标”进行解析')
     createDialog.visible = false
@@ -1543,6 +1731,7 @@ async function openDocument(doc) {
   if (doc.type === 'BID_DOCUMENT') {
     workflow.value = await enterBidDocument(selectedProject.value.id)
     selectedProject.value = workflow.value.project
+    await loadBidDocumentDetail()
   }
   if (doc.type === 'TECHNICAL_SOLUTION') {
     workflow.value = await enterTechnicalSolution(selectedProject.value.id)
@@ -1590,14 +1779,123 @@ async function confirmDeleteProject(project) {
   await loadProjects()
 }
 
-function smartFillBidDocument() {
-  if (!supplierId.value) {
-    ElMessageBox.alert('智能填空功能需要提供供应商信息，请先前往资料库维护供应商信息。', '温馨提示', {
-      confirmButtonText: '确认'
-    })
+async function loadBidDocumentDetail() {
+  if (!selectedProject.value?.id) return
+  bidDocumentLoading.value = true
+  try {
+    bidDocumentDetail.value = await getBidDocument(selectedProject.value.id)
+    bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
+  } finally {
+    bidDocumentLoading.value = false
+  }
+}
+
+async function refreshBidDocument() {
+  await refreshWorkflow()
+  await loadBidDocumentDetail()
+}
+
+async function openCompanyMaterialSelector() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
     return
   }
-  ElMessage.info('第一阶段暂不生成完整 Word，后续接入商务标智能填空')
+  if (!selectedProject.value.enterpriseId) {
+    ElMessage.warning('当前项目未设置所属企业，请先完善项目所属企业')
+    return
+  }
+  companyMaterialDialog.visible = true
+  companyMaterialDialog.loading = true
+  companyMaterialDialog.selectedId = selectedProject.value.companyMaterialId || null
+  try {
+    companyMaterialOptions.value = await listBidProjectCompanyMaterialOptions(selectedProject.value.id)
+  } finally {
+    companyMaterialDialog.loading = false
+  }
+}
+
+async function confirmCompanyMaterialBind() {
+  if (!selectedProject.value?.id || !companyMaterialDialog.selectedId) return
+  companyMaterialDialog.saving = true
+  try {
+    workflow.value = await bindBidProjectCompanyMaterial(selectedProject.value.id, {
+      companyMaterialId: companyMaterialDialog.selectedId
+    })
+    selectedProject.value = workflow.value?.project || selectedProject.value
+    companyMaterialDialog.visible = false
+    await loadProjects(selectedProject.value.id)
+    await loadBidDocumentDetail()
+    ElMessage.success('已关联企业资料档案')
+  } finally {
+    companyMaterialDialog.saving = false
+  }
+}
+
+async function unbindSelectedCompanyMaterial() {
+  if (!selectedProject.value?.id) return
+  try {
+    await ElMessageBox.confirm('确认解除当前项目关联的企业资料档案吗？解除后投标文件和技术方案生成将不再引用该资料。', '解除关联', {
+      confirmButtonText: '解除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch (e) {
+    return
+  }
+  workflow.value = await unbindBidProjectCompanyMaterial(selectedProject.value.id)
+  selectedProject.value = workflow.value?.project || selectedProject.value
+  await loadProjects(selectedProject.value.id)
+  ElMessage.success('已解除关联')
+}
+
+async function smartFillBidDocument() {
+  if (!isParseSuccess.value) {
+    ElMessage.warning('请先完成招标文件解析')
+    return
+  }
+  if (!hasCompanyMaterial.value) {
+    ElMessage.warning('请先关联企业资料档案后再进行投标文件智能填空')
+    return
+  }
+  bidDocumentFilling.value = true
+  try {
+    bidDocumentDetail.value = await fillBidDocument(selectedProject.value.id)
+    bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
+    await refreshWorkflow()
+    ElMessage.success('投标文件智能填空完成')
+  } finally {
+    bidDocumentFilling.value = false
+  }
+}
+
+async function saveBidDocumentDraft() {
+  if (!selectedProject.value?.id) return
+  if (!bidDocumentDraft.value.trim()) {
+    ElMessage.warning('投标文件内容不能为空')
+    return
+  }
+  bidDocumentSaving.value = true
+  try {
+    bidDocumentDetail.value = await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
+    await refreshWorkflow()
+    ElMessage.success('投标文件内容已保存')
+  } finally {
+    bidDocumentSaving.value = false
+  }
+}
+
+function materialTypeLabel(type) {
+  const map = {
+    COMPANY_PROFILE: '企业信息',
+    QUALIFICATION: '资质证书',
+    PERSON_CERT: '人员证书',
+    CASE: '企业业绩',
+    HONOR: '荣誉奖项',
+    AFTER_SALE: '服务承诺',
+    TEAM: '项目成员',
+    OTHER: '其他资料'
+  }
+  return map[String(type || '').toUpperCase()] || '其他资料'
 }
 
 async function loadTechnicalSolution() {
@@ -3506,51 +3804,156 @@ const WritingDirectionEditor = defineComponent({
 }
 
 .bid-doc-workspace {
-  padding: 0;
-  background: #eef2f7;
+  padding: 18px;
+  background: #f5f7fb;
+  overflow: auto;
 }
 
-.word-toolbar {
+.bid-doc-head {
+  margin-bottom: 14px;
+}
+
+.bid-doc-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 48px;
-  padding: 0 14px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bid-doc-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.bid-doc-status-card,
+.company-material-ref-card,
+.bid-doc-editor-card {
   background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
-.word-menu {
-  height: 32px;
-  padding: 6px 14px;
-  color: #374151;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+.bid-doc-status-card {
+  padding: 16px;
 }
 
-.word-editor {
-  height: calc(100% - 80px);
-  overflow: auto;
-  padding: 38px;
+.bid-doc-status-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #0f172a;
 }
 
-.paper {
-  width: 760px;
-  min-height: 920px;
-  margin: 0 auto;
-  padding: 70px;
-  background: #fff;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-  color: #111827;
+.bid-doc-status-card span {
+  color: #2563eb;
+  font-weight: 700;
 }
 
-.paper h2 {
-  text-align: center;
-  margin-bottom: 32px;
-}
-
-.paper-tip {
+.bid-doc-status-card p {
+  margin: 8px 0 0;
   color: #64748b;
+  line-height: 1.6;
+}
+
+.bid-doc-status-card.success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.company-material-ref-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.company-material-ref-card strong,
+.bid-doc-editor-head strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+
+.company-material-ref-card p,
+.bid-doc-editor-head p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.company-material-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.bid-doc-editor-card {
+  padding: 18px;
+}
+
+.bid-doc-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.company-material-selector {
+  min-height: 220px;
+}
+
+.company-material-option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.company-material-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.company-material-option.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.company-material-option strong {
+  color: #0f172a;
+}
+
+.company-material-option p {
+  margin: 6px 0;
+  color: #475569;
+}
+
+.company-material-option span {
+  display: -webkit-box;
+  color: #64748b;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.create-admin-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.create-admin-select {
+  width: 100%;
 }
 
 .tech-layout {

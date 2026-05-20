@@ -12,6 +12,21 @@ function isAiModuleRequest(config) {
   return url.includes('/ai-solution') || url.includes('/ai-document') || url.includes('/technical-solution')
 }
 
+function isAiExportRequest(config) {
+  const url = String(config?.url || '')
+  return /\/export-(word|pdf)(\?|$)/.test(url) || /\/technical-solution\/export-(word|pdf)(\?|$)/.test(url)
+}
+
+function isAiPdfExportRequest(config) {
+  const url = String(config?.url || '')
+  return /\/export-pdf(\?|$)/.test(url) || /\/technical-solution\/export-pdf(\?|$)/.test(url)
+}
+
+function isPdfExportFailureMessage(message) {
+  const text = String(message || '')
+  return /LibreOffice|soffice|AI_BID_LIBREOFFICE|UserInstallation|headless|PDF导出|PDF 导出|导出服务|convert-to|office/i.test(text)
+}
+
 function isRawAiFailureMessage(message) {
   const text = String(message || '')
   if (!text) return true
@@ -21,6 +36,15 @@ function isRawAiFailureMessage(message) {
 
 function safeResponseMessage(config, message, fallback = '接口请求失败') {
   const text = message || fallback
+
+  // 导出 Word/PDF 不是 AI 生成任务，不能再统一替换成“AI任务执行失败”。
+  // PDF 导出属于服务器环境能力，普通用户不应该看到 LibreOffice、soffice、环境变量等技术细节。
+  // 这些真实原因由后端日志记录，前端只给出业务化提示；其他导出校验类错误仍按后端原文展示。
+  if (isAiPdfExportRequest(config) && isPdfExportFailureMessage(text)) {
+    return 'PDF导出失败，请联系管理员检查PDF导出服务'
+  }
+  if (isAiExportRequest(config)) return text
+
   if (isAiModuleRequest(config) && isRawAiFailureMessage(text)) return AI_GENERIC_ERROR_MESSAGE
   return text
 }

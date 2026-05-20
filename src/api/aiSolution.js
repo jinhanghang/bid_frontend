@@ -115,12 +115,12 @@ export function updateSectionContent(outlineId, content) {
   })
 }
 
-export function exportWord(id) {
-  return request({ url: `/ai-solution/${id}/export-word`, method: 'post', timeout: NO_TIMEOUT })
+export function exportWord(id, data = {}) {
+  return request({ url: `/ai-solution/${id}/export-word`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
-export function exportPdf(id) {
-  return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', timeout: NO_TIMEOUT })
+export function exportPdf(id, data = {}) {
+  return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
 export function downloadFileResource(id) {

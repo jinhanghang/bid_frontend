@@ -94,6 +94,28 @@ export function getBidProjectWorkflow(id) {
   return request.get(`/bid-project/${id}/workflow`)
 }
 
+
+/**
+ * AI标书：当前项目可关联的企业资料档案
+ */
+export function listBidProjectCompanyMaterialOptions(id, params = {}) {
+  return request.get(`/bid-project/${id}/company-material/options`, { params })
+}
+
+/**
+ * AI标书：关联企业资料档案
+ */
+export function bindBidProjectCompanyMaterial(id, companyMaterialId) {
+  return request.post(`/bid-project/${id}/company-material/bind`, { companyMaterialId })
+}
+
+/**
+ * AI标书：解除企业资料档案关联
+ */
+export function unbindBidProjectCompanyMaterial(id) {
+  return request.delete(`/bid-project/${id}/company-material/bind`)
+}
+
 /**
  * AI标书：上传招标文件并创建项目，不立即读标
  */

@@ -737,6 +737,7 @@ import {
   uploadAndParseTenderFile
 } from '@/api/aiSolution'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { openWordExportDialog } from '@/utils/wordExportDialog'
 
 const router = useRouter()
 const mode = ref('home')
@@ -2263,27 +2264,12 @@ function notifySolutionExportSuccess(file, fallbackName) {
   })
 }
 
-async function chooseSolutionExportFormat() {
-  try {
-    await ElMessageBox.confirm(
-      h('div', { class: 'export-format-tip' }, [
-        h('p', '请选择导出文件格式：'),
-        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
-      ]),
-      '选择导出格式',
-      {
-        confirmButtonText: 'Word',
-        cancelButtonText: 'PDF',
-        distinguishCancelAndClose: true,
-        closeOnClickModal: true,
-        closeOnPressEscape: true,
-        type: 'info'
-      }
-    )
-    return 'word'
-  } catch (action) {
-    return action === 'cancel' ? 'pdf' : ''
-  }
+async function chooseSolutionExportOptions() {
+  return await openWordExportDialog({
+    format: 'word',
+    styleCode: 'BID_OFFICIAL',
+    showFormat: true
+  })
 }
 
 async function onExport() {
@@ -2304,15 +2290,23 @@ async function onExport() {
   const confirmed = await confirmSolutionExportBeforeDownload()
   if (!confirmed) return
 
-  const format = await chooseSolutionExportFormat()
-  if (!format) return
+  const exportOptions = await chooseSolutionExportOptions()
+  if (!exportOptions) return
 
+  const format = exportOptions.format
+  const request = {
+    styleCode: exportOptions.styleCode,
+    generateCatalog: true,
+    beautifyTable: true,
+    keepBold: true,
+    pageNumber: true
+  }
   const solutionId = currentSolution.value.id
   const solutionName = currentSolution.value?.solutionName || 'AI方案'
 
   exportLoading.value = true
   try {
-    const file = format === 'pdf' ? await exportPdf(solutionId) : await exportWord(solutionId)
+    const file = format === 'pdf' ? await exportPdf(solutionId, request) : await exportWord(solutionId, request)
     await refreshCurrent(solutionId)
     await loadList()
 

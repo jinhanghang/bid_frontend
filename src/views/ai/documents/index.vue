@@ -314,6 +314,7 @@ import {
 } from '@/api/aiDocument'
 import { downloadFileResource, streamSection, updateSectionContent } from '@/api/aiSolution'
 import { formatDateTime } from '@/utils/format'
+import { openWordExportDialog } from '@/utils/wordExportDialog'
 
 const router = useRouter()
 
@@ -720,38 +721,31 @@ async function onSaveSection() {
   }
 }
 
-async function chooseExportFormat() {
-  try {
-    await ElMessageBox.confirm(
-      h('div', { class: 'export-format-tip' }, [
-        h('p', '请选择导出文件格式：'),
-        h('p', { class: 'export-format-sub' }, 'Word 方便继续编辑，PDF 方便定稿分发。')
-      ]),
-      '选择导出格式',
-      {
-        confirmButtonText: 'Word',
-        cancelButtonText: 'PDF',
-        distinguishCancelAndClose: true,
-        closeOnClickModal: true,
-        closeOnPressEscape: true,
-        type: 'info'
-      }
-    )
-    return 'word'
-  } catch (action) {
-    return action === 'cancel' ? 'pdf' : ''
-  }
+async function chooseExportOptions() {
+  return await openWordExportDialog({
+    format: 'word',
+    styleCode: 'BID_OFFICIAL',
+    showFormat: true
+  })
 }
 
 async function onExport() {
   if (!currentDoc.value?.id) return
-  const format = await chooseExportFormat()
-  if (!format) return
+  const exportOptions = await chooseExportOptions()
+  if (!exportOptions) return
+  const format = exportOptions.format
+  const request = {
+    styleCode: exportOptions.styleCode,
+    generateCatalog: true,
+    beautifyTable: true,
+    keepBold: true,
+    pageNumber: true
+  }
   exportLoading.value = true
   try {
     const file = format === 'pdf'
-      ? await exportDocumentPdf(currentDoc.value.id)
-      : await exportDocumentWord(currentDoc.value.id)
+      ? await exportDocumentPdf(currentDoc.value.id, request)
+      : await exportDocumentWord(currentDoc.value.id, request)
     if (!file?.id) {
       ElMessage.warning('导出成功，但未返回文件ID，请到下载中心查看')
       return

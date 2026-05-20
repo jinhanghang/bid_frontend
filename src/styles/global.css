@@ -152,3 +152,59 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Word/PDF 导出样式选择弹窗：不包含导出范围，只选择格式和固定样式 */
+.word-export-message-box {
+  width: 560px;
+  max-width: 92vw;
+}
+
+.word-export-dialog-body {
+  color: #1f2937;
+}
+
+.word-export-dialog-section + .word-export-dialog-section {
+  margin-top: 14px;
+}
+
+.word-export-dialog-title {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.word-export-style-card {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px 0;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-sizing: border-box;
+  cursor: pointer;
+  background: #fff;
+}
+
+.word-export-style-card.is-active {
+  border-color: #1677ff;
+  background: #f0f7ff;
+}
+
+.word-export-style-card .el-radio {
+  height: auto;
+  margin-right: 0;
+}
+
+.word-export-style-desc {
+  margin-top: 4px;
+  padding-left: 24px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+.word-export-style-tag {
+  margin-left: 8px;
+}
+

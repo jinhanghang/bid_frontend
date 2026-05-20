@@ -66,10 +66,10 @@ export function getDocumentGenerationTask(taskId) {
   return request({ url: `/ai-document/task/${taskId}`, method: 'get' })
 }
 
-export function exportDocumentWord(id) {
-  return request({ url: `/ai-document/${id}/export-word`, method: 'post', timeout: NO_TIMEOUT })
+export function exportDocumentWord(id, data = {}) {
+  return request({ url: `/ai-document/${id}/export-word`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
-export function exportDocumentPdf(id) {
-  return request({ url: `/ai-document/${id}/export-pdf`, method: 'post', timeout: NO_TIMEOUT })
+export function exportDocumentPdf(id, data = {}) {
+  return request({ url: `/ai-document/${id}/export-pdf`, method: 'post', data, timeout: NO_TIMEOUT })
 }
