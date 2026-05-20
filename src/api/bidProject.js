@@ -105,8 +105,9 @@ export function listBidProjectCompanyMaterialOptions(id, params = {}) {
 /**
  * AI标书：关联企业资料档案
  */
-export function bindBidProjectCompanyMaterial(id, companyMaterialId) {
-  return request.post(`/bid-project/${id}/company-material/bind`, { companyMaterialId })
+export function bindBidProjectCompanyMaterial(id, data) {
+  const body = data && typeof data === 'object' ? data : { companyMaterialId: data }
+  return request.post(`/bid-project/${id}/company-material/bind`, body)
 }
 
 /**
@@ -152,6 +153,29 @@ export function autoFillBidProjectBasicInfo(id) {
  */
 export function enterBidDocument(id) {
   return request.post(`/bid-project/${id}/bid-document/enter`)
+}
+
+/**
+ * AI标书：投标文件智能填空详情
+ */
+export function getBidDocument(id) {
+  return request.get(`/bid-project/${id}/bid-document`)
+}
+
+/**
+ * AI标书：投标文件智能填空
+ */
+export function fillBidDocument(id) {
+  return request.post(`/bid-project/${id}/bid-document/fill`, null, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
+ * AI标书：保存投标文件智能填空内容
+ */
+export function saveBidDocument(id, data) {
+  return request.post(`/bid-project/${id}/bid-document/save`, data || {})
 }
 
 /**
