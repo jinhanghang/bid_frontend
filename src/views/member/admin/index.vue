@@ -97,44 +97,51 @@
 
       <el-tab-pane v-if="canManageModels" label="模型管理" name="models">
         <div class="toolbar model-toolbar">
-          <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景" clearable @keyup.enter="loadModels" />
+          <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景 / 备注" clearable @keyup.enter="loadModels" />
           <el-select v-model="modelQuery.modelType" placeholder="模型类型" clearable>
             <el-option label="Chat" value="chat" />
             <el-option label="Rerank" value="rerank" />
           </el-select>
           <el-button type="primary" @click="loadModels">搜索</el-button>
+          <el-button plain @click="openDiagnose">配置体检</el-button>
           <el-button type="primary" plain @click="openModelDialog()">新增模型</el-button>
         </div>
-        <el-alert
-          class="model-alert"
-          type="info"
-          :closable="false"
-          show-icon
-          title="所有文本生成类 AI 调用都会优先读取这里启用的 Chat 模型；知识库向量化由百炼云服务托管，本系统不再维护 Embedding 模型。"
-        />
-        <el-table :data="models" class="ui-table" height="520">
+
+        <div class="model-flow-card">
+          <div class="model-flow-title">模型调用闭环</div>
+          <div class="model-flow-steps">
+            <span>套餐/项目选择 AI等级</span>
+            <em>→</em>
+            <span>AI方案 / AI文档 / 知识库问答传入场景</span>
+            <em>→</em>
+            <span>模型管理按“场景 + 等级”解析真实模型</span>
+            <em>→</em>
+            <span>生成结果、额度流水、任务日志形成闭环</span>
+          </div>
+        </div>
+
+        <el-table :data="models" class="ui-table" height="500">
           <el-table-column prop="provider" label="服务商" width="110" />
           <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
-          <el-table-column label="类型" width="105">
+          <el-table-column label="类型" width="100">
             <template #default="{ row }"><el-tag>{{ modelTypeText(row.modelType) }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="使用场景" min-width="180" show-overflow-tooltip>
-            <template #default="{ row }">{{ sceneText(row.sceneCode) }}</template>
-          </el-table-column>
-          <el-table-column label="AI等级" width="100">
-            <template #default="{ row }">{{ levelText(row.aiLevel) }}</template>
+          <el-table-column label="生效范围" min-width="240" show-overflow-tooltip>
+            <template #default="{ row }">{{ scopeText(row) }}</template>
           </el-table-column>
           <el-table-column label="默认" width="80">
             <template #default="{ row }"><el-tag v-if="row.defaultFlag === 1" type="success">默认</el-tag><span v-else class="muted">-</span></template>
           </el-table-column>
-          <el-table-column prop="temperature" label="温度" width="80" />
-          <el-table-column prop="maxTokens" label="Token" width="90" />
           <el-table-column label="状态" width="90">
             <template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template>
           </el-table-column>
+          <el-table-column label="影响模块" min-width="210" show-overflow-tooltip>
+            <template #default="{ row }">{{ effectModulesText(row) }}</template>
+          </el-table-column>
           <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column label="操作" width="190" fixed="right">
             <template #default="{ row }">
+              <el-button link type="primary" @click="previewModel(row)">预览</el-button>
               <el-button link type="primary" @click="openModelDialog(row)">编辑</el-button>
               <el-button link type="danger" @click="removeModel(row)">删除</el-button>
             </template>
@@ -170,9 +177,9 @@
     </el-dialog>
 
 
-    <el-dialog v-model="modelDialog.visible" :title="modelDialog.form.id ? '编辑模型配置' : '新增模型配置'" width="780px" destroy-on-close>
+    <el-dialog v-model="modelDialog.visible" :title="modelDialog.form.id ? '编辑模型配置' : '新增模型配置'" width="820px" destroy-on-close>
       <el-alert type="warning" :closable="false" show-icon class="model-alert">
-        模型名称仅超级管理员可见。这里只维护 Chat / Rerank 模型；知识库向量化由百炼云服务托管，不再配置 Embedding 模型。
+        模型名称、接口地址、密钥引用仅超级管理员可见。默认模型是全局兜底模型，开启后会自动清空使用场景和 AI等级。
       </el-alert>
       <el-form :model="modelDialog.form" label-width="110px" class="model-form">
         <el-row :gutter="14">
@@ -180,35 +187,60 @@
           <el-col :span="12"><el-form-item label="模型名称"><el-input v-model="modelDialog.form.modelName" placeholder="如 qwen-plus / qwen-max" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="模型类型">
             <el-select v-model="modelDialog.form.modelType" style="width: 100%">
-              <el-option label="Chat" value="chat" />
-              <el-option label="Rerank" value="rerank" />
+              <el-option label="Chat：文本生成主链路" value="chat" />
+              <el-option label="Rerank：知识库排序预留" value="rerank" />
             </el-select>
           </el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="默认模型">
+            <div class="switch-line">
+              <el-switch v-model="modelDialog.form.defaultFlag" :active-value="1" :inactive-value="0" />
+              <span class="form-tip">作为全局兜底，只允许一个默认模型</span>
+            </div>
+          </el-form-item></el-col>
           <el-col :span="12"><el-form-item label="使用场景">
-            <el-select v-model="modelDialog.form.sceneCode" clearable placeholder="为空表示通用" style="width: 100%">
+            <el-select v-model="modelDialog.form.sceneCode" :disabled="modelDialog.form.defaultFlag === 1" clearable placeholder="为空表示通用" style="width: 100%">
               <el-option v-for="item in sceneOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item></el-col>
           <el-col :span="12"><el-form-item label="AI等级">
-            <el-select v-model="modelDialog.form.aiLevel" clearable placeholder="为空表示通用" style="width: 100%">
+            <el-select v-model="modelDialog.form.aiLevel" :disabled="modelDialog.form.defaultFlag === 1" clearable placeholder="为空表示通用" style="width: 100%">
               <el-option label="基础版" value="BASIC" />
               <el-option label="标准版" value="STANDARD" />
               <el-option label="旗舰版" value="FLAGSHIP" />
             </el-select>
           </el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="默认模型"><el-switch v-model="modelDialog.form.defaultFlag" :active-value="1" :inactive-value="0" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="API地址"><el-input v-model="modelDialog.form.apiBase" placeholder="为空使用 application.yml" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="密钥引用"><el-input v-model="modelDialog.form.apiKeyRef" placeholder="如 DASHSCOPE_API_KEY" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="温度"><el-input-number v-model="modelDialog.form.temperature" :min="0" :max="2" :step="0.1" style="width: 100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="最大Token"><el-input-number v-model="modelDialog.form.maxTokens" :min="1" style="width: 100%" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="modelDialog.form.sortNo" :min="0" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="排序"><el-input-number v-model="modelDialog.form.sortNo" :min="0" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="状态"><el-switch v-model="modelDialog.form.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="停用" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="备注"><el-input v-model="modelDialog.form.remark" type="textarea" :rows="3" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="备注"><el-input v-model="modelDialog.form.remark" type="textarea" :rows="3" placeholder="建议写清楚：适用模块、等级、成本或稳定性说明" /></el-form-item></el-col>
         </el-row>
       </el-form>
       <template #footer>
         <el-button @click="modelDialog.visible = false">取消</el-button>
+        <el-button plain @click="previewModel(modelDialog.form)">预览命中</el-button>
         <el-button type="primary" @click="saveModel">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="diagnoseDialog.visible" title="模型配置体检" width="1080px" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon class="model-alert">
+        体检不会真实调用大模型，只检查当前配置在 AI方案、AI文档、知识库问答等场景下最终会命中哪个 Chat 模型。
+      </el-alert>
+      <el-table v-loading="diagnoseDialog.loading" :data="diagnoseDialog.records" class="ui-table" height="560">
+        <el-table-column prop="sceneName" label="业务场景" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="aiLevelName" label="AI等级" width="90" />
+        <el-table-column prop="effectiveRule" label="命中规则" min-width="150" />
+        <el-table-column prop="provider" label="服务商" width="100" />
+        <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }"><el-tag :type="diagnoseStatusType(row.status)">{{ diagnoseStatusText(row.status) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="warning" label="提示" min-width="260" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="diagnoseDialog.visible = false">关闭</el-button>
+        <el-button type="primary" @click="loadDiagnose">重新体检</el-button>
       </template>
     </el-dialog>
 
@@ -243,7 +275,7 @@ import {
   pageMemberPlanManage,
   updateMemberPlan
 } from '@/api/member'
-import { createAiModel, deleteAiModel, pageAiModels, updateAiModel } from '@/api/aiModel'
+import { createAiModel, deleteAiModel, diagnoseAiModels, pageAiModels, previewAiModel, updateAiModel } from '@/api/aiModel'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -262,6 +294,7 @@ const modelQuery = reactive({ keyword: '', modelType: '' })
 const planDialog = reactive({ visible: false, form: emptyPlan() })
 const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
 const modelDialog = reactive({ visible: false, form: emptyModel() })
+const diagnoseDialog = reactive({ visible: false, loading: false, records: [] })
 
 const canManageModels = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []).includes('SUPERADMIN'))
 
@@ -273,8 +306,7 @@ const sceneOptions = [
   { label: '章节正文生成', value: 'SOLUTION_SECTION_GENERATE' },
   { label: '全文生成', value: 'SOLUTION_FULL_GENERATE' },
   { label: '章节/全文重写', value: 'SOLUTION_REWRITE' },
-  { label: '知识库问答', value: 'KNOWLEDGE_RETRIEVAL_SUMMARY' },
-  { label: '知识库向量化', value: 'KNOWLEDGE_EMBEDDING' }
+  { label: '知识库问答', value: 'KNOWLEDGE_RETRIEVAL_SUMMARY' }
 ]
 
 onMounted(refreshAll)
@@ -288,6 +320,13 @@ watch(activeTab, (tab) => {
   if (tab === 'accounts') loadAccounts()
   if (tab === 'logs') loadLogs()
   if (tab === 'models' && canManageModels.value) loadModels()
+})
+
+watch(() => modelDialog.form.defaultFlag, (value) => {
+  if (value === 1) {
+    modelDialog.form.sceneCode = ''
+    modelDialog.form.aiLevel = ''
+  }
 })
 
 async function refreshAll() {
@@ -318,11 +357,9 @@ async function loadLogs() {
 
 async function loadModels() {
   if (!canManageModels.value) return
-  const params = { current: 1, size: 100, keyword: modelQuery.keyword }
+  const params = { current: 1, size: 100, keyword: modelQuery.keyword, modelType: modelQuery.modelType }
   const res = await pageAiModels(params)
-  const records = res?.records || []
-  const visibleRecords = records.filter((item) => String(item.modelType || '').toLowerCase() !== 'embedding')
-  models.value = modelQuery.modelType ? visibleRecords.filter((item) => item.modelType === modelQuery.modelType) : visibleRecords
+  models.value = (res?.records || []).filter((item) => String(item.modelType || '').toLowerCase() !== 'embedding')
 }
 
 function emptyPlan() {
@@ -380,7 +417,7 @@ async function submitAdjust() {
 
 
 function openModelDialog(row) {
-  modelDialog.form = row ? { ...row } : emptyModel()
+  modelDialog.form = row ? normalizeModelForm(row) : emptyModel()
   modelDialog.visible = true
 }
 
@@ -406,6 +443,51 @@ async function removeModel(row) {
   await loadModels()
 }
 
+function normalizeModelForm(row = {}) {
+  return {
+    ...emptyModel(),
+    ...row,
+    sceneCode: row.sceneCode || '',
+    aiLevel: row.aiLevel || '',
+    apiBase: row.apiBase || '',
+    apiKeyRef: row.apiKeyRef || 'DASHSCOPE_API_KEY',
+    defaultFlag: row.defaultFlag || 0,
+    status: row.status == null ? 1 : row.status
+  }
+}
+
+async function openDiagnose() {
+  diagnoseDialog.visible = true
+  await loadDiagnose()
+}
+
+async function loadDiagnose() {
+  diagnoseDialog.loading = true
+  try {
+    diagnoseDialog.records = await diagnoseAiModels() || []
+  } finally {
+    diagnoseDialog.loading = false
+  }
+}
+
+async function previewModel(row) {
+  const payload = {
+    modelType: row?.modelType || 'chat',
+    sceneCode: row?.defaultFlag === 1 ? '' : (row?.sceneCode || ''),
+    aiLevel: row?.defaultFlag === 1 ? '' : (row?.aiLevel || '')
+  }
+  const result = await previewAiModel(payload)
+  const text = [
+    `业务场景：${result?.sceneName || sceneText(payload.sceneCode)}`,
+    `AI等级：${result?.aiLevelName || levelText(payload.aiLevel)}`,
+    `命中规则：${result?.effectiveRule || '-'}`,
+    `模型名称：${result?.modelName || '-'}`,
+    `服务商：${result?.provider || '-'}`,
+    result?.warning ? `提示：${result.warning}` : ''
+  ].filter(Boolean).join('\n')
+  ElMessageBox.alert(text, '模型命中预览', { confirmButtonText: '知道了' })
+}
+
 function sceneText(value) {
   if (!value) return '通用'
   return sceneOptions.find((item) => item.value === value)?.label || value
@@ -423,6 +505,40 @@ function modelTypeText(value) {
   if (value === 'chat') return 'Chat'
   if (value === 'rerank') return 'Rerank'
   return value || '-'
+}
+
+function scopeText(row) {
+  if (!row) return '-'
+  if (row.defaultFlag === 1) return '全局默认兜底'
+  const scene = sceneText(row.sceneCode)
+  const level = levelText(row.aiLevel)
+  if (!row.sceneCode && !row.aiLevel) return '通用模型'
+  if (row.sceneCode && row.aiLevel) return `${scene} / ${level}`
+  if (row.sceneCode) return `${scene} / 全部等级`
+  return `全部场景 / ${level}`
+}
+
+function effectModulesText(row) {
+  const type = String(row?.modelType || '').toLowerCase()
+  if (type === 'rerank') return '知识库检索排序增强预留'
+  if (!row?.sceneCode) return 'AI方案、AI文档、知识库问答通用兜底'
+  if (String(row.sceneCode).startsWith('SOLUTION_')) return 'AI方案、AI文档生成链路'
+  if (row.sceneCode === 'KNOWLEDGE_RETRIEVAL_SUMMARY') return '知识库问答总结'
+  return '通用AI生成'
+}
+
+function diagnoseStatusText(status) {
+  if (status === 'OK') return '正常'
+  if (status === 'FALLBACK') return '配置兜底'
+  if (status === 'MISSING') return '缺失'
+  return status || '-'
+}
+
+function diagnoseStatusType(status) {
+  if (status === 'OK') return 'success'
+  if (status === 'FALLBACK') return 'warning'
+  if (status === 'MISSING') return 'danger'
+  return 'info'
 }
 
 function normalizeRoleCode(value = '') {
@@ -475,8 +591,16 @@ p { margin-top: 8px; color: #64748b; }
 .toolbar .el-input { max-width: 280px; }
 .toolbar .el-select { width: 150px; }
 .model-toolbar .el-select { width: 170px; }
+.model-flow-card { margin-bottom: 12px; padding: 14px 16px; border: 1px solid #e6edf7; border-radius: 14px; background: linear-gradient(135deg, #f8fbff, #ffffff); }
+.model-flow-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+.model-flow-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #1f2937; font-size: 13px; }
+.model-flow-steps span { padding: 5px 9px; border-radius: 999px; background: #eef4ff; border: 1px solid #dbeafe; }
+.model-flow-steps em { color: #94a3b8; font-style: normal; }
+.model-flow-desc { margin-top: 8px; color: #64748b; font-size: 13px; line-height: 1.7; }
 .model-alert { margin-bottom: 12px; }
 .model-form { margin-top: 14px; }
+.switch-line { display: flex; align-items: center; gap: 10px; }
+.form-tip { color: #64748b; font-size: 12px; }
 .muted { color: #94a3b8; }
 .plus { color: #16a34a; font-weight: 800; }
 .minus { color: #ef4444; font-weight: 800; }

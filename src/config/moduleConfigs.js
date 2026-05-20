@@ -72,8 +72,6 @@ export const moduleConfigs = {
       { prop: 'sceneCode', label: '使用场景', minWidth: 180 },
       { prop: 'aiLevel', label: 'AI等级', width: 110 },
       { prop: 'defaultFlag', label: '默认', width: 90, type: 'status', map: { 1: ['默认', 'success'], 0: ['否', 'info'] } },
-      { prop: 'temperature', label: '温度', width: 90 },
-      { prop: 'maxTokens', label: '最大Token', width: 110 },
       { prop: 'sortNo', label: '排序', width: 90 },
       { prop: 'status', label: '状态', width: 90, type: 'status', map: enableMap }
     ],
@@ -99,8 +97,6 @@ export const moduleConfigs = {
       ] },
       { prop: 'apiBase', label: 'API地址' },
       { prop: 'apiKeyRef', label: '密钥引用', default: 'DASHSCOPE_API_KEY' },
-      { prop: 'temperature', label: '温度参数', type: 'number', default: 0.7 },
-      { prop: 'maxTokens', label: '最大Token', type: 'number', default: 8192 },
       { prop: 'defaultFlag', label: '是否默认', type: 'select', default: 0, options: [{ label: '是', value: 1 }, { label: '否', value: 0 }] },
       { prop: 'sortNo', label: '排序', type: 'number', default: 0 },
       { prop: 'status', label: '状态', type: 'select', default: 1, options: [{ label: '启用', value: 1 }, { label: '停用', value: 0 }] },

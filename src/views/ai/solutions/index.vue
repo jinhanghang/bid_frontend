@@ -1040,16 +1040,21 @@ async function loadList() {
     const res = await pageSolutions(listQuery)
     solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
 
-    if (!currentSolution.value && mode.value !== 'create' && solutions.value.length) {
-      await loadDetail(solutions.value[0].id)
-    }
+    // 首次进入 AI方案页面时不默认选中第一条方案。
+    // 保持右侧首页/空态，只有用户点击左侧方案卡片，或新建完成后，才进入方案详情。
+    if (mode.value !== 'create') {
+      const currentId = currentSolution.value?.id || activeSolutionId.value
+      const currentStillExists = currentId
+        ? solutions.value.some((item) => String(item.id) === String(currentId))
+        : false
 
-    if (!solutions.value.length && mode.value !== 'create') {
-      currentSolution.value = null
-      activeSolutionId.value = null
-      selectedSection.value = null
-      selectedSectionSolutionId.value = null
-      mode.value = 'home'
+      if (!currentStillExists) {
+        currentSolution.value = null
+        activeSolutionId.value = null
+        selectedSection.value = null
+        selectedSectionSolutionId.value = null
+        mode.value = 'home'
+      }
     }
   } finally {
     loading.value = false
@@ -1908,11 +1913,11 @@ async function pollGenerationTask(taskId, silent = true) {
     if (!silent && !notifiedTaskIds.has(task.id)) {
       notifiedTaskIds.add(task.id)
       if (status === 'FAILED') {
-        ElMessage.error(task.errorMessage || task.message || '生成失败')
+        ElMessage.error('生成失败，请稍后重试')
       } else if (status === 'CANCELED') {
         ElMessage.warning(task.message || '生成已取消')
       } else if (status === 'PARTIAL') {
-        ElMessage.warning(task.errorMessage || task.message || '部分章节未生成完成，请查看失败章节后重试')
+        ElMessage.warning('部分章节未生成完成，请重试未完成章节')
       } else {
         ElMessage.success(task.message || '生成完成')
       }
@@ -2192,7 +2197,7 @@ async function onGenerateSection() {
         sectionStreamingText.value += chunk
       },
       onError(message) {
-        ElMessage.error(message || '生成失败')
+        ElMessage.error('生成失败，请稍后重试')
       }
     })
     await refreshCurrent()
@@ -2773,7 +2778,7 @@ const OutlineTree = defineComponent({
           controls.push(h(ElTag, { size: 'small', type: sectionStatusType(node), effect: 'light' }, () => sectionStatusLabel(node)))
           controls.push(h(ElButton, { size: 'small', type: 'warning', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重编'))
         } else if (failed) {
-          const errorMessage = node.errorMessage || node.section?.errorMessage || '章节生成失败，请点击“重试”重新生成'
+          const errorMessage = '章节生成失败，请点击“重试”重新生成'
           controls.push(h(ElTooltip, { content: errorMessage, placement: 'top', 'show-after': 200 }, { default: () => h(ElTag, { size: 'small', type: sectionStatusType(node), effect: 'light' }, () => sectionStatusLabel(node)) }))
           controls.push(h(ElButton, { size: 'small', type: 'danger', plain: true, disabled: operationDisabled, onClick: (event) => { event.stopPropagation(); if (operationDisabled) return; emit('section-generate', node) } }, () => operationDisabled ? '锁定' : '重试'))
         } else {
@@ -2823,38 +2828,114 @@ const WritingDirectionEditor = defineComponent({
 </script>
 
 <style scoped>
-.solution-shell { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 12px; height: calc(100vh - 82px); background: #eef3fb; }
-.solution-shell.with-preview { grid-template-columns: 270px minmax(520px, 0.95fr) minmax(420px, 1.25fr); }
+.solution-shell {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+}
+
+.solution-shell.with-preview { grid-template-columns: 268px minmax(520px, 0.95fr) minmax(420px, 1.25fr); }
 .solution-shell.no-preview .solution-main-card { min-width: 0; }
-.solution-list-card, .solution-main-card, .right-preview-card { background: #fff; border-radius: 12px; overflow: hidden; }
+.solution-list-card, .solution-main-card, .right-preview-card { background: #fff; border-radius: 18px; overflow: hidden; }
 .solution-list-card { display: flex; flex-direction: column; padding: 14px; }
-.list-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.list-title { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; color: #1f2937; }
 .solution-search { margin: 18px 0 12px; }
-.solution-list-scroll { flex: 1; }
+.solution-list-scroll { flex: 1; min-height: 0; }
 .solution-card { position: relative; }
 .solution-card-actions { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: none; gap: 8px; }
 .solution-card:hover .solution-card-actions { display: flex; }
 .solution-card-name span { display: inline-block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.solution-card { padding: 14px 12px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; margin-bottom: 10px; background: rgba(248, 250, 255, .8); }
-.solution-card.active { border-color: #2f6bff; background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%); }
-.solution-card-name { display: flex; align-items: center; gap: 6px; color: #2f6bff; font-weight: 600; }
-.solution-card-time { margin: 6px 0 8px 22px; color: #6b7280; font-size: 13px; }
+.solution-card { padding: 14px 12px; border: 1px solid #eef2ff; border-radius: 12px; cursor: pointer; margin-bottom: 10px; background: #fff; transition: all 0.18s ease; }
+.solution-card:hover { border-color: #c7d7ff; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.08); }
+.solution-card.active { border-color: #4f8cff; background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%); box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1); }
+.solution-card-name { display: flex; align-items: center; gap: 6px; color: #2563eb; font-weight: 700; }
+.solution-card-time { margin: 6px 0 8px 22px; color: #8a98ad; font-size: 12px; }
 .solution-card-tags { display: flex; gap: 8px; margin-left: 22px; }
 .no-more { text-align: center; color: #9aa4b2; margin: 18px 0; }
-.new-btn { width: 100%; height: 42px; background: linear-gradient(90deg, #2f6bff, #8158ff); border: 0; }
+.new-btn { width: 100%; height: 42px; background: linear-gradient(90deg, #3b73ff, #7c4dff); border: 0; }
 .solution-main-card, .right-preview-card { min-width: 0; }
-.home-panel { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; background: linear-gradient(135deg, #eff6ff 0%, #fff 45%, #f7f2ff 100%); }
-.home-panel h1 { font-size: 28px; margin-bottom: 16px; }
-.home-desc { max-width: 760px; text-align: center; color: #606b7b; line-height: 1.8; }
-.mode-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin: 56px 0 32px; width: min(900px, 96%); }
-.mode-card { min-height: 250px; padding: 28px; border-radius: 16px; cursor: pointer; position: relative; overflow: hidden; }
-.mode-card h3 { margin: 0 0 18px; }
-.mode-card p { color: #4b5563; line-height: 1.7; }
-.mode-card.pink { background: #fff1f7; }
-.mode-card.blue { background: #f1f6ff; }
+.home-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 60px 40px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.home-panel h1 {
+  margin: 0 0 20px;
+  color: #1f2937;
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+}
+.home-desc {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+  color: #4b5563;
+  line-height: 2;
+  font-size: 16px;
+}
+.mode-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  max-width: 1120px;
+  margin: 60px auto 0;
+}
+.mode-card {
+  min-height: 300px;
+  padding: 28px;
+  border-radius: 24px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+.mode-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.12);
+}
+.mode-card h3 {
+  margin: 0 0 18px;
+  color: #1f2937;
+  font-size: 22px;
+  font-weight: 800;
+}
+.mode-card p {
+  color: #475569;
+  line-height: 1.8;
+  font-size: 15px;
+}
+.mode-card.pink { background: #fff1f2; }
+.mode-card.blue { background: #f1f5ff; }
 .mode-card.purple { background: #f7f1ff; }
-.mode-ill { position: absolute; right: 30px; bottom: 24px; width: 92px; height: 92px; border-radius: 28px; background: linear-gradient(135deg, #fff, #7c93ff); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 32px; box-shadow: 0 15px 30px rgba(68, 90, 220, .18); }
-.home-new-btn { width: 150px; background: linear-gradient(90deg, #2f6bff, #8158ff); border: 0; }
+.mode-ill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-top: 58px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #3b82f6;
+  font-size: 28px;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.12);
+}
+.home-new-btn {
+  display: block;
+  width: 150px;
+  height: 44px;
+  margin: 58px auto 0;
+  background: linear-gradient(90deg, #3b73ff, #7c4dff);
+  border: 0;
+}
 .create-panel, .detail-panel { height: 100%; display: flex; flex-direction: column; }
 .create-header { display: flex; align-items: center; gap: 16px; height: 54px; padding: 0 14px; border-bottom: 1px solid #e5e7eb; }
 .steps { flex: 1; }
@@ -3107,7 +3188,7 @@ const WritingDirectionEditor = defineComponent({
   white-space: nowrap;
 }
 
-@media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 260px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
+@media (max-width: 1280px) { .solution-shell, .solution-shell.with-preview { grid-template-columns: 268px minmax(0, 1fr); } .right-preview-card { display: none; } .create-body { grid-template-columns: 1fr; } .create-left { border-right: 0; } }
 :deep(.tree-row.clickable) { cursor: pointer; }
 :deep(.tree-row.clickable:hover) { background: #f8fafc; }
 

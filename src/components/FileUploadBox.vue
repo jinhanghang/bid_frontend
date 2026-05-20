@@ -33,8 +33,8 @@ const props = defineProps({
   moduleType: { type: String, default: 'other' },
   bizId: { type: [String, Number], default: '' },
   privateFlag: { type: Boolean, default: true },
-  accept: { type: String, default: '' },
-  maxSizeMb: { type: Number, default: 100 },
+  accept: { type: String, default: '.doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp,.zip,.rar,.7z' },
+  maxSizeMb: { type: Number, default: 50 },
   maxCount: { type: Number, default: 5 },
   tip: { type: String, default: '' }
 })

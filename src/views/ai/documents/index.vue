@@ -48,15 +48,6 @@
 
     <main class="doc-main">
       <template v-if="!currentDoc">
-        <section class="hero-card">
-          <div class="hero-left">
-            <p class="eyebrow">AI DOCUMENT</p>
-            <h1>选择一种文档类型开始生成</h1>
-            <p>统一复用现有 AI方案生成引擎，支持资料解析、目录生成、章节生成、Word/PDF导出、下载中心和回收站。</p>
-          </div>
-          <div class="hero-ill">DOC</div>
-        </section>
-
         <section class="type-grid">
           <div
             v-for="type in documentTypes"

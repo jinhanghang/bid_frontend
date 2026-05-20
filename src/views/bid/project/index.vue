@@ -1315,7 +1315,18 @@ async function loadProjects(selectId) {
       keyword: keyword.value || undefined
     })
     projects.value = res?.records || []
-    const id = selectId || selectedProject.value?.id || projects.value[0]?.id
+
+    // 首次进入 AI标书页面时不自动选中第一个项目，也不自动展开左侧项目文件下拉。
+    // 只有以下两种情况才选中项目：
+    // 1. 新建/上传/刷新等业务动作明确传入 selectId；
+    // 2. 用户原本已经选中的项目仍在当前列表中。
+    const explicitSelectId = selectId ? String(selectId) : ''
+    const currentSelectedId = selectedProject.value?.id ? String(selectedProject.value.id) : ''
+    const currentStillExists = currentSelectedId
+      ? projects.value.some((item) => String(item.id) === currentSelectedId)
+      : false
+    const id = explicitSelectId || (currentStillExists ? currentSelectedId : '')
+
     if (id) {
       await selectProject(id, false)
     } else {
@@ -2095,7 +2106,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
     }
 
     if (!silent) {
-      if (status === 'FAILED') ElMessage.error(task?.errorMessage || task?.message || '生成失败')
+      if (status === 'FAILED') ElMessage.error('生成失败，请稍后重试')
       else if (status === 'PARTIAL') ElMessage.warning(task?.message || '部分章节未生成完成，请继续生成或重编失败章节')
       else if (status === 'CANCELED') ElMessage.warning(task?.message || '生成已取消')
       else ElMessage.success(task?.message || '技术方案正文生成完成')
@@ -2925,7 +2936,7 @@ async function generateTechnicalSection() {
         sectionStreamingText.value += chunk
       },
       onError(message) {
-        ElMessage.error(message || '生成失败')
+        ElMessage.error('生成失败，请稍后重试')
       }
     })
     await loadTechnicalSolution()

@@ -271,7 +271,7 @@
         :biz-id="selectedBase.id"
         :private-flag="true"
         accept=".doc,.docx,.pdf,.xls,.xlsx,.txt"
-        :max-size-mb="100"
+        :max-size-mb="50"
         :max-count="5"
         @success="onKnowledgeFileUploaded"
       />
@@ -548,11 +548,14 @@ async function loadBases(selectId) {
     bases.value = res?.records || []
     basePager.total = Number(res?.total || 0)
 
-    const next = selectId
-      ? bases.value.find((item) => String(item.id) === String(selectId))
-      : selectedBase.value
-        ? bases.value.find((item) => String(item.id) === String(selectedBase.value.id))
-        : bases.value[0]
+    // 首次进入知识库页面时不默认选中第一条知识库。
+    // 明确传入 selectId（例如新建后、上传后刷新）才自动定位；否则只保留用户原本已经选中的知识库。
+    const explicitSelectId = selectId ? String(selectId) : ''
+    const currentSelectedId = selectedBase.value?.id ? String(selectedBase.value.id) : ''
+    const targetId = explicitSelectId || currentSelectedId
+    const next = targetId
+      ? bases.value.find((item) => String(item.id) === String(targetId))
+      : null
 
     if (next) {
       selectBase(next)
