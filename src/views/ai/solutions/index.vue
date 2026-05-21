@@ -602,6 +602,13 @@
             <el-radio-button label="PRACTICAL">实用型</el-radio-button>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="内容深度：">
+          <el-radio-group v-model="fullGenerateForm.contentDepth" class="style-radio-grid">
+            <el-radio-button label="BRIEF">简洁</el-radio-button>
+            <el-radio-button label="STANDARD">标准</el-radio-button>
+            <el-radio-button label="DETAILED">详细</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="fullGenerateSettingVisible = false">取消</el-button>
@@ -812,6 +819,7 @@ const fullGenerateForm = reactive({
   blindBidEnabled: false,
   blindBidRequirement: '',
   writingStyle: 'GENERAL',
+  contentDepth: 'STANDARD',
   knowledgeIds: [],
   fileResourceIds: [],
   chartLevel: 'NONE',
@@ -1769,6 +1777,81 @@ function resetFullGenerateBlindSetting() {
   fullGenerateForm.blindBidRequirement = ''
 }
 
+function fullGeneratePreferenceText() {
+  const lines = []
+  const depth = String(fullGenerateForm.contentDepth || 'STANDARD').toUpperCase()
+
+  if (depth === 'BRIEF') {
+    lines.push('内容深度：简洁版，表达聚焦、避免冗长铺陈，但关键响应点不能缺失。')
+  } else if (depth === 'DETAILED') {
+    lines.push('内容深度：详细版，充分展开实施路径、方法步骤、保障措施、交付成果和风险控制。')
+  } else {
+    lines.push('内容深度：标准版，兼顾专业性、可读性和落地性。')
+  }
+
+  if (fullGenerateForm.blindBidEnabled) {
+    lines.push('暗标要求：全文不得出现投标单位名称、人员姓名、具体企业标识、联系方式等可能暴露身份的信息。')
+
+    if (String(fullGenerateForm.blindBidRequirement || '').trim()) {
+      lines.push(`暗标补充要求：${String(fullGenerateForm.blindBidRequirement || '').trim()}`)
+    }
+  }
+
+  return lines.filter(Boolean).join('\n')
+}
+
+function mergePreferenceIntoRequirement(oldText, preferenceText) {
+  const marker = '【本次全文生成偏好】'
+  const original = String(oldText || '').split(marker)[0].trim()
+
+  if (!preferenceText) {
+    return original
+  }
+
+  return `${original ? original + '\n\n' : ''}${marker}\n${preferenceText}`
+}
+
+async function applySolutionFullGeneratePreferences() {
+  const preferenceText = fullGeneratePreferenceText()
+
+  if (!preferenceText || !currentSolution.value?.outlines?.length) {
+    return
+  }
+
+  const leaves = flattenLeaf(currentSolution.value.outlines).filter((node) => node?.id)
+  let changed = false
+
+  for (const node of leaves) {
+    const currentRequirement = node.writingRequirement || node.section?.writingRequirement || ''
+    const nextRequirement = mergePreferenceIntoRequirement(currentRequirement, preferenceText)
+    const nextStyle = fullGenerateForm.writingStyle || node.writingStyle || 'GENERAL'
+
+    if (
+      String(currentRequirement || '').trim() === String(nextRequirement || '').trim()
+      && String(node.writingStyle || 'GENERAL') === String(nextStyle || 'GENERAL')
+    ) {
+      continue
+    }
+
+    await updateWritingConfig(node.id, {
+      title: node.title,
+      writingDirection: node.writingDirection || '',
+      writingRequirement: nextRequirement,
+      writingStyle: nextStyle,
+      chartLevel: 'NONE',
+      tableLevel: 'NONE',
+      imageLevel: 'NONE',
+      knowledgeIds: node.knowledgeIds || '',
+      fileResourceIds: node.fileResourceIds || ''
+    })
+    changed = true
+  }
+
+  if (changed) {
+    await refreshCurrent()
+  }
+}
+
 function openFullGenerateDialog(action = 'GENERATE') {
   if (!currentSolution.value?.outlines?.length) {
     ElMessage.warning('请先生成目录')
@@ -1788,6 +1871,7 @@ function openFullGenerateDialog(action = 'GENERATE') {
   fullGenerateAction.value = action
   resetFullGenerateBlindSetting()
   fullGenerateForm.writingStyle = currentSolution.value?.writingStyle || createForm.writingStyle || 'GENERAL'
+  fullGenerateForm.contentDepth = 'STANDARD'
   fullGenerateForm.knowledgeIds = collectSolutionKnowledgeIds(currentSolution.value)
   fullGenerateForm.chartLevel = 'NONE'
   fullGenerateForm.tableLevel = 'NONE'
@@ -1808,6 +1892,8 @@ async function confirmFullGenerate() {
 async function startFullGenerate(rewrite = false) {
   fullGenerating.value = true
   try {
+    await applySolutionFullGeneratePreferences()
+
     const selectedKbIds = parseKnowledgeIds(fullGenerateForm.knowledgeIds)
     const payload = {
       writingStyle: fullGenerateForm.writingStyle,
@@ -2086,6 +2172,12 @@ function sectionOptimizeTargetWordCount(type, node, content) {
   return Math.max(300, base || 600)
 }
 
+const SECTION_OPTIMIZE_REQUIREMENT_MARKER = '【本次单章处理要求】'
+
+function sectionStoredWritingRequirement(node) {
+  return String(node?.writingRequirement || node?.section?.writingRequirement || '').split(SECTION_OPTIMIZE_REQUIREMENT_MARKER)[0].trim()
+}
+
 function sectionOptimizeInstruction(type, title, content, targetWordCount) {
   const name = String(title || '当前章节').trim()
   const body = String(content || '').trim()
@@ -2100,6 +2192,12 @@ function sectionOptimizeInstruction(type, title, content, targetWordCount) {
     return `请重新撰写“${name}”。要求：1. 结合招标文件采购需求、评分标准和当前方案定位；2. 参考原文思路但不要机械复述；3. 内容要更正式、更完整、更适合投标/方案文件；4. 目标字数约 ${target} 字；5. 只输出重写后的章节正文，不要解释。\n\n【原章节正文】\n${body}`
   }
   return `请对“${name}”进行润色。要求：1. 不改变原文核心意思和承诺边界；2. 优化语句、逻辑衔接和专业表达；3. 去掉口语化、重复和空泛内容；4. 保持正式严谨风格；5. 只输出润色后的章节正文，不要解释。\n\n【已有正文】\n${body}`
+}
+
+function sectionOptimizeWritingRequirement(type, node, content, targetWordCount) {
+  const storedRequirement = sectionStoredWritingRequirement(node)
+  const optimizeInstruction = sectionOptimizeInstruction(type, node?.title, content, targetWordCount)
+  return `${storedRequirement ? storedRequirement + '\n\n' : ''}${SECTION_OPTIMIZE_REQUIREMENT_MARKER}\n${optimizeInstruction}`
 }
 
 async function optimizeSection(type = 'POLISH') {
@@ -2126,7 +2224,7 @@ async function optimizeSection(type = 'POLISH') {
       knowledgeIds: node.knowledgeIds || sectionForm.knowledgeIds || '',
       fileResourceIds: node.fileResourceIds || '',
       writingDirection: node.writingDirection || '',
-      writingRequirement: sectionOptimizeInstruction(type, node.title, content, targetWordCount),
+      writingRequirement: sectionOptimizeWritingRequirement(type, node, content, targetWordCount),
       writingStyle: node.writingStyle || sectionForm.writingStyle || 'GENERAL',
       overwrite: true
     }, {

@@ -2122,6 +2122,29 @@ function buildSelectedKnowledgeBases(ids = []) {
   return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
 }
 
+function collectTechnicalFullGenerateKnowledgeIds() {
+  const ids = []
+
+  // AI标书项目本身可以绑定知识库，重编全文时要默认带出来。
+  ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIdList || []))
+  ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIds || ''))
+  ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIds || ''))
+  ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIdList || []))
+
+  // 技术方案本质上复用 AI方案，历史章节上可能已经保存过知识库选择。
+  const walk = (nodes = []) => {
+    nodes.forEach((node) => {
+      ids.push(...normalizeKnowledgeIds(node.knowledgeIds || ''))
+      ids.push(...normalizeKnowledgeIds(node.section?.knowledgeIds || ''))
+      if (node.children?.length) walk(node.children)
+    })
+  }
+  walk(technicalOutlines.value || [])
+  walk(technicalSolution.value?.outlines || [])
+
+  return [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+}
+
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
   return target === 'section'
     ? parseKnowledgeIds(sectionForm.knowledgeIds)
@@ -2241,6 +2264,9 @@ function openTechnicalFullGenerateDialog(action = 'GENERATE') {
   }
   fullGenerateAction.value = action
   resetFullGenerateBlindSetting()
+  fullGenerateForm.writingStyle = technicalSolution.value?.writingStyle || fullGenerateForm.writingStyle || 'GENERAL'
+  fullGenerateForm.contentDepth = fullGenerateForm.contentDepth || 'STANDARD'
+  fullGenerateForm.knowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
   fullGenerateSettingVisible.value = true
 }
 
@@ -2957,6 +2983,12 @@ function fallbackCopyText(text) {
 }
 
 
+const SECTION_OPTIMIZE_REQUIREMENT_MARKER = '【本次单章处理要求】'
+
+function sectionStoredWritingRequirement(node) {
+  return String(node?.writingRequirement || node?.section?.writingRequirement || '').split(SECTION_OPTIMIZE_REQUIREMENT_MARKER)[0].trim()
+}
+
 function sectionOptimizeInstruction(type, title, content, targetWordCount) {
   const name = String(title || '当前章节').trim()
   const body = String(content || '').trim()
@@ -2971,6 +3003,12 @@ function sectionOptimizeInstruction(type, title, content, targetWordCount) {
     return `请重新撰写“${name}”。要求：1. 结合招标文件采购需求和评分标准；2. 参考原文思路但不要机械复述；3. 内容要更正式、更完整、更适合投标文件；4. 目标字数约 ${target} 字；5. 只输出重写后的章节正文，不要解释。\n\n【原章节正文】\n${body}`
   }
   return `请对“${name}”进行润色。要求：1. 不改变原文核心意思和承诺边界；2. 优化语句、逻辑衔接和专业表达；3. 去掉口语化、重复和空泛内容；4. 保持投标文件正式严谨风格；5. 只输出润色后的章节正文，不要解释。\n\n【已有正文】\n${body}`
+}
+
+function sectionOptimizeWritingRequirement(type, node, content, targetWordCount) {
+  const storedRequirement = sectionStoredWritingRequirement(node)
+  const optimizeInstruction = sectionOptimizeInstruction(type, node?.title, content, targetWordCount)
+  return `${storedRequirement ? storedRequirement + '\n\n' : ''}${SECTION_OPTIMIZE_REQUIREMENT_MARKER}\n${optimizeInstruction}`
 }
 
 function sectionOptimizeTargetWordCount(type, node, content) {
@@ -3012,7 +3050,7 @@ async function optimizeTechnicalSection(type = 'POLISH') {
       knowledgeIds: stringifyKnowledgeIds(node.knowledgeIds || sectionForm.knowledgeIds || ''),
       fileResourceIds: node.fileResourceIds || '',
       writingDirection: node.writingDirection || '',
-      writingRequirement: sectionOptimizeInstruction(type, node.title, content, targetWordCount),
+      writingRequirement: sectionOptimizeWritingRequirement(type, node, content, targetWordCount),
       writingStyle: node.writingStyle || fullGenerateForm.writingStyle || 'GENERAL',
       overwrite: true
     }, {
