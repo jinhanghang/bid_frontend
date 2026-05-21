@@ -291,82 +291,86 @@ export function downloadFileResource(id) {
 }
 
 
+function requireProjectId(projectId) {
+  if (!projectId) throw new Error('缺少项目ID，无法操作技术方案')
+  return projectId
+}
+
 /**
  * AI标书：技术方案单节点修改目标字数。
- * 复用 AI方案目录接口，outlineId 属于 AI标书内部技术方案草稿。
+ * 通过项目包装接口操作，后端会校验项目权限和章节归属。
  */
-export function updateBidProjectTechnicalOutlineWordCount(outlineId, targetWordCount) {
-  return request.put(`/ai-solution/outline/${outlineId}/word-count`, { targetWordCount })
+export function updateBidProjectTechnicalOutlineWordCount(projectId, outlineId, targetWordCount) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/word-count`, { targetWordCount })
 }
 
 /**
  * AI标书：技术方案批量修改下级节点目标字数。
  */
-export function batchUpdateBidProjectTechnicalOutlineWordCount(outlineId, targetWordCount) {
-  return request.put(`/ai-solution/outline/${outlineId}/word-count/batch`, { targetWordCount })
+export function batchUpdateBidProjectTechnicalOutlineWordCount(projectId, outlineId, targetWordCount) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/word-count/batch`, { targetWordCount })
 }
 
 /**
  * AI标书：技术方案保存节点标题、编写方向和编写要求。
  */
-export function updateBidProjectTechnicalWritingConfig(outlineId, data = {}) {
-  return request.put(`/ai-solution/outline/${outlineId}/writing-config`, data || {})
+export function updateBidProjectTechnicalWritingConfig(projectId, outlineId, data = {}) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/writing-config`, data || {})
 }
 
 /**
  * AI标书：技术方案新增目录节点。
  */
-export function addBidProjectTechnicalOutlineNode(outlineId, data = {}) {
-  return request.post(`/ai-solution/outline/${outlineId}/children`, data || {})
+export function addBidProjectTechnicalOutlineNode(projectId, outlineId, data = {}) {
+  return request.post(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/children`, data || {})
 }
 
 /**
  * AI标书：技术方案批量删除目录节点。
  */
-export function deleteBidProjectTechnicalOutlineNodes(outlineIds = []) {
-  return request.delete('/ai-solution/outline/batch', { data: { outlineIds } })
+export function deleteBidProjectTechnicalOutlineNodes(projectId, outlineIds = []) {
+  return request.delete(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/batch`, { data: { outlineIds } })
 }
 
 /**
  * AI标书：技术方案节点排序。
  */
-export function moveBidProjectTechnicalOutlineNode(outlineId, direction) {
-  return request.post(`/ai-solution/outline/${outlineId}/move`, { direction })
+export function moveBidProjectTechnicalOutlineNode(projectId, outlineId, direction) {
+  return request.post(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/move`, { direction })
 }
 
 /**
  * AI标书：技术方案保存章节正文。
  */
-export function updateBidProjectTechnicalSectionContent(outlineId, content) {
-  return request.put(`/ai-solution/outline/${outlineId}/section-content`, { content })
+export function updateBidProjectTechnicalSectionContent(projectId, outlineId, content) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/section-content`, { content })
 }
 
 /**
  * AI标书：技术方案保存整体编写要求。
  */
-export function saveBidProjectTechnicalOverallWritingRequirement(solutionId, overallWritingRequirement) {
-  return request.put(`/ai-solution/${solutionId}/overall-writing-requirement`, { overallWritingRequirement })
+export function saveBidProjectTechnicalOverallWritingRequirement(projectId, overallWritingRequirement) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/overall-writing-requirement`, { overallWritingRequirement })
 }
 
 /**
  * AI标书：技术方案 AI帮写编写方向。
  */
-export async function streamBidProjectTechnicalWritingDirection(outlineId, params = {}, handlers = {}) {
+export async function streamBidProjectTechnicalWritingDirection(projectId, outlineId, params = {}, handlers = {}) {
   const query = new URLSearchParams()
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') query.append(key, value)
   })
-  return streamFetch(`/ai-solution/outline/${outlineId}/writing-direction/stream?${query.toString()}`, {
+  return streamFetch(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/writing-direction/stream?${query.toString()}`, {
     method: 'GET'
   }, handlers)
 }
 
 /**
  * AI标书：技术方案单章节流式生成。
- * 这里复用 AI方案已有单章节生成接口，传入的 outlineId 属于 AI标书内部技术方案草稿。
  */
-export async function streamBidProjectTechnicalSection(outlineId, data = {}, handlers = {}) {
-  return streamFetch(`/ai-solution/outline/${outlineId}/generate-section/stream`, {
+export async function streamBidProjectTechnicalSection(projectId, outlineId, data = {}, handlers = {}) {
+  return streamFetch(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/generate-section/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data || {})

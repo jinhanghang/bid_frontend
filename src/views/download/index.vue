@@ -18,6 +18,29 @@
           @clear="reloadFirstPage"
           @keyup.enter="reloadFirstPage"
         />
+        <el-select
+          v-model="filters.sourceType"
+          class="source-select"
+          placeholder="来源"
+          clearable
+          @change="reloadFirstPage"
+          @clear="reloadFirstPage"
+        >
+          <el-option label="AI方案" value="ai_solution" />
+          <el-option label="AI标书" value="bid_tech" />
+          <el-option label="AI文档" value="ai_document" />
+        </el-select>
+        <el-select
+          v-model="filters.fileState"
+          class="state-select"
+          placeholder="状态"
+          clearable
+          @change="reloadFirstPage"
+          @clear="reloadFirstPage"
+        >
+          <el-option label="可下载" value="success" />
+          <el-option label="文件丢失" value="lost" />
+        </el-select>
         <el-button class="refresh-btn" :icon="Refresh" :loading="loading" @click="loadRows">刷新</el-button>
       </div>
 
@@ -39,6 +62,12 @@
                 <small v-if="!isFileAvailable(row)">文件已丢失，请重新导出</small>
               </div>
             </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="来源" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag effect="light">{{ row.sourceLabel || sourceTypeLabel(row) }}</el-tag>
           </template>
         </el-table-column>
 
@@ -107,7 +136,7 @@ import { fileSize, formatDateTime } from '@/utils/format'
 const loading = ref(false)
 const rows = ref([])
 const downloadingId = ref(null)
-const filters = reactive({ keyword: '' })
+const filters = reactive({ keyword: '', sourceType: '', fileState: '' })
 const pager = reactive({ page: 1, size: 10, total: 0 })
 let keywordTimer = null
 
@@ -136,7 +165,9 @@ async function loadRows() {
     const res = await pageDownloadFiles({
       pageNum: pager.page,
       pageSize: pager.size,
-      keyword: String(filters.keyword || '').trim() || undefined
+      keyword: String(filters.keyword || '').trim() || undefined,
+      sourceType: filters.sourceType || undefined,
+      fileState: filters.fileState || undefined
     })
     rows.value = res?.records || []
     pager.total = Number(res?.total || 0)
@@ -147,6 +178,14 @@ async function loadRows() {
 
 function isFileAvailable(row) {
   return Number(row?.fileExists) === 1 && String(row?.fileState || '').toLowerCase() !== 'lost'
+}
+
+function sourceTypeLabel(row) {
+  const source = String(row?.sourceType || '').toLowerCase()
+  if (source === 'ai_solution') return 'AI方案'
+  if (source === 'bid_tech' || source === 'bid') return 'AI标书'
+  if (source === 'ai_document') return 'AI文档'
+  return '其他'
 }
 
 function fileTypeLabel(row) {

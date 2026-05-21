@@ -2303,7 +2303,7 @@ async function applyTechnicalFullGeneratePreferences() {
   const leaves = technicalLeafNodes.value.filter((node) => node?.id)
   for (const node of leaves) {
     const nextRequirement = mergePreferenceIntoRequirement(node.writingRequirement || node.section?.writingRequirement || '', preferenceText)
-    await updateBidProjectTechnicalWritingConfig(node.id, {
+    await updateBidProjectTechnicalWritingConfig(selectedProject.value?.id, node.id, {
       title: node.title,
       targetWordCount: Number(node.targetWordCount || node.wordCount || 300),
       writingDirection: node.writingDirection || '',
@@ -2778,7 +2778,7 @@ async function reloadTechnicalAfterOutlineEdit(successMsg) {
 
 async function onTechnicalNodeWordChange({ node, value }) {
   if (!node?.id) return
-  await updateBidProjectTechnicalOutlineWordCount(node.id, Number(value || 0))
+  await updateBidProjectTechnicalOutlineWordCount(selectedProject.value?.id, node.id, Number(value || 0))
   node.targetWordCount = Number(value || 0)
   node.wordCount = Number(value || 0)
   await reloadTechnicalAfterOutlineEdit('字数已保存')
@@ -2786,7 +2786,7 @@ async function onTechnicalNodeWordChange({ node, value }) {
 
 async function onTechnicalBatchWord({ node, value }) {
   if (!node?.id) return
-  await batchUpdateBidProjectTechnicalOutlineWordCount(node.id, Number(value || 0))
+  await batchUpdateBidProjectTechnicalOutlineWordCount(selectedProject.value?.id, node.id, Number(value || 0))
   await reloadTechnicalAfterOutlineEdit('下级章节字数已批量修改')
 }
 
@@ -2796,7 +2796,7 @@ async function onSaveTechnicalOverallRequirement() {
     ElMessage.warning('当前技术方案缺少方案ID')
     return
   }
-  await saveBidProjectTechnicalOverallWritingRequirement(solutionId, technicalOverallWritingRequirement.value || '')
+  await saveBidProjectTechnicalOverallWritingRequirement(selectedProject.value?.id, technicalOverallWritingRequirement.value || '')
   technicalForm.outlineWritingDirection = technicalOverallWritingRequirement.value || ''
   await reloadTechnicalAfterOutlineEdit('整体编写要求已保存')
 }
@@ -2814,7 +2814,7 @@ async function streamTechnicalOverallDirection() {
   technicalOverallWritingRequirement.value = ''
   technicalStreamingOutlineId.value = firstLeaf.id
   try {
-    await streamBidProjectTechnicalWritingDirection(firstLeaf.id, {
+    await streamBidProjectTechnicalWritingDirection(selectedProject.value?.id, firstLeaf.id, {
       title: technicalForm.solutionName || selectedProject.value?.projectName || '技术方案',
       overall: true
     }, {
@@ -2835,7 +2835,7 @@ async function onTechnicalAiWriteDirection(node) {
   node.writingDirection = ''
   technicalStreamingOutlineId.value = node.id
   try {
-    await streamBidProjectTechnicalWritingDirection(node.id, {
+    await streamBidProjectTechnicalWritingDirection(selectedProject.value?.id, node.id, {
       title: node.title,
       overallWritingRequirement: technicalOverallWritingRequirement.value || technicalForm.outlineWritingDirection || ''
     }, {
@@ -2853,7 +2853,7 @@ async function onTechnicalAiWriteDirection(node) {
 
 async function onTechnicalSaveWritingConfig(node) {
   if (!node?.id) return
-  await updateBidProjectTechnicalWritingConfig(node.id, {
+  await updateBidProjectTechnicalWritingConfig(selectedProject.value?.id, node.id, {
     title: node.title,
     writingDirection: node.writingDirection || '',
     writingRequirement: node.writingRequirement || '',
@@ -2877,7 +2877,7 @@ async function onTechnicalAddNode() {
     ElMessage.warning('请输入节点标题')
     return
   }
-  await addBidProjectTechnicalOutlineNode(technicalAddBaseNode.value.id, {
+  await addBidProjectTechnicalOutlineNode(selectedProject.value?.id, technicalAddBaseNode.value.id, {
     ...technicalAddNodeForm,
     title: technicalAddNodeForm.title.trim()
   })
@@ -2892,14 +2892,14 @@ async function onTechnicalDeleteNodes() {
   } catch (e) {
     return
   }
-  await deleteBidProjectTechnicalOutlineNodes(technicalDeleteIds.value)
+  await deleteBidProjectTechnicalOutlineNodes(selectedProject.value?.id, technicalDeleteIds.value)
   technicalDeleteIds.value = []
   await reloadTechnicalAfterOutlineEdit('节点已删除')
 }
 
 async function onTechnicalMoveNode({ node, direction }) {
   if (!node?.id) return
-  await moveBidProjectTechnicalOutlineNode(node.id, direction)
+  await moveBidProjectTechnicalOutlineNode(selectedProject.value?.id, node.id, direction)
   await reloadTechnicalAfterOutlineEdit('排序已更新')
 }
 
@@ -3041,7 +3041,7 @@ async function optimizeTechnicalSection(type = 'POLISH') {
   sectionOptimizingNodeId.value = String(node.id || '')
   sectionStreamingText.value = ''
   try {
-    await streamBidProjectTechnicalSection(node.id, {
+    await streamBidProjectTechnicalSection(selectedProject.value?.id, node.id, {
       title: node.title,
       targetWordCount,
       chartLevel: 'NONE',
@@ -3189,7 +3189,7 @@ async function saveTechnicalSectionContent() {
   }
   technicalSectionContentSaving.value = true
   try {
-    await updateBidProjectTechnicalSectionContent(selectedTechnicalLeaf.value.id, content)
+    await updateBidProjectTechnicalSectionContent(selectedProject.value?.id, selectedTechnicalLeaf.value.id, content)
     await loadTechnicalSolution()
     const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
     selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
@@ -3261,7 +3261,7 @@ async function generateTechnicalSection() {
   sectionGenerating.value = true
   sectionStreamingText.value = ''
   try {
-    await streamBidProjectTechnicalSection(sectionNode.value.id, {
+    await streamBidProjectTechnicalSection(selectedProject.value?.id, sectionNode.value.id, {
       ...sectionForm,
       knowledgeIds: stringifyKnowledgeIds(sectionForm.knowledgeIds),
       chartLevel: 'NONE',

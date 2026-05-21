@@ -40,7 +40,9 @@ function normalizeUserFromResponse(res = {}) {
     enterpriseName: res?.enterpriseName,
     roles: roleCodes,
     roleCodes,
-    roleNames
+    roleNames,
+    permissions: Array.isArray(res?.permissions) ? res.permissions : [],
+    menus: Array.isArray(res?.menus) ? res.menus : []
   }
 }
 
@@ -51,7 +53,7 @@ export const useAuthStore = defineStore('auth', {
       token: getToken(),
       user: storedUser ? normalizeUserFromResponse(storedUser) : null,
       menus: getStoredMenus(),
-      permissions: []
+      permissions: Array.isArray(storedUser?.permissions) ? storedUser.permissions : []
     }
   },
   getters: {
@@ -67,8 +69,10 @@ export const useAuthStore = defineStore('auth', {
       this.token = token
 
       this.user = normalizeUserFromResponse(res)
-      this.permissions = res?.permissions || []
-      this.menus = res?.menus || []
+      this.permissions = Array.isArray(res?.permissions) ? res.permissions : this.user.permissions || []
+      this.menus = Array.isArray(res?.menus) ? res.menus : this.user.menus || []
+      this.user.permissions = this.permissions
+      this.user.menus = this.menus
       setStoredUser(this.user)
       setStoredMenus(this.menus)
       return res
@@ -88,8 +92,12 @@ export const useAuthStore = defineStore('auth', {
       if (!this.token) return null
       const me = await getMe()
       this.user = normalizeUserFromResponse(me)
-      this.permissions = me?.permissions || this.permissions || []
+      this.permissions = Array.isArray(me?.permissions) ? me.permissions : this.permissions || []
+      this.menus = Array.isArray(me?.menus) ? me.menus : this.menus || []
+      this.user.permissions = this.permissions
+      this.user.menus = this.menus
       setStoredUser(this.user)
+      setStoredMenus(this.menus)
       return this.user
     },
 
