@@ -88,7 +88,7 @@ export function rewriteFull(id, data = {}) {
 }
 
 export function getGenerationTask(taskId) {
-  return request({ url: `/ai-solution/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT })
+  return request({ url: `/ai-solution/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT, silentError: true })
 }
 
 export function listSolutionVersions(id) {

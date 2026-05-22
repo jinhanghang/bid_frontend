@@ -1075,8 +1075,43 @@ function onSearchInput() {
   searchTimer = setTimeout(loadList, 300)
 }
 
+function normalizeId(value) {
+  const text = String(value ?? '').trim()
+  if (!text || text === 'null' || text === 'undefined') return ''
+  return text
+}
+
+function normalizeIdList(value) {
+  const pushId = (arr, item) => {
+    const id = normalizeId(item)
+    if (id) arr.push(id)
+  }
+
+  if (Array.isArray(value)) {
+    const ids = []
+    value.forEach((item) => pushId(ids, item))
+    return [...new Set(ids)]
+  }
+
+  if (value === undefined || value === null || value === '') return []
+  const text = String(value).trim()
+  if (!text) return []
+
+  if (text.startsWith('[')) {
+    try {
+      const arr = JSON.parse(text)
+      if (Array.isArray(arr)) return normalizeIdList(arr)
+    } catch (e) {
+      // 解析失败时继续按逗号字符串兜底。
+    }
+  }
+
+  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map(normalizeId).filter(Boolean))]
+}
+
 async function loadDetail(id) {
-  const solutionId = Number(id)
+  const solutionId = normalizeId(id)
+  if (!solutionId) return
   const seq = ++detailRequestSeq.value
   activeSolutionId.value = solutionId
   selectedSection.value = null
@@ -1129,7 +1164,7 @@ function applyModeByBackendState(data) {
 }
 
 function applySolutionDetail(data) {
-  if (data?.id && !activeSolutionId.value) activeSolutionId.value = Number(data.id)
+  if (data?.id && !activeSolutionId.value) activeSolutionId.value = normalizeId(data.id)
   currentSolution.value = data
   overallWritingRequirement.value = data?.overallWritingRequirement || ''
   fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
@@ -1195,7 +1230,7 @@ function pollOutlineStatus(solutionId) {
   const tick = async () => {
     try {
       const data = await getSolution(solutionId)
-      if (activeSolutionId.value && activeSolutionId.value !== Number(solutionId)) return
+      if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
       applySolutionDetail(data)
       applyModeByBackendState(data)
 
@@ -1548,10 +1583,10 @@ function toggleEditMode() {
 }
 
 async function refreshCurrent(expectedSolutionId = currentSolution.value?.id) {
-  const solutionId = Number(expectedSolutionId)
+  const solutionId = normalizeId(expectedSolutionId)
   if (!solutionId) return
   const data = await getSolution(solutionId)
-  if (activeSolutionId.value && activeSolutionId.value !== solutionId) return
+  if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
   applySolutionDetail(data)
   resumeRunningTaskIfNeeded()
   resumeParseTaskIfNeeded()
@@ -1644,40 +1679,19 @@ async function onMoveNode({ node, direction }) {
 }
 
 function parseKnowledgeIds(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((id) => Number(id)).filter(Boolean))]
-  }
-  if (value === undefined || value === null || value === '') return []
-
-  const text = String(value).trim()
-  if (!text) return []
-
-  // 后端会把章节知识库保存为 JSON 字符串，例如：[1,2]。
-  // 这里必须先按 JSON 解析，否则 collectSolutionKnowledgeIds 会读不到历史选择。
-  if (text.startsWith('[')) {
-    try {
-      const arr = JSON.parse(text)
-      if (Array.isArray(arr)) {
-        return [...new Set(arr.map((id) => Number(id)).filter(Boolean))]
-      }
-    } catch (e) {
-      // 解析失败时继续按逗号字符串兜底。
-    }
-  }
-
-  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map((id) => Number(id)).filter(Boolean))]
+  return normalizeIdList(value)
 }
 
 function stringifyKnowledgeIds(ids = []) {
-  return [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))].join(',')
+  return normalizeIdList(ids).join(',')
 }
 
 function buildSelectedKnowledgeBases(ids = []) {
   const idList = parseKnowledgeIds(ids)
   const map = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => map.set(Number(item.id), item))
-  knowledgeBaseList.value.forEach((item) => map.set(Number(item.id), item))
-  return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
+  selectedKnowledgeBaseCache.value.forEach((item) => map.set(normalizeId(item.id), item))
+  knowledgeBaseList.value.forEach((item) => map.set(normalizeId(item.id), item))
+  return idList.map((id) => map.get(normalizeId(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
 }
 
 function collectSolutionKnowledgeIds(solution = currentSolution.value) {
@@ -1689,7 +1703,7 @@ function collectSolutionKnowledgeIds(solution = currentSolution.value) {
     })
   }
   walk(solution?.outlines || [])
-  return [...new Set(ids.map((id) => Number(id)).filter(Boolean))]
+  return normalizeIdList(ids)
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
@@ -1699,7 +1713,7 @@ function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) 
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
-  const normalized = [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))]
+  const normalized = normalizeIdList(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
   } else {
@@ -1735,30 +1749,30 @@ async function loadKnowledgeBases() {
 }
 
 function confirmKnowledgeSelection() {
-  const ids = [...new Set((tempSelectedKnowledgeIds.value || []).map((id) => Number(id)).filter(Boolean))]
+  const ids = normalizeIdList(tempSelectedKnowledgeIds.value)
   setCurrentKnowledgeIdsByTarget(ids)
 
   const cacheMap = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(Number(item.id), item))
+  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(normalizeId(item.id), item))
   knowledgeBaseList.value.forEach((item) => {
-    if (ids.includes(Number(item.id))) {
-      cacheMap.set(Number(item.id), item)
+    if (ids.includes(normalizeId(item.id))) {
+      cacheMap.set(normalizeId(item.id), item)
     }
   })
   selectedKnowledgeBaseCache.value = [...new Set([
     ...parseKnowledgeIds(fullGenerateForm.knowledgeIds),
     ...parseKnowledgeIds(sectionForm.knowledgeIds)
-  ])].map((id) => cacheMap.get(Number(id))).filter(Boolean)
+  ])].map((id) => cacheMap.get(normalizeId(id))).filter(Boolean)
 
   knowledgeSelectorVisible.value = false
 }
 
 function removeSelectedKnowledgeBase(id, target = 'full') {
-  const removeId = Number(id)
-  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => Number(item) !== removeId)
+  const removeId = normalizeId(id)
+  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => normalizeId(item) !== removeId)
   setCurrentKnowledgeIdsByTarget(next, target)
-  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => Number(item) !== removeId)
-  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => Number(item.id) !== removeId)
+  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => normalizeId(item) !== removeId)
+  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => normalizeId(item.id) !== removeId)
 }
 
 
@@ -1948,13 +1962,34 @@ function restoreSolutionTaskPending() {
   if (!raw) return
   try {
     const data = JSON.parse(raw)
-    if (data?.taskId) {
-      solutionTaskPending.solutionId = String(data.solutionId || '')
-      solutionTaskPending.taskId = String(data.taskId)
-      solutionTaskPollErrorCount.value = 0
-      fullGenerating.value = true
-      startSolutionTaskPolling(data.taskId)
+    const taskId = normalizeId(data?.taskId)
+    const solutionId = normalizeId(data?.solutionId)
+    if (!taskId) {
+      localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
+      return
     }
+
+    // UUID 主键改造后，历史 localStorage 里可能残留旧任务。
+    // 如果列表中找不到对应方案，或者方案已经不是生成中状态，不再恢复轮询，避免进入页面就提示“生成任务不存在”。
+    const card = solutionId ? solutions.value.find((item) => String(item.id) === String(solutionId)) : null
+    const cardStatus = String(card?.status || '').toUpperCase()
+    const mayStillRunning = !solutionId || ['CONTENT_GENERATING', 'GENERATING', 'OUTLINE_GENERATING'].includes(cardStatus)
+    if (solutionId && !card) {
+      clearSolutionTaskPending(taskId)
+      fullGenerating.value = false
+      return
+    }
+    if (!mayStillRunning) {
+      clearSolutionTaskPending(taskId)
+      fullGenerating.value = false
+      return
+    }
+
+    solutionTaskPending.solutionId = solutionId
+    solutionTaskPending.taskId = taskId
+    solutionTaskPollErrorCount.value = 0
+    fullGenerating.value = true
+    startSolutionTaskPolling(taskId)
   } catch (e) {
     localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
   }
@@ -2015,9 +2050,11 @@ async function pollGenerationTask(taskId, silent = true) {
     const status = e?.response?.status
     solutionTaskPollErrorCount.value += 1
     fullGenerating.value = true
-    if (status === 404) {
+    const message = String(e?.response?.data?.message || e?.message || '')
+    if (status === 404 || message.includes('生成任务不存在')) {
       clearSolutionTaskPending(taskId)
       fullGenerating.value = false
+      await loadList()
       return
     }
     if (!silent && solutionTaskPollErrorCount.value === 1) {
@@ -2509,7 +2546,7 @@ function syncSelectedSectionAfterDetail(data) {
 
 function findOutlineNodeById(nodes = [], id) {
   for (const node of nodes) {
-    if (node.id === id) return node
+    if (String(node.id) === String(id)) return node
     const child = findOutlineNodeById(node.children || [], id)
     if (child) return child
   }
@@ -2736,7 +2773,7 @@ async function selectVersion(item) {
 
 function currentSectionWordCount(outlineId) {
   if (!outlineId) return 0
-  const node = findOutlineNodeById(currentSolution.value?.outlines || [], Number(outlineId))
+  const node = findOutlineNodeById(currentSolution.value?.outlines || [], normalizeId(outlineId))
   return outlineActualWordCount(node) || countTextWords(node?.section?.content || '')
 }
 

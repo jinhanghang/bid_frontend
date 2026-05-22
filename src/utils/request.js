@@ -73,7 +73,7 @@ service.interceptors.response.use(
     if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'code')) {
       if (body.code === 0) return body.data
       const message = safeResponseMessage(response.config, body.message, '接口请求失败')
-      ElMessage.error(message)
+      if (!response.config?.silentError) ElMessage.error(message)
       return Promise.reject(new Error(message))
     }
     return body
@@ -95,11 +95,11 @@ service.interceptors.response.use(
     }
 
     if (status === 403) {
-      ElMessage.error(isAiModuleRequest(error?.config) ? message : '没有权限访问该功能')
+      if (!error?.config?.silentError) ElMessage.error(isAiModuleRequest(error?.config) ? message : '没有权限访问该功能')
       return Promise.reject(error)
     }
 
-    ElMessage.error(message)
+    if (!error?.config?.silentError) ElMessage.error(message)
     return Promise.reject(error)
   }
 )
