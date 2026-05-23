@@ -530,7 +530,7 @@
                           plain
                           :loading="sectionOptimizing === 'SHRINK'"
                           :disabled="!canOptimizeTechnicalSection"
-                          @click="optimizeTechnicalSection('SHRINK')"
+                          @click="openTechnicalShortenDialog"
                         >
                           缩写本章
                         </el-button>
@@ -792,6 +792,29 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="technicalShortenDialogVisible" title="缩写本章" width="460px" append-to-body>
+      <el-form label-width="90px">
+        <el-form-item label="目标字数">
+          <el-radio-group v-model="technicalShortenTargetMode" class="shorten-target-group">
+            <el-radio-button v-for="n in technicalShortenPresetOptions" :key="n" :label="String(n)">{{ n }}字</el-radio-button>
+            <el-radio-button label="CUSTOM">自定义</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="technicalShortenTargetMode === 'CUSTOM'" label="自定义">
+          <el-input-number v-model="technicalShortenCustomWordCount" :min="100" :max="20000" :step="50" controls-position="right" />
+        </el-form-item>
+        <el-alert
+          title="缩写本章会对当前章节最多重写 3 次。若仍略超目标字数，系统会保存最接近目标的版本。"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="technicalShortenDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="sectionOptimizing === 'SHRINK'" @click="confirmTechnicalShortenSection">开始缩写</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="fullGenerateSettingVisible" title="方案设置" width="640px" append-to-body>
       <el-form label-width="90px" class="full-generate-form">
@@ -1084,6 +1107,10 @@ const sectionGenerating = ref(false)
 const sectionOptimizing = ref('')
 const sectionOptimizingNodeId = ref('')
 const sectionStreamingText = ref('')
+const technicalShortenDialogVisible = ref(false)
+const technicalShortenTargetMode = ref('300')
+const technicalShortenCustomWordCount = ref(300)
+const technicalShortenPresetOptions = [300, 600, 900, 1200]
 const wordOptions = [300, 600, 900, 1200, 1800, 2700, 3600, 4500, 5400, 6300, 7200, 8100, 9000, 9900]
 const sectionForm = reactive({
   title: '',
@@ -3027,7 +3054,32 @@ function optimizeActionLabel(type) {
   return '润色'
 }
 
-async function optimizeTechnicalSection(type = 'POLISH') {
+function maxAcceptableFrontendWords(targetWordCount) {
+  const target = Math.max(1, Number(targetWordCount || 0))
+  return target < 500 ? target + 80 : Math.round(target * 1.15)
+}
+
+function openTechnicalShortenDialog() {
+  if (!canOptimizeTechnicalSection.value || !selectedTechnicalLeaf.value?.id) return
+  const node = selectedTechnicalLeaf.value
+  const suggested = Number(node?.targetWordCount || node?.wordCount || node?.section?.targetWordCount || 300)
+  const target = suggested > 0 ? suggested : 300
+  technicalShortenTargetMode.value = technicalShortenPresetOptions.includes(target) ? String(target) : 'CUSTOM'
+  technicalShortenCustomWordCount.value = target
+  technicalShortenDialogVisible.value = true
+}
+
+async function confirmTechnicalShortenSection() {
+  const target = technicalShortenTargetMode.value === 'CUSTOM' ? Number(technicalShortenCustomWordCount.value) : Number(technicalShortenTargetMode.value)
+  if (!target || target <= 0) {
+    ElMessage.warning('请输入有效目标字数')
+    return
+  }
+  technicalShortenDialogVisible.value = false
+  await optimizeTechnicalSection('SHRINK', target)
+}
+
+async function optimizeTechnicalSection(type = 'POLISH', customTargetWordCount = null) {
   if (!canOptimizeTechnicalSection.value || !selectedTechnicalLeaf.value?.id) return
   const node = selectedTechnicalLeaf.value
   const content = String(selectedTechnicalLeafDisplayContent.value || '').trim()
@@ -3035,15 +3087,21 @@ async function optimizeTechnicalSection(type = 'POLISH') {
     ElMessage.warning('当前章节暂无正文')
     return
   }
-  const targetWordCount = sectionOptimizeTargetWordCount(type, node, content)
+  const targetWordCount = Number(customTargetWordCount || 0) > 0
+    ? Number(customTargetWordCount)
+    : sectionOptimizeTargetWordCount(type, node, content)
   const label = optimizeActionLabel(type)
   sectionOptimizing.value = type
   sectionOptimizingNodeId.value = String(node.id || '')
   sectionStreamingText.value = ''
+  technicalSectionContentEditMode.value = false
   try {
     await streamBidProjectTechnicalSection(selectedProject.value?.id, node.id, {
       title: node.title,
       targetWordCount,
+      action: type === 'SHRINK' ? 'SHORTEN' : type,
+      sourceContent: content,
+      maxRewriteAttempts: type === 'SHRINK' ? 3 : undefined,
       chartLevel: 'NONE',
       tableLevel: 'NONE',
       imageLevel: 'NONE',
@@ -3066,7 +3124,12 @@ async function optimizeTechnicalSection(type = 'POLISH') {
     const latest = findTechnicalOutlineNodeById(technicalOutlines.value, node.id)
     selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
     technicalStep.value = Math.max(technicalStep.value, 5)
-    ElMessage.success(`${label}完成`)
+    const latestActual = outlineActualWordCount(selectedTechnicalLeaf.value) || countTextWords(getTechnicalLeafContent(selectedTechnicalLeaf.value) || '')
+    if (type === 'SHRINK' && latestActual > maxAcceptableFrontendWords(targetWordCount)) {
+      ElMessage.warning(`缩写完成，已尽量压缩，当前 ${latestActual} 字，仍略超目标 ${targetWordCount} 字`)
+    } else {
+      ElMessage.success(`${label}完成`)
+    }
   } finally {
     sectionOptimizing.value = ''
     sectionOptimizingNodeId.value = ''

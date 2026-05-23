@@ -463,23 +463,24 @@ async function createNew(type) {
   applyDoc(draft)
 }
 
-async function loadDetail(id) {
+async function loadDetail(id, options = {}) {
   detailLoading.value = true
   try {
     const data = await getDocument(id)
-    applyDoc(data)
+    applyDoc(data, options)
   } finally {
     detailLoading.value = false
   }
 }
 
-async function refreshCurrent() {
+async function refreshCurrent(options = {}) {
   if (!currentDoc.value?.id) return
-  await loadDetail(currentDoc.value.id)
+  await loadDetail(currentDoc.value.id, options)
   await loadDocuments()
 }
 
-function applyDoc(data) {
+function applyDoc(data, options = {}) {
+  const previousActiveNodeId = activeNode.value?.id
   currentDoc.value = data
   runningTask.value = data?.runningTask || null
   form.documentType = data?.solutionType || 'FEASIBILITY'
@@ -495,10 +496,13 @@ function applyDoc(data) {
   Object.keys(formData).forEach((key) => delete formData[key])
   fillFormDataFromSummary(data?.requirement?.technicalRequirement || '')
   ensureCurrentFields()
-  activeNode.value = leafNodes.value.find((node) => node?.section?.content) || leafNodes.value[0] || null
+  activeNode.value = (previousActiveNodeId ? findOutlineNodeById(leafNodes.value, previousActiveNodeId) : null)
+    || leafNodes.value.find((node) => node?.section?.content)
+    || leafNodes.value[0]
+    || null
   sectionDraft.value = activeNode.value?.section?.content || ''
-  resumeTaskPolling()
-  resumeParsePolling()
+  if (options.resumeTask !== false) resumeTaskPolling()
+  if (options.resumeParse !== false) resumeParsePolling()
 }
 
 function ensureCurrentFields() {
@@ -641,7 +645,7 @@ async function onGenerateFull(rewrite) {
       : await generateDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle })
     runningTask.value = task
     pollGenerationTask(task.id)
-  } finally {
+  } catch (e) {
     fullGenerating.value = false
   }
 }
@@ -657,21 +661,34 @@ function resumeTaskPolling() {
 function pollGenerationTask(taskId) {
   clearInterval(taskTimer)
   const tick = async () => {
-    const task = await getDocumentGenerationTask(taskId)
-    runningTask.value = task
-    const status = String(task.status || '').toUpperCase()
-    if (!['WAITING', 'RUNNING'].includes(status)) {
+    try {
+      const task = await getDocumentGenerationTask(taskId)
+      runningTask.value = task
+      fullGenerating.value = ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
+      const status = String(task.status || '').toUpperCase()
+      if (['WAITING', 'RUNNING'].includes(status)) {
+        await refreshCurrent({ resumeTask: false })
+        return
+      }
       clearInterval(taskTimer)
       taskTimer = null
-      await refreshCurrent()
-      await loadDocuments()
+      fullGenerating.value = false
+      await refreshCurrent({ resumeTask: false })
       if (status === 'SUCCESS') ElMessage.success('全文生成完成')
       else if (status === 'PARTIAL') ElMessage.warning('生成完成，但存在失败章节，请检查后重试')
       else if (status === 'FAILED') ElMessage.error('全文生成失败，请稍后重试或联系管理员')
+    } catch (e) {
+      const status = e?.response?.status
+      if (status === 404) {
+        clearInterval(taskTimer)
+        taskTimer = null
+        runningTask.value = null
+        fullGenerating.value = false
+      }
     }
   }
   tick()
-  taskTimer = setInterval(tick, 2500)
+  taskTimer = setInterval(tick, 3000)
 }
 
 function selectNode(node) {
@@ -775,6 +792,16 @@ async function onDelete(item) {
   if (currentDoc.value?.id === item.id) resetWorkspace()
   await loadDocuments()
   ElMessage.success('已删除，记录已进入回收站')
+}
+
+function findOutlineNodeById(nodes = [], id) {
+  if (!id) return null
+  for (const node of nodes || []) {
+    if (String(node?.id || '') === String(id)) return node
+    const hit = findOutlineNodeById(node?.children || [], id)
+    if (hit) return hit
+  }
+  return null
 }
 
 function flattenLeaves(nodes = []) {

@@ -347,7 +347,7 @@
                 plain
                 :loading="sectionOptimizing === 'SHRINK'"
                 :disabled="!canOptimizeSectionContent"
-                @click="optimizeSection('SHRINK')"
+                @click="openShortenDialog"
               >
                 缩写本章
               </el-button>
@@ -555,6 +555,30 @@
       <template #footer>
         <el-button @click="sectionDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="sectionGenerating" @click="onGenerateSection">生成本段</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="shortenDialogVisible" title="缩写本章" width="460px" append-to-body>
+      <el-form label-width="90px">
+        <el-form-item label="目标字数">
+          <el-radio-group v-model="shortenTargetMode" class="shorten-target-group">
+            <el-radio-button v-for="n in shortenPresetOptions" :key="n" :label="String(n)">{{ n }}字</el-radio-button>
+            <el-radio-button label="CUSTOM">自定义</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="shortenTargetMode === 'CUSTOM'" label="自定义">
+          <el-input-number v-model="shortenCustomWordCount" :min="100" :max="20000" :step="50" controls-position="right" />
+        </el-form-item>
+        <el-alert
+          title="缩写本章会对当前章节最多重写 3 次。若仍略超目标字数，系统会保存最接近目标的版本。"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="shortenDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="sectionOptimizing === 'SHRINK'" @click="confirmShortenSection">开始缩写</el-button>
       </template>
     </el-dialog>
 
@@ -842,6 +866,10 @@ const sectionNode = ref(null)
 const sectionStreamingText = ref('')
 const sectionOptimizing = ref('')
 const sectionOptimizingNodeId = ref('')
+const shortenDialogVisible = ref(false)
+const shortenTargetMode = ref('300')
+const shortenCustomWordCount = ref(300)
+const shortenPresetOptions = [300, 600, 900, 1200]
 const overallWritingRequirement = ref('')
 const sectionContentEditMode = ref(false)
 const sectionContentSaving = ref(false)
@@ -1075,43 +1103,8 @@ function onSearchInput() {
   searchTimer = setTimeout(loadList, 300)
 }
 
-function normalizeId(value) {
-  const text = String(value ?? '').trim()
-  if (!text || text === 'null' || text === 'undefined') return ''
-  return text
-}
-
-function normalizeIdList(value) {
-  const pushId = (arr, item) => {
-    const id = normalizeId(item)
-    if (id) arr.push(id)
-  }
-
-  if (Array.isArray(value)) {
-    const ids = []
-    value.forEach((item) => pushId(ids, item))
-    return [...new Set(ids)]
-  }
-
-  if (value === undefined || value === null || value === '') return []
-  const text = String(value).trim()
-  if (!text) return []
-
-  if (text.startsWith('[')) {
-    try {
-      const arr = JSON.parse(text)
-      if (Array.isArray(arr)) return normalizeIdList(arr)
-    } catch (e) {
-      // 解析失败时继续按逗号字符串兜底。
-    }
-  }
-
-  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map(normalizeId).filter(Boolean))]
-}
-
 async function loadDetail(id) {
-  const solutionId = normalizeId(id)
-  if (!solutionId) return
+  const solutionId = Number(id)
   const seq = ++detailRequestSeq.value
   activeSolutionId.value = solutionId
   selectedSection.value = null
@@ -1164,7 +1157,7 @@ function applyModeByBackendState(data) {
 }
 
 function applySolutionDetail(data) {
-  if (data?.id && !activeSolutionId.value) activeSolutionId.value = normalizeId(data.id)
+  if (data?.id && !activeSolutionId.value) activeSolutionId.value = Number(data.id)
   currentSolution.value = data
   overallWritingRequirement.value = data?.overallWritingRequirement || ''
   fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
@@ -1230,7 +1223,7 @@ function pollOutlineStatus(solutionId) {
   const tick = async () => {
     try {
       const data = await getSolution(solutionId)
-      if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
+      if (activeSolutionId.value && activeSolutionId.value !== Number(solutionId)) return
       applySolutionDetail(data)
       applyModeByBackendState(data)
 
@@ -1583,10 +1576,10 @@ function toggleEditMode() {
 }
 
 async function refreshCurrent(expectedSolutionId = currentSolution.value?.id) {
-  const solutionId = normalizeId(expectedSolutionId)
+  const solutionId = Number(expectedSolutionId)
   if (!solutionId) return
   const data = await getSolution(solutionId)
-  if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
+  if (activeSolutionId.value && activeSolutionId.value !== solutionId) return
   applySolutionDetail(data)
   resumeRunningTaskIfNeeded()
   resumeParseTaskIfNeeded()
@@ -1679,19 +1672,40 @@ async function onMoveNode({ node, direction }) {
 }
 
 function parseKnowledgeIds(value) {
-  return normalizeIdList(value)
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((id) => Number(id)).filter(Boolean))]
+  }
+  if (value === undefined || value === null || value === '') return []
+
+  const text = String(value).trim()
+  if (!text) return []
+
+  // 后端会把章节知识库保存为 JSON 字符串，例如：[1,2]。
+  // 这里必须先按 JSON 解析，否则 collectSolutionKnowledgeIds 会读不到历史选择。
+  if (text.startsWith('[')) {
+    try {
+      const arr = JSON.parse(text)
+      if (Array.isArray(arr)) {
+        return [...new Set(arr.map((id) => Number(id)).filter(Boolean))]
+      }
+    } catch (e) {
+      // 解析失败时继续按逗号字符串兜底。
+    }
+  }
+
+  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map((id) => Number(id)).filter(Boolean))]
 }
 
 function stringifyKnowledgeIds(ids = []) {
-  return normalizeIdList(ids).join(',')
+  return [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))].join(',')
 }
 
 function buildSelectedKnowledgeBases(ids = []) {
   const idList = parseKnowledgeIds(ids)
   const map = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => map.set(normalizeId(item.id), item))
-  knowledgeBaseList.value.forEach((item) => map.set(normalizeId(item.id), item))
-  return idList.map((id) => map.get(normalizeId(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
+  selectedKnowledgeBaseCache.value.forEach((item) => map.set(Number(item.id), item))
+  knowledgeBaseList.value.forEach((item) => map.set(Number(item.id), item))
+  return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
 }
 
 function collectSolutionKnowledgeIds(solution = currentSolution.value) {
@@ -1703,7 +1717,7 @@ function collectSolutionKnowledgeIds(solution = currentSolution.value) {
     })
   }
   walk(solution?.outlines || [])
-  return normalizeIdList(ids)
+  return [...new Set(ids.map((id) => Number(id)).filter(Boolean))]
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
@@ -1713,7 +1727,7 @@ function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) 
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
-  const normalized = normalizeIdList(ids)
+  const normalized = [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))]
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
   } else {
@@ -1749,30 +1763,30 @@ async function loadKnowledgeBases() {
 }
 
 function confirmKnowledgeSelection() {
-  const ids = normalizeIdList(tempSelectedKnowledgeIds.value)
+  const ids = [...new Set((tempSelectedKnowledgeIds.value || []).map((id) => Number(id)).filter(Boolean))]
   setCurrentKnowledgeIdsByTarget(ids)
 
   const cacheMap = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(normalizeId(item.id), item))
+  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(Number(item.id), item))
   knowledgeBaseList.value.forEach((item) => {
-    if (ids.includes(normalizeId(item.id))) {
-      cacheMap.set(normalizeId(item.id), item)
+    if (ids.includes(Number(item.id))) {
+      cacheMap.set(Number(item.id), item)
     }
   })
   selectedKnowledgeBaseCache.value = [...new Set([
     ...parseKnowledgeIds(fullGenerateForm.knowledgeIds),
     ...parseKnowledgeIds(sectionForm.knowledgeIds)
-  ])].map((id) => cacheMap.get(normalizeId(id))).filter(Boolean)
+  ])].map((id) => cacheMap.get(Number(id))).filter(Boolean)
 
   knowledgeSelectorVisible.value = false
 }
 
 function removeSelectedKnowledgeBase(id, target = 'full') {
-  const removeId = normalizeId(id)
-  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => normalizeId(item) !== removeId)
+  const removeId = Number(id)
+  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => Number(item) !== removeId)
   setCurrentKnowledgeIdsByTarget(next, target)
-  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => normalizeId(item) !== removeId)
-  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => normalizeId(item.id) !== removeId)
+  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => Number(item) !== removeId)
+  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => Number(item.id) !== removeId)
 }
 
 
@@ -1962,34 +1976,13 @@ function restoreSolutionTaskPending() {
   if (!raw) return
   try {
     const data = JSON.parse(raw)
-    const taskId = normalizeId(data?.taskId)
-    const solutionId = normalizeId(data?.solutionId)
-    if (!taskId) {
-      localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
-      return
+    if (data?.taskId) {
+      solutionTaskPending.solutionId = String(data.solutionId || '')
+      solutionTaskPending.taskId = String(data.taskId)
+      solutionTaskPollErrorCount.value = 0
+      fullGenerating.value = true
+      startSolutionTaskPolling(data.taskId)
     }
-
-    // UUID 主键改造后，历史 localStorage 里可能残留旧任务。
-    // 如果列表中找不到对应方案，或者方案已经不是生成中状态，不再恢复轮询，避免进入页面就提示“生成任务不存在”。
-    const card = solutionId ? solutions.value.find((item) => String(item.id) === String(solutionId)) : null
-    const cardStatus = String(card?.status || '').toUpperCase()
-    const mayStillRunning = !solutionId || ['CONTENT_GENERATING', 'GENERATING', 'OUTLINE_GENERATING'].includes(cardStatus)
-    if (solutionId && !card) {
-      clearSolutionTaskPending(taskId)
-      fullGenerating.value = false
-      return
-    }
-    if (!mayStillRunning) {
-      clearSolutionTaskPending(taskId)
-      fullGenerating.value = false
-      return
-    }
-
-    solutionTaskPending.solutionId = solutionId
-    solutionTaskPending.taskId = taskId
-    solutionTaskPollErrorCount.value = 0
-    fullGenerating.value = true
-    startSolutionTaskPolling(taskId)
   } catch (e) {
     localStorage.removeItem(SOLUTION_TASK_PENDING_KEY)
   }
@@ -2050,11 +2043,9 @@ async function pollGenerationTask(taskId, silent = true) {
     const status = e?.response?.status
     solutionTaskPollErrorCount.value += 1
     fullGenerating.value = true
-    const message = String(e?.response?.data?.message || e?.message || '')
-    if (status === 404 || message.includes('生成任务不存在')) {
+    if (status === 404) {
       clearSolutionTaskPending(taskId)
       fullGenerating.value = false
-      await loadList()
       return
     }
     if (!silent && solutionTaskPollErrorCount.value === 1) {
@@ -2237,7 +2228,32 @@ function sectionOptimizeWritingRequirement(type, node, content, targetWordCount)
   return `${storedRequirement ? storedRequirement + '\n\n' : ''}${SECTION_OPTIMIZE_REQUIREMENT_MARKER}\n${optimizeInstruction}`
 }
 
-async function optimizeSection(type = 'POLISH') {
+function maxAcceptableFrontendWords(targetWordCount) {
+  const target = Math.max(1, Number(targetWordCount || 0))
+  return target < 500 ? target + 80 : Math.round(target * 1.15)
+}
+
+function openShortenDialog() {
+  if (!canOptimizeSectionContent.value || !selectedSection.value?.id) return
+  const node = selectedSection.value
+  const suggested = Number(node?.targetWordCount || node?.wordCount || node?.section?.targetWordCount || 300)
+  const target = suggested > 0 ? suggested : 300
+  shortenTargetMode.value = shortenPresetOptions.includes(target) ? String(target) : 'CUSTOM'
+  shortenCustomWordCount.value = target
+  shortenDialogVisible.value = true
+}
+
+async function confirmShortenSection() {
+  const target = shortenTargetMode.value === 'CUSTOM' ? Number(shortenCustomWordCount.value) : Number(shortenTargetMode.value)
+  if (!target || target <= 0) {
+    ElMessage.warning('请输入有效目标字数')
+    return
+  }
+  shortenDialogVisible.value = false
+  await optimizeSection('SHRINK', target)
+}
+
+async function optimizeSection(type = 'POLISH', customTargetWordCount = null) {
   if (!canOptimizeSectionContent.value || !selectedSection.value?.id) return
   const node = selectedSection.value
   const content = String(selectedSectionContent.value || '').trim()
@@ -2245,7 +2261,9 @@ async function optimizeSection(type = 'POLISH') {
     ElMessage.warning('当前章节暂无正文')
     return
   }
-  const targetWordCount = sectionOptimizeTargetWordCount(type, node, content)
+  const targetWordCount = Number(customTargetWordCount || 0) > 0
+    ? Number(customTargetWordCount)
+    : sectionOptimizeTargetWordCount(type, node, content)
   const label = optimizeActionLabel(type)
   sectionOptimizing.value = type
   sectionOptimizingNodeId.value = String(node.id || '')
@@ -2255,6 +2273,9 @@ async function optimizeSection(type = 'POLISH') {
     await streamSection(node.id, {
       title: node.title,
       targetWordCount,
+      action: type === 'SHRINK' ? 'SHORTEN' : type,
+      sourceContent: content,
+      maxRewriteAttempts: type === 'SHRINK' ? 3 : undefined,
       chartLevel: 'NONE',
       tableLevel: 'NONE',
       imageLevel: 'NONE',
@@ -2277,7 +2298,12 @@ async function optimizeSection(type = 'POLISH') {
     selectedSection.value = findOutlineNodeById(currentSolution.value?.outlines || [], node.id) || selectedSection.value
     sectionContentDraft.value = selectedSection.value?.section?.content || ''
     await loadList()
-    ElMessage.success(`${label}完成`)
+    const latestActual = outlineActualWordCount(selectedSection.value) || countTextWords(selectedSection.value?.section?.content || '')
+    if (type === 'SHRINK' && latestActual > maxAcceptableFrontendWords(targetWordCount)) {
+      ElMessage.warning(`缩写完成，已尽量压缩，当前 ${latestActual} 字，仍略超目标 ${targetWordCount} 字`)
+    } else {
+      ElMessage.success(`${label}完成`)
+    }
   } finally {
     sectionOptimizing.value = ''
     sectionOptimizingNodeId.value = ''
@@ -2546,7 +2572,7 @@ function syncSelectedSectionAfterDetail(data) {
 
 function findOutlineNodeById(nodes = [], id) {
   for (const node of nodes) {
-    if (String(node.id) === String(id)) return node
+    if (node.id === id) return node
     const child = findOutlineNodeById(node.children || [], id)
     if (child) return child
   }
@@ -2773,7 +2799,7 @@ async function selectVersion(item) {
 
 function currentSectionWordCount(outlineId) {
   if (!outlineId) return 0
-  const node = findOutlineNodeById(currentSolution.value?.outlines || [], normalizeId(outlineId))
+  const node = findOutlineNodeById(currentSolution.value?.outlines || [], Number(outlineId))
   return outlineActualWordCount(node) || countTextWords(node?.section?.content || '')
 }
 
