@@ -2115,24 +2115,32 @@ async function generateTechnicalOutline() {
 }
 
 
+function normalizeId(id) {
+  const text = String(id ?? '').trim()
+  if (!text || text === 'null' || text === 'undefined' || text === 'NaN') return ''
+  return text
+}
+
+function uniqueIds(ids = []) {
+  return [...new Set((Array.isArray(ids) ? ids : []).map((id) => normalizeId(id)).filter(Boolean))]
+}
+
 function normalizeKnowledgeIds(ids = []) {
-  return (Array.isArray(ids) ? ids : parseKnowledgeIds(ids))
-    .map((id) => Number(id))
-    .filter((id) => Number.isFinite(id) && id > 0)
+  return Array.isArray(ids) ? uniqueIds(ids) : parseKnowledgeIds(ids)
 }
 
 function parseKnowledgeIds(value) {
-  if (Array.isArray(value)) return normalizeKnowledgeIds(value)
+  if (Array.isArray(value)) return uniqueIds(value)
   if (value === null || value === undefined || value === '') return []
-  if (typeof value === 'number') return Number.isFinite(value) ? [value] : []
+  if (typeof value === 'number') return Number.isFinite(value) ? [String(value)] : []
   if (typeof value === 'string') {
     const text = value.trim()
     if (!text) return []
     try {
       const parsed = JSON.parse(text)
-      if (Array.isArray(parsed)) return normalizeKnowledgeIds(parsed)
+      if (Array.isArray(parsed)) return uniqueIds(parsed)
     } catch (e) {}
-    return text.split(',').map((item) => Number(String(item).trim())).filter((id) => Number.isFinite(id) && id > 0)
+    return uniqueIds(text.replace(/[\[\]"']/g, '').split(/[,，;；\s]+/))
   }
   return []
 }
@@ -2144,9 +2152,9 @@ function stringifyKnowledgeIds(ids = []) {
 function buildSelectedKnowledgeBases(ids = []) {
   const idList = normalizeKnowledgeIds(ids)
   const map = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => map.set(Number(item.id), item))
-  knowledgeBaseList.value.forEach((item) => map.set(Number(item.id), item))
-  return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
+  selectedKnowledgeBaseCache.value.forEach((item) => map.set(normalizeId(item.id), item))
+  knowledgeBaseList.value.forEach((item) => map.set(normalizeId(item.id), item))
+  return idList.map((id) => map.get(normalizeId(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
 }
 
 function collectTechnicalFullGenerateKnowledgeIds() {
@@ -2169,7 +2177,7 @@ function collectTechnicalFullGenerateKnowledgeIds() {
   walk(technicalOutlines.value || [])
   walk(technicalSolution.value?.outlines || [])
 
-  return [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))]
+  return uniqueIds(ids)
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
@@ -2214,18 +2222,20 @@ async function loadKnowledgeBases() {
 
 function confirmKnowledgeSelection() {
   setCurrentKnowledgeIdsByTarget(tempSelectedKnowledgeIds.value, knowledgeSelectorTarget.value)
+  const selectedIds = uniqueIds(tempSelectedKnowledgeIds.value || [])
   const cacheMap = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(Number(item.id), item))
+  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(normalizeId(item.id), item))
   knowledgeBaseList.value.forEach((item) => {
-    if (tempSelectedKnowledgeIds.value.map(Number).includes(Number(item.id))) cacheMap.set(Number(item.id), item)
+    const itemId = normalizeId(item.id)
+    if (selectedIds.includes(itemId)) cacheMap.set(itemId, item)
   })
   selectedKnowledgeBaseCache.value = [...cacheMap.values()]
   knowledgeSelectorVisible.value = false
 }
 
 function removeSelectedKnowledgeBase(id, target = 'full') {
-  const removeId = Number(id)
-  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => Number(item) !== removeId)
+  const removeId = normalizeId(id)
+  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => normalizeId(item) !== removeId)
   setCurrentKnowledgeIdsByTarget(next, target)
 }
 

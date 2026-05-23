@@ -390,7 +390,7 @@ const OutlineNodeList = defineComponent({
       const isLeaf = !children.length
       return h('div', { class: 'outline-node-wrap' }, [
         h('div', {
-          class: ['outline-node', { active: Number(props.activeId) === Number(node.id), leaf: isLeaf }],
+          class: ['outline-node', { active: String(props.activeId || '') === String(node.id || ''), leaf: isLeaf }],
           style: { paddingLeft: `${Math.max(0, props.level - 1) * 14}px` },
           onClick: () => isLeaf && emit('select', node)
         }, [
@@ -788,7 +788,7 @@ async function onDelete(item) {
   await ElMessageBox.confirm(`确定删除“${item.solutionName || ''}”吗？删除后可在回收站恢复。`, '删除确认', { type: 'warning' })
   await deleteDocument(item.id)
   // 删除成功后立即从左侧列表移除；该记录后续只在回收站展示。
-  documents.value = documents.value.filter((doc) => Number(doc.id) !== Number(item.id))
+  documents.value = documents.value.filter((doc) => String(doc.id || '') !== String(item.id || ''))
   if (currentDoc.value?.id === item.id) resetWorkspace()
   await loadDocuments()
   ElMessage.success('已删除，记录已进入回收站')

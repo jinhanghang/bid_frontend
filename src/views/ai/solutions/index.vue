@@ -1104,7 +1104,8 @@ function onSearchInput() {
 }
 
 async function loadDetail(id) {
-  const solutionId = Number(id)
+  const solutionId = normalizeId(id)
+  if (!solutionId) return
   const seq = ++detailRequestSeq.value
   activeSolutionId.value = solutionId
   selectedSection.value = null
@@ -1157,7 +1158,7 @@ function applyModeByBackendState(data) {
 }
 
 function applySolutionDetail(data) {
-  if (data?.id && !activeSolutionId.value) activeSolutionId.value = Number(data.id)
+  if (data?.id && !activeSolutionId.value) activeSolutionId.value = normalizeId(data.id)
   currentSolution.value = data
   overallWritingRequirement.value = data?.overallWritingRequirement || ''
   fullGenerating.value = !!data?.runningTask && ['WAITING', 'RUNNING'].includes(data.runningTask.status)
@@ -1223,7 +1224,7 @@ function pollOutlineStatus(solutionId) {
   const tick = async () => {
     try {
       const data = await getSolution(solutionId)
-      if (activeSolutionId.value && activeSolutionId.value !== Number(solutionId)) return
+      if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
       applySolutionDetail(data)
       applyModeByBackendState(data)
 
@@ -1576,10 +1577,10 @@ function toggleEditMode() {
 }
 
 async function refreshCurrent(expectedSolutionId = currentSolution.value?.id) {
-  const solutionId = Number(expectedSolutionId)
+  const solutionId = normalizeId(expectedSolutionId)
   if (!solutionId) return
   const data = await getSolution(solutionId)
-  if (activeSolutionId.value && activeSolutionId.value !== solutionId) return
+  if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
   applySolutionDetail(data)
   resumeRunningTaskIfNeeded()
   resumeParseTaskIfNeeded()
@@ -1671,41 +1672,47 @@ async function onMoveNode({ node, direction }) {
   await refreshCurrent()
 }
 
+function normalizeId(id) {
+  const text = String(id ?? '').trim()
+  if (!text || text === 'null' || text === 'undefined' || text === 'NaN') return ''
+  return text
+}
+
+function uniqueIds(ids = []) {
+  return [...new Set((Array.isArray(ids) ? ids : []).map((id) => normalizeId(id)).filter(Boolean))]
+}
+
 function parseKnowledgeIds(value) {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((id) => Number(id)).filter(Boolean))]
-  }
+  if (Array.isArray(value)) return uniqueIds(value)
   if (value === undefined || value === null || value === '') return []
 
   const text = String(value).trim()
   if (!text) return []
 
-  // 后端会把章节知识库保存为 JSON 字符串，例如：[1,2]。
-  // 这里必须先按 JSON 解析，否则 collectSolutionKnowledgeIds 会读不到历史选择。
+  // 后端会把章节知识库保存为 JSON 字符串，例如：["uuid"]。
+  // ID 已统一为 UUID，不能再转 Number，否则会被转成 NaN 导致详情/知识库丢失。
   if (text.startsWith('[')) {
     try {
       const arr = JSON.parse(text)
-      if (Array.isArray(arr)) {
-        return [...new Set(arr.map((id) => Number(id)).filter(Boolean))]
-      }
+      if (Array.isArray(arr)) return uniqueIds(arr)
     } catch (e) {
       // 解析失败时继续按逗号字符串兜底。
     }
   }
 
-  return [...new Set(text.replace(/[\[\]]/g, '').split(/[,，;；\s]+/).map((id) => Number(id)).filter(Boolean))]
+  return uniqueIds(text.replace(/[\[\]"']/g, '').split(/[,，;；\s]+/))
 }
 
 function stringifyKnowledgeIds(ids = []) {
-  return [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))].join(',')
+  return uniqueIds(ids).join(',')
 }
 
 function buildSelectedKnowledgeBases(ids = []) {
   const idList = parseKnowledgeIds(ids)
   const map = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => map.set(Number(item.id), item))
-  knowledgeBaseList.value.forEach((item) => map.set(Number(item.id), item))
-  return idList.map((id) => map.get(Number(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
+  selectedKnowledgeBaseCache.value.forEach((item) => map.set(normalizeId(item.id), item))
+  knowledgeBaseList.value.forEach((item) => map.set(normalizeId(item.id), item))
+  return idList.map((id) => map.get(normalizeId(id)) || { id, kbName: `知识库#${id}` }).filter(Boolean)
 }
 
 function collectSolutionKnowledgeIds(solution = currentSolution.value) {
@@ -1717,7 +1724,7 @@ function collectSolutionKnowledgeIds(solution = currentSolution.value) {
     })
   }
   walk(solution?.outlines || [])
-  return [...new Set(ids.map((id) => Number(id)).filter(Boolean))]
+  return uniqueIds(ids)
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
@@ -1727,7 +1734,7 @@ function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) 
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
-  const normalized = [...new Set((ids || []).map((id) => Number(id)).filter(Boolean))]
+  const normalized = uniqueIds(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
   } else {
@@ -1763,30 +1770,31 @@ async function loadKnowledgeBases() {
 }
 
 function confirmKnowledgeSelection() {
-  const ids = [...new Set((tempSelectedKnowledgeIds.value || []).map((id) => Number(id)).filter(Boolean))]
+  const ids = uniqueIds(tempSelectedKnowledgeIds.value || [])
   setCurrentKnowledgeIdsByTarget(ids)
 
   const cacheMap = new Map()
-  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(Number(item.id), item))
+  selectedKnowledgeBaseCache.value.forEach((item) => cacheMap.set(normalizeId(item.id), item))
   knowledgeBaseList.value.forEach((item) => {
-    if (ids.includes(Number(item.id))) {
-      cacheMap.set(Number(item.id), item)
+    const itemId = normalizeId(item.id)
+    if (ids.includes(itemId)) {
+      cacheMap.set(itemId, item)
     }
   })
-  selectedKnowledgeBaseCache.value = [...new Set([
+  selectedKnowledgeBaseCache.value = uniqueIds([
     ...parseKnowledgeIds(fullGenerateForm.knowledgeIds),
     ...parseKnowledgeIds(sectionForm.knowledgeIds)
-  ])].map((id) => cacheMap.get(Number(id))).filter(Boolean)
+  ]).map((id) => cacheMap.get(normalizeId(id))).filter(Boolean)
 
   knowledgeSelectorVisible.value = false
 }
 
 function removeSelectedKnowledgeBase(id, target = 'full') {
-  const removeId = Number(id)
-  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => Number(item) !== removeId)
+  const removeId = normalizeId(id)
+  const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => normalizeId(item) !== removeId)
   setCurrentKnowledgeIdsByTarget(next, target)
-  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => Number(item) !== removeId)
-  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => Number(item.id) !== removeId)
+  tempSelectedKnowledgeIds.value = tempSelectedKnowledgeIds.value.filter((item) => normalizeId(item) !== removeId)
+  selectedKnowledgeBaseCache.value = selectedKnowledgeBaseCache.value.filter((item) => normalizeId(item.id) !== removeId)
 }
 
 
@@ -2799,7 +2807,7 @@ async function selectVersion(item) {
 
 function currentSectionWordCount(outlineId) {
   if (!outlineId) return 0
-  const node = findOutlineNodeById(currentSolution.value?.outlines || [], Number(outlineId))
+  const node = findOutlineNodeById(currentSolution.value?.outlines || [], outlineId)
   return outlineActualWordCount(node) || countTextWords(node?.section?.content || '')
 }
 
