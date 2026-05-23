@@ -4052,7 +4052,6 @@ const WritingDirectionEditor = defineComponent({
   color: #64748b;
   line-height: 1.5;
   overflow: hidden;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
