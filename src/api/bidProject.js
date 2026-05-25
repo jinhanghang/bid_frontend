@@ -128,6 +128,16 @@ export function uploadTenderProject(formData) {
 }
 
 /**
+ * AI标书：给当前已有项目补传 / 替换招标文件，不新建项目
+ */
+export function uploadTenderToExistingProject(id, formData) {
+  return request.post(`/bid-project/${id}/workflow/upload-tender`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
  * AI标书：开始读标解析
  */
 export function startReadTenderProject(id) {

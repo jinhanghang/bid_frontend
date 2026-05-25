@@ -63,7 +63,7 @@ const routes = [
       { path: 'system/enterprises', component: EnterpriseManage, meta: { title: '企业管理', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN] } },
       { path: 'system/enterprise-profile', component: EnterpriseManage, meta: { title: '企业资料', currentOnly: true, roles: [ROLE_ENTERPRISE_ADMIN] } },
       { path: 'system/enterprise-apply', component: EnterpriseApply, meta: { title: '企业申请' } },
-      { path: 'system/enterprise-apply-audit', component: EnterpriseApply, meta: { title: '企业申请审核', audit: true, roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
+      { path: 'system/enterprise-apply-audit', component: EnterpriseApply, meta: { title: '公司审批', audit: true, roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'system/configs', component: GenericCrudView, meta: { title: '系统配置', configKey: 'systemConfig', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'system/dict-types', component: GenericCrudView, meta: { title: '字典类型', configKey: 'dictType', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'system/dict-data', component: GenericCrudView, meta: { title: '字典数据', configKey: 'dictData', roles: [ROLE_SUPER_ADMIN] } }

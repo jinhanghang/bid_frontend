@@ -44,6 +44,19 @@
               <el-dropdown-menu>
                 <el-dropdown-item disabled>{{ userSubText }}</el-dropdown-item>
                 <el-dropdown-item divided @click="goMemberCenter">会员中心</el-dropdown-item>
+                <el-dropdown-item v-if="showCompanyApprovalEntry" @click="goCompanyApproval">
+                  <span class="dropdown-row">
+                    <span>公司审批</span>
+                    <el-tag
+                      v-if="approvalPendingCount > 0"
+                      size="small"
+                      type="danger"
+                      effect="light"
+                    >
+                      {{ approvalPendingCount }}
+                    </el-tag>
+                  </span>
+                </el-dropdown-item>
                 <el-dropdown-item v-if="showManagerEntry" @click="goManager">管理后台</el-dropdown-item>
                 <el-dropdown-item v-if="showManagerEntry" @click="goMemberAdmin">会员运营</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
@@ -61,7 +74,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowDown,
@@ -79,6 +92,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getMemberSummary } from '@/api/member'
+import { getAuditPendingCount } from '@/api/enterpriseApply'
 
 const route = useRoute()
 const router = useRouter()
@@ -96,6 +110,8 @@ const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_A
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
 const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
+const showCompanyApprovalEntry = computed(() => showManagerEntry.value)
+const approvalPendingCount = ref(0)
 
 const quota = reactive({
   availableWords: 0,
@@ -143,7 +159,7 @@ function normalizeRoleList(values = []) {
 
 async function reloadMe() {
   await auth.loadMe()
-  await loadQuota()
+  await Promise.all([loadQuota(), loadApprovalPendingCount()])
   ElMessage.success('用户信息已刷新')
 }
 
@@ -159,6 +175,19 @@ async function loadQuota() {
   }
 }
 
+async function loadApprovalPendingCount() {
+  if (!auth.token || !showCompanyApprovalEntry.value) {
+    approvalPendingCount.value = 0
+    return
+  }
+  try {
+    const res = await getAuditPendingCount()
+    approvalPendingCount.value = Number(res || 0)
+  } catch (e) {
+    approvalPendingCount.value = 0
+  }
+}
+
 function formatNumber(value) {
   return Number(value || 0).toLocaleString()
 }
@@ -171,8 +200,23 @@ function goMemberAdmin() {
   router.push('/member/admin')
 }
 
-onMounted(loadQuota)
-watch(() => route.fullPath, loadQuota)
+function goCompanyApproval() {
+  router.push('/system/enterprise-apply-audit')
+}
+
+onMounted(() => {
+  loadQuota()
+  loadApprovalPendingCount()
+})
+
+watch(() => route.fullPath, () => {
+  loadQuota()
+  loadApprovalPendingCount()
+})
+
+watch(() => auth.user?.id, () => {
+  loadApprovalPendingCount()
+})
 
 function goManager() {
   router.push('/system/users')
@@ -185,6 +229,14 @@ async function logout() {
 </script>
 
 <style scoped>
+.dropdown-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 86px;
+  justify-content: space-between;
+}
+
 .product-shell {
   display: flex;
   width: 100%;

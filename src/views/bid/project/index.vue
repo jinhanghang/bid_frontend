@@ -290,17 +290,35 @@
 
                 <div class="tech-form-section">
                   <div class="tech-label">智能读取：</div>
-                  <div class="tech-read-card" :class="{ success: isParseSuccess, running: isParseRunning }">
+                  <div class="tech-read-card" :class="{ success: isParseSuccess, running: isParseRunning, empty: !hasTenderFile }">
                     <el-icon class="tech-read-icon"><Document /></el-icon>
-                    <div class="tech-read-file">{{ selectedProject?.tenderFileName || workflow?.parseTask?.fileName || '当前项目已上传招标文件' }}</div>
+                    <div class="tech-read-file">{{ tenderFileDisplayName }}</div>
                     <div class="tech-read-status">
-                      <template v-if="isParseRunning">{{ workflow?.parseTask?.message || '正在解析招标文件' }} {{ parseProgress || 0 }}%</template>
+                      <template v-if="!hasTenderFile">当前项目未上传招标文件，请先上传招标文件，或选择上传流程创建的项目</template>
+                      <template v-else-if="isParseRunning">{{ workflow?.parseTask?.message || '正在解析招标文件' }} {{ parseProgress || 0 }}%</template>
                       <template v-else-if="isParseSuccess">解析报告已完成，已自动带入采购需求和评分标准</template>
                       <template v-else>尚未读标，可先手工录入采购需求，也可以直接点击下方按钮开始解析</template>
                     </div>
                     <div class="tech-read-actions">
+                      <input
+                        ref="technicalTenderInputRef"
+                        class="hidden-file-input"
+                        type="file"
+                        accept=".doc,.docx,.pdf,.DOC,.DOCX,.PDF"
+                        @change="onTechnicalTenderFileChange"
+                      />
                       <el-button
-                        v-if="!isParseSuccess"
+                        v-if="!hasTenderFile"
+                        type="primary"
+                        plain
+                        :loading="technicalTenderUploading"
+                        :disabled="!selectedProject?.id"
+                        @click="triggerTechnicalTenderUpload"
+                      >
+                        上传招标文件
+                      </el-button>
+                      <el-button
+                        v-else-if="!isParseSuccess"
                         type="primary"
                         plain
                         :loading="readTenderLoading"
@@ -1039,6 +1057,7 @@ import {
   streamBidProjectTechnicalSection,
   streamBidProjectTechnicalWritingDirection,
   uploadTenderProject,
+  uploadTenderToExistingProject,
   saveBidProjectTechnicalOverallWritingRequirement,
   updateBidProjectTechnicalOutlineWordCount,
   batchUpdateBidProjectTechnicalOutlineWordCount,
@@ -1061,6 +1080,8 @@ const workflow = ref(null)
 const activeDoc = ref('')
 const uploadFiles = ref([])
 const uploadRef = ref()
+const technicalTenderInputRef = ref()
+const technicalTenderUploading = ref(false)
 const readTenderLoading = ref(false)
 const autoFillLoading = ref(false)
 const bidDocumentLoading = ref(false)
@@ -1251,6 +1272,20 @@ function resetBidDocumentWorkspace() {
 const workflowDocuments = computed(() => workflow.value?.documents || defaultDocuments(selectedProject.value))
 const parseReportText = computed(() => workflow.value?.parseReportText || selectedProject.value?.parseReportText || '')
 const parseProgress = computed(() => Number(workflow.value?.parseTask?.progress || 0))
+const hasTenderFile = computed(() => Boolean(
+  selectedProject.value?.tenderFileId
+  || selectedProject.value?.tenderFileName
+  || workflow.value?.project?.tenderFileId
+  || workflow.value?.project?.tenderFileName
+  || workflow.value?.parseTask?.fileResourceId
+  || workflow.value?.parseTask?.fileName
+))
+const tenderFileDisplayName = computed(() =>
+  selectedProject.value?.tenderFileName
+  || workflow.value?.project?.tenderFileName
+  || workflow.value?.parseTask?.fileName
+  || '尚未上传招标文件'
+)
 const isParseRunning = computed(() => ['PARSING', 'EXTRACTING'].includes(String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()))
 const isParseSuccess = computed(() => String(selectedProject.value?.parseStatus || '').toUpperCase() === 'SUCCESS' || String(workflow.value?.parseTask?.status || '').toUpperCase() === 'SUCCESS')
 const parseStatusLabel = computed(() => {
@@ -1663,9 +1698,60 @@ async function uploadTenderOnly() {
   }
 }
 
+
+function triggerTechnicalTenderUpload() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+  technicalTenderInputRef.value?.click?.()
+}
+
+async function onTechnicalTenderFileChange(event) {
+  const file = event?.target?.files?.[0]
+  if (event?.target) {
+    event.target.value = ''
+  }
+  if (!file) return
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+
+  const name = String(file.name || '').toLowerCase()
+  if (!name.endsWith('.doc') && !name.endsWith('.docx') && !name.endsWith('.pdf')) {
+    ElMessage.warning('仅支持上传 .doc、.docx、.pdf 招标文件')
+    return
+  }
+
+  const maxSize = 50 * 1024 * 1024
+  if (file.size > maxSize) {
+    ElMessage.warning('招标文件不能超过 50MB')
+    return
+  }
+
+  technicalTenderUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await uploadTenderToExistingProject(selectedProject.value.id, formData)
+    workflow.value = res
+    selectedProject.value = res?.project || selectedProject.value
+    ElMessage.success('招标文件已上传，请点击“开始解析”')
+    await loadProjects(selectedProject.value.id)
+    activeDoc.value = 'TECHNICAL_SOLUTION'
+  } finally {
+    technicalTenderUploading.value = false
+  }
+}
+
 async function startReadTenderForSelected() {
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
+    return
+  }
+  if (!hasTenderFile.value) {
+    ElMessage.warning('当前项目未上传招标文件，请先上传招标文件')
     return
   }
   readTenderLoading.value = true
@@ -1683,6 +1769,10 @@ async function startReadTenderForSelected() {
 async function startReadTenderFromTechnical() {
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
+    return
+  }
+  if (!hasTenderFile.value) {
+    ElMessage.warning('当前项目未上传招标文件，请先上传招标文件')
     return
   }
   const currentDoc = activeDoc.value || 'TECHNICAL_SOLUTION'
@@ -4428,6 +4518,16 @@ const WritingDirectionEditor = defineComponent({
   background: #fffbeb;
 }
 
+.tech-read-card.empty {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.tech-read-card.empty .tech-read-icon,
+.tech-read-card.empty .tech-read-file {
+  color: #ef4444;
+}
+
 .tech-read-icon {
   color: #3b82f6;
   font-size: 36px;
@@ -4446,7 +4546,18 @@ const WritingDirectionEditor = defineComponent({
 }
 
 .tech-read-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   margin-top: 14px;
+}
+
+.tech-read-actions .el-button {
+  min-width: 118px;
+  height: 34px;
+  border-radius: 8px;
+  font-weight: 600;
 }
 
 .tech-outline-mode {
@@ -6373,5 +6484,8 @@ const WritingDirectionEditor = defineComponent({
   margin: 0;
   font-size: 17px;
   line-height: 1.9;
+}
+.hidden-file-input {
+  display: none !important;
 }
 </style>

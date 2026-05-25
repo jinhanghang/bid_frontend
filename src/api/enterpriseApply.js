@@ -23,3 +23,8 @@ export function getEnterpriseApply(id) {
 export function auditEnterpriseApply(id, data) {
   return request.put(`/enterprise-apply/${id}/audit`, data)
 }
+
+
+export function getAuditPendingCount() {
+  return request.get('/enterprise-apply/audit-pending-count', { silentError: true })
+}
