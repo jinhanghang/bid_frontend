@@ -40,11 +40,11 @@
             <el-option label="已到账" value="paid" />
             <el-option label="已关闭" value="closed" />
           </el-select>
-          <el-button type="primary" @click="loadOrders">搜索</el-button>
+          <el-button type="primary" @click="searchOrders">搜索</el-button>
         </div>
-        <el-table :data="orders" class="ui-table" height="560">
-          <el-table-column prop="orderNo" label="订单号" min-width="180" />
-          <el-table-column prop="planName" label="套餐" min-width="130" />
+        <el-table :data="orders" class="ui-table" height="520">
+          <el-table-column prop="orderNo" label="订单号" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="planName" label="套餐" min-width="130" show-overflow-tooltip />
           <el-table-column label="赠送字数" width="130"><template #default="{ row }">{{ formatNumber(row.grantWords) }}</template></el-table-column>
           <el-table-column label="金额" width="110"><template #default="{ row }">¥{{ Number(row.amount || 0).toFixed(2) }}</template></el-table-column>
           <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="orderStatusType(row.status)">{{ orderStatusText(row.status) }}</el-tag></template></el-table-column>
@@ -57,6 +57,12 @@
             </template>
           </el-table-column>
         </el-table>
+        <PageFooterPager
+          :total="orderPager.total"
+          v-model:page="orderPager.current"
+          v-model:size="orderPager.size"
+          @change="loadOrders"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="用户额度" name="accounts">
@@ -81,18 +87,28 @@
       <el-tab-pane label="消耗流水" name="logs">
         <div class="toolbar">
           <el-input v-model="logQuery.keyword" placeholder="搜索场景 / 业务 / 备注" clearable @keyup.enter="loadLogs" />
-          <el-button type="primary" @click="loadLogs">搜索</el-button>
+          <el-button type="primary" @click="searchLogs">搜索</el-button>
         </div>
-        <el-table :data="logs" class="ui-table" height="560">
-          <el-table-column prop="userId" label="用户ID" width="90" />
-          <el-table-column prop="scene" label="场景" width="130" />
-          <el-table-column prop="bizType" label="业务类型" width="150" />
+        <el-table :data="logs" class="ui-table" height="520">
+          <el-table-column prop="userId" label="用户ID" width="90" show-overflow-tooltip />
+          <el-table-column label="场景" width="110">
+            <template #default="{ row }"><el-tag effect="plain">{{ quotaSceneText(row.scene) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="业务类型" width="130">
+            <template #default="{ row }">{{ bizTypeText(row.bizType) }}</template>
+          </el-table-column>
           <el-table-column label="变动字数" width="120"><template #default="{ row }"><span :class="Number(row.words || 0) >= 0 ? 'plus' : 'minus'">{{ Number(row.words || 0) > 0 ? '+' : '' }}{{ formatNumber(row.words) }}</span></template></el-table-column>
           <el-table-column prop="beforeWords" label="变动前" width="110" />
           <el-table-column prop="afterWords" label="变动后" width="110" />
           <el-table-column prop="remark" label="说明" min-width="220" show-overflow-tooltip />
           <el-table-column prop="createTime" label="时间" min-width="160" />
         </el-table>
+        <PageFooterPager
+          :total="logPager.total"
+          v-model:page="logPager.current"
+          v-model:size="logPager.size"
+          @change="loadLogs"
+        />
       </el-tab-pane>
 
       <el-tab-pane v-if="canManageModels" label="模型管理" name="models">
@@ -264,6 +280,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import PageFooterPager from '@/components/PageFooterPager.vue'
 import {
   adjustMemberQuota,
   confirmMemberOrderPaid,
@@ -290,6 +307,9 @@ const orderQuery = reactive({ keyword: '', status: '' })
 const accountQuery = reactive({ keyword: '' })
 const logQuery = reactive({ keyword: '' })
 const modelQuery = reactive({ keyword: '', modelType: '' })
+
+const orderPager = reactive({ current: 1, size: 10, total: 0 })
+const logPager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
 const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
@@ -341,8 +361,14 @@ async function loadPlans() {
 }
 
 async function loadOrders() {
-  const res = await pageMemberOrders({ current: 1, size: 100, ...orderQuery })
+  const res = await pageMemberOrders({ current: orderPager.current, size: orderPager.size, ...orderQuery })
   orders.value = res?.records || []
+  orderPager.total = Number(res?.total || 0)
+}
+
+function searchOrders() {
+  orderPager.current = 1
+  loadOrders()
 }
 
 async function loadAccounts() {
@@ -351,8 +377,14 @@ async function loadAccounts() {
 }
 
 async function loadLogs() {
-  const res = await pageAdminQuotaLogs({ current: 1, size: 100, keyword: logQuery.keyword })
+  const res = await pageAdminQuotaLogs({ current: logPager.current, size: logPager.size, keyword: logQuery.keyword })
   logs.value = res?.records || []
+  logPager.total = Number(res?.total || 0)
+}
+
+function searchLogs() {
+  logPager.current = 1
+  loadLogs()
 }
 
 async function loadModels() {
@@ -488,6 +520,33 @@ async function previewModel(row) {
   ElMessageBox.alert(text, '模型命中预览', { confirmButtonText: '知道了' })
 }
 
+function quotaSceneText(value) {
+  const map = {
+    ai_solution: 'AI方案',
+    ai_document: 'AI文档',
+    ai_bid: 'AI标书',
+    register: '注册赠送',
+    member_recharge: '充值到账',
+    admin_adjust: '管理员调整',
+    ai_generate: 'AI生成'
+  }
+  return map[value] || value || '-'
+}
+
+function bizTypeText(value) {
+  const map = {
+    OUTLINE_GENERATE: '生成目录',
+    FULL_GENERATE: '全文生成',
+    SECTION_GENERATE: '单章生成',
+    SECTION_SHORTEN: '缩写本章',
+    WRITING_DIRECTION: '编写方向',
+    REGISTER_GIFT: '注册赠送',
+    MEMBER_ORDER: '充值订单',
+    ADMIN_ADJUST: '管理员调整'
+  }
+  return map[value] || value || '-'
+}
+
 function sceneText(value) {
   if (!value) return '通用'
   return sceneOptions.find((item) => item.value === value)?.label || value
@@ -590,6 +649,7 @@ p { margin-top: 8px; color: #64748b; }
 .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .toolbar .el-input { max-width: 280px; }
 .toolbar .el-select { width: 150px; }
+.page-footer-pager { margin-top: 10px; justify-content: flex-end; }
 .model-toolbar .el-select { width: 170px; }
 .model-flow-card { margin-bottom: 12px; padding: 14px 16px; border: 1px solid #e6edf7; border-radius: 14px; background: linear-gradient(135deg, #f8fbff, #ffffff); }
 .model-flow-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
