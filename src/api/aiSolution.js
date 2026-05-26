@@ -128,6 +128,14 @@ export function exportPdf(id, data = {}) {
   return request({ url: `/ai-solution/${id}/export-pdf`, method: 'post', data, timeout: NO_TIMEOUT })
 }
 
+export function startSolutionExportTask(id, format, data = {}) {
+  return request({ url: `/ai-solution/${id}/export-task/${format}`, method: 'post', data, timeout: NO_TIMEOUT })
+}
+
+export function getSolutionExportTask(exportId) {
+  return request({ url: `/ai-solution/export-task/${exportId}`, method: 'get', timeout: NO_TIMEOUT })
+}
+
 export function downloadFileResource(id) {
   return request({
     url: `/files/download/${id}`,

@@ -296,6 +296,24 @@ export function exportBidProjectTechnicalPdf(id) {
 }
 
 /**
+ * AI标书：创建技术方案异步导出任务
+ */
+export function startBidProjectTechnicalExportTask(id, format, data = {}) {
+  return request.post(`/bid-project/${id}/technical-solution/export-task/${format}`, data, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
+ * AI标书：查询技术方案异步导出任务
+ */
+export function getBidProjectTechnicalExportTask(id, exportId) {
+  return request.get(`/bid-project/${id}/technical-solution/export-task/${exportId}`, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
  * 文件下载
  */
 export function downloadFileResource(id) {

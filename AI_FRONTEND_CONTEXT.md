@@ -1,7 +1,8 @@
 # AI项目前端上下文说明（给 ChatGPT / 开发助手优先阅读）
 
 > 目的：以后每次上传前端项目后，先阅读本文件，快速了解前端技术栈、路由、接口封装、页面交互约定和与后端的对接边界，避免把已经确认过的交互和权限规则改丢。  
-> 本文件参考后端 `AI_PROJECT_CONTEXT.md` 生成，并按当前上传的 `frontend.zip` 校准。校准日期：2026-05-26。
+> 本文件参考后端 `AI_PROJECT_CONTEXT.md` 生成，并按当前上传的 `frontend.zip`、第一批并发优化、第二步/第三步异步任务优化重新校准。校准日期：2026-05-26。
+> 最新口径：`/prompt-template` 模块已删除；AI方案、AI文档、AI标书技术方案导出优先走异步导出任务；SSE/轮询需要支持取消、退避和页面隐藏暂停。
 
 ---
 
@@ -83,10 +84,13 @@ src
 - AI生成、解析、导出属于长耗时接口。
 - 相关 API 中使用 `timeout: 0` 的请求不能随意改回默认超时。
 - AI方案、AI标书技术方案的单章节生成和 AI帮写方向使用 `fetch + ReadableStream` 处理 SSE。
+- SSE 请求必须支持 `AbortController.signal`，页面离开、重新生成、关闭弹窗或任务完成时要主动取消 reader。
 - SSE 事件约定：
   - `event: message`：正文增量。
   - `event: error`：错误。
   - `event: done`：后端完成；前端会取消 reader 并触发完成回调。
+- Word/PDF 导出优先使用异步导出任务接口，前端轮询导出状态，成功后通过文件资源 ID 下载。
+- 轮询请求应使用 `silentError: true`，避免任务状态查询失败时频繁弹窗干扰用户。
 
 ### 3.5 UI 风格
 
@@ -100,6 +104,16 @@ src
   - `:z-index="3000"` 或同等级高层级
   - 正确传入 `:preview-src-list`
   - 正确传入 `:initial-index`
+
+### 3.6 高并发前端交互约定
+
+- 全文生成、重编全文、解析、导出按钮必须做防重复点击，提交后立即进入 loading/disabled 状态。
+- 全文生成和重编全文请求体需要传 `requestId`，由 `src/utils/requestId.js` 生成或复用，配合后端幂等。
+- 轮询统一遵循：页面隐藏暂停、页面恢复继续、失败退避、任务完成停止、组件卸载清理定时器。
+- 运行中任务不要每轮刷新完整列表，只查任务详情；完成后再刷新详情或列表。
+- 页面切换回来后，要根据后端任务详情恢复状态，不能只依赖前端内存状态。
+- 导出任务状态以 `pending / running / success / failed / file_deleted` 为主要口径，成功后通过 `fileId` 下载。
+- 任务不存在、任务已清理、文件已删除等情况应做业务化提示或静默清理，不能把后端内部异常原样展示给用户。
 
 ---
 
@@ -166,7 +180,6 @@ src
 |---|---|---|
 | `/member/admin` | `views/member/admin/index.vue` | 超级管理员、平台管理员 |
 | `/bid/template-variables` | `views/bid/templateVariables/index.vue` | 超级管理员、平台管理员、企业管理员 |
-| `/ai/prompts` | `views/ai/prompts/index.vue` | 超级管理员、平台管理员 |
 | `/ai/models` | `views/common/GenericCrudView.vue` + `configKey=aiModel` | 超级管理员 |
 | `/knowledge/files` | `views/common/GenericCrudView.vue` + `configKey=knowledgeFile` | 业务身份 |
 | `/system/users` | `views/system/user/index.vue` | 超级管理员、平台管理员、企业管理员 |
@@ -244,7 +257,6 @@ src
 | `api/member.js` | 会员中心和会员运营 |
 | `api/tenderNotice.js` | 标讯商机 |
 | `api/crud.js` | 通用 CRUD 工厂 |
-| `api/promptTemplate.js` | Prompt 模板；当前上传后端未发现对应 Controller，保留前需确认后端接口 |
 
 ---
 
@@ -462,43 +474,59 @@ src
 - 导出弹窗只保留导出样式选择及必要设置。
 - 不增加“全文 / 当前章节”等导出范围选择。
 - PDF 和 Word 使用同一套固定导出样式口径。
-- 导出长耗时请求保持 `timeout: 0`。
-- 导出成功后通常进入下载中心或直接下载文件资源。
+- AI方案、AI文档、AI标书技术方案导出优先走异步任务。
+- 创建导出任务后前端轮询任务状态，成功后使用返回的 `fileId` 走文件资源下载。
+- 导出任务状态口径：`pending / running / success / failed / file_deleted`。
+- 导出轮询应静默处理短暂失败，避免连续弹错误；最终失败再显示业务提示。
+- 同步导出接口仍可保留兼容，但页面层不要优先调用同步导出阻塞请求线程。
+
+当前异步导出接口：
+
+```text
+POST /ai-solution/{id}/export-task/{format}
+GET  /ai-solution/export-task/{exportId}
+
+POST /ai-document/{id}/export-task/{format}
+GET  /ai-document/export-task/{exportId}
+
+POST /bid-project/{id}/technical-solution/export-task/{format}
+GET  /bid-project/{id}/technical-solution/export-task/{exportId}
+```
 
 ---
 
 ## 11. 当前前后端对接注意事项
 
-### 11.1 Prompt 模板接口
+### 11.1 Prompt 模板模块
 
-前端存在：
+`/prompt-template` 已按确认口径删除：
 
-- `src/views/ai/prompts/index.vue`
-- `src/api/promptTemplate.js`
-- 路由：`/ai/prompts`
-- 接口：`/prompt-template/page`、`/prompt-template/{id}`、新增、修改、删除
+- 已删除 `src/api/promptTemplate.js`。
+- 已删除 `src/views/ai/prompts/index.vue`。
+- 已删除 `/ai/prompts` 路由和相关 import。
+- 后端不再补 `PromptTemplateController`。
 
-但当前上传的后端代码中未发现 `/prompt-template` Controller 或模块。后续处理方式二选一：
-
-1. 如果 Prompt 模板功能需要保留，补齐后端模块与权限。
-2. 如果暂不启用，隐藏路由和入口，避免平台管理员点开后接口 404。
+后续未重新确认前，不要恢复该模块。
 
 ### 11.2 AI标书技术方案整体编写要求接口
 
-前端存在：
+已使用项目包装接口：
 
-- `saveBidProjectTechnicalOverallWritingRequirement(projectId, overallWritingRequirement)`
-- 调用：`PUT /bid-project/{id}/technical-solution/overall-writing-requirement`
+```text
+PUT /bid-project/{id}/technical-solution/overall-writing-requirement
+```
 
-当前上传的后端 `BidProjectController` 未暴露该路径。后端现有类似接口是：
+前端方法：
 
-- `PUT /ai-solution/{id}/overall-writing-requirement`
+```text
+saveBidProjectTechnicalOverallWritingRequirement(projectId, overallWritingRequirement)
+```
 
-如果技术方案需要项目包装口径，应补：
+该接口由后端校验项目权限、项目归属、内部方案归属。AI标书技术方案不要直接调用 `/ai-solution/{id}/overall-writing-requirement`。
 
-- `PUT /bid-project/{id}/technical-solution/overall-writing-requirement`
-- 校验项目权限、项目归属、内部方案归属。
-- 日志文案写“AI标书技术方案”。
+### 11.3 JMeter 压测资料
+
+后端 `src/test/jmeter` 已按完整 JMeter 包重新生成。前端无需合并其中 SQL。JMeter 包内 SQL 仅作为压测初始化和清理工具，不属于前端项目内容。
 
 ---
 
@@ -507,7 +535,7 @@ src
 1. 不要把任何业务 ID 转成数字。
 2. 不要改变 `request.js` 的统一解包口径，除非同步改所有 API 调用。
 3. 不要把 AI 长耗时接口的 `timeout: 0` 改回默认超时。
-4. 不要把 AI标书技术方案操作改成直接调用 `/ai-solution/outline/...`。
+4. 不要把 AI标书技术方案操作改成直接调用 `/ai-solution/outline/...` 或 `/ai-solution/{id}/overall-writing-requirement`。
 5. 不要恢复全文生成后的自动压缩逻辑。
 6. 不要在导出弹窗里增加“全文 / 当前章节”等导出范围。
 7. 不要在模型管理页面展示温度、最大 Token 等参数字段。
@@ -517,10 +545,39 @@ src
 11. 新增路由时同步考虑 `meta.roles`、`meta.requiresBusiness` 和左侧菜单是否需要展示。
 12. 新增接口封装时优先放入 `src/api`，不要在页面里散写 URL。
 13. 新增通用管理页面时优先评估能否走 `moduleConfigs.js` + `GenericCrudView`。
+14. `/prompt-template` 已删除，未重新确认前不要恢复路由、页面或 API 封装。
+15. 异步导出和任务轮询相关页面必须在组件卸载时清理定时器和取消未完成请求。
 
 ---
 
-## 13. 下次上传前端项目后的建议处理流程
+## 13. 本轮前端修改基线
+
+本轮修改文件重点：
+
+```text
+src/utils/requestId.js
+src/api/aiSolution.js
+src/api/aiDocument.js
+src/api/bidProject.js
+src/router/index.js
+src/views/ai/solutions/index.vue
+src/views/ai/documents/index.vue
+src/views/bid/project/index.vue
+src/views/knowledge/base/index.vue
+```
+
+主要口径：
+
+- 删除 `/prompt-template` 相关前端代码。
+- AI全文生成/重编请求传 `requestId`，配合后端幂等。
+- AI方案、AI文档、AI标书技术方案导出改为异步任务优先。
+- SSE 支持 `AbortController` 取消。
+- 轮询降低频率并支持页面隐藏暂停、失败退避、任务完成清理。
+- ID 比较继续按 `String(a) === String(b)`。
+
+---
+
+## 14. 下次上传前端项目后的建议处理流程
 
 如果用户上传本前端项目，请优先：
 

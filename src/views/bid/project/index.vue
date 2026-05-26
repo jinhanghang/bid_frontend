@@ -1039,8 +1039,8 @@ import {
   applyBidProjectTechnicalWordPreset,
   deleteBidProject,
   enterTechnicalSolution,
-  exportBidProjectTechnicalPdf,
-  exportBidProjectTechnicalWord,
+  startBidProjectTechnicalExportTask,
+  getBidProjectTechnicalExportTask,
   generateBidProjectTechnicalFull,
   generateBidProjectTechnicalOutline,
   getBidProjectTechnicalTask,
@@ -2710,28 +2710,43 @@ async function exportTechnical() {
   if (!format) return
   exportingWord.value = true
   try {
-    const file = format === 'pdf'
-      ? await exportBidProjectTechnicalPdf(selectedProject.value.id)
-      : await exportBidProjectTechnicalWord(selectedProject.value.id)
+    const started = await startBidProjectTechnicalExportTask(selectedProject.value.id, format)
+    const task = await waitTechnicalExportTask(selectedProject.value.id, started?.id)
     await refreshWorkflow()
     await loadTechnicalSolution()
-    if (!file?.id) {
+    if (!task?.fileId) {
       ElMessage.warning('导出成功，但未返回文件ID，请到下载中心查看')
       return
     }
-    const blob = await downloadFileResource(file.id)
+    const blob = await downloadFileResource(task.fileId)
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = file.originalName || `${technicalForm.solutionName || selectedProject.value.projectName || '技术方案'}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
+    a.download = task.originalName || `${technicalForm.solutionName || selectedProject.value.projectName || '技术方案'}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    notifyTechnicalWordExportSuccess(file, a.download)
+    notifyTechnicalWordExportSuccess({ id: task.fileId, originalName: task.originalName }, a.download)
   } finally {
     exportingWord.value = false
   }
+}
+
+async function waitTechnicalExportTask(projectId, exportId) {
+  if (!exportId) throw new Error('导出任务创建失败，请稍后重试')
+  for (let i = 0; i < 180; i += 1) {
+    const task = await getBidProjectTechnicalExportTask(projectId, exportId)
+    const status = String(task?.status || '').toLowerCase()
+    if (status === 'success') return task
+    if (status === 'failed') throw new Error(task?.errorMsg || '导出失败，请稍后重试')
+    await sleep(i < 6 ? 2000 : 5000)
+  }
+  throw new Error('导出任务仍在执行，请稍后到下载中心查看')
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function markTechnicalOutlinePending(projectId) {

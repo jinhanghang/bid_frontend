@@ -73,3 +73,11 @@ export function exportDocumentWord(id, data = {}) {
 export function exportDocumentPdf(id, data = {}) {
   return request({ url: `/ai-document/${id}/export-pdf`, method: 'post', data, timeout: NO_TIMEOUT })
 }
+
+export function startDocumentExportTask(id, format, data = {}) {
+  return request({ url: `/ai-document/${id}/export-task/${format}`, method: 'post', data, timeout: NO_TIMEOUT })
+}
+
+export function getDocumentExportTask(exportId) {
+  return request({ url: `/ai-document/export-task/${exportId}`, method: 'get', timeout: NO_TIMEOUT })
+}
