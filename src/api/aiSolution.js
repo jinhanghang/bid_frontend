@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import { getToken } from '@/utils/storage'
+import { createRequestId } from '@/utils/requestId'
 
 // AI生成/解析/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
 const NO_TIMEOUT = 0
@@ -80,11 +81,15 @@ export function moveOutlineNode(outlineId, direction) {
 }
 
 export function generateFull(id, data = {}) {
-  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post', data, timeout: NO_TIMEOUT })
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`solution_${id}_generate`)
+  return request({ url: `/ai-solution/${id}/content/generate-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
 }
 
 export function rewriteFull(id, data = {}) {
-  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post', data, timeout: NO_TIMEOUT })
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`solution_${id}_rewrite`)
+  return request({ url: `/ai-solution/${id}/content/rewrite-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
 }
 
 export function getGenerationTask(taskId) {
@@ -158,7 +163,8 @@ async function streamFetch(url, options = {}, handlers = {}) {
 
   const response = await fetch(base + url, {
     ...options,
-    headers
+    headers,
+    signal: handlers.signal || options.signal
   })
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => '')
@@ -166,26 +172,32 @@ async function streamFetch(url, options = {}, handlers = {}) {
   }
 
   const reader = response.body.getReader()
+  const abortHandler = () => reader.cancel().catch(() => {})
+  if (handlers.signal) handlers.signal.addEventListener('abort', abortHandler, { once: true })
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
   let finishedByDoneEvent = false
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const chunks = buffer.split('\n\n')
-    buffer = chunks.pop() || ''
-    chunks.forEach((chunk) => {
-      const eventName = handleSseChunk(chunk, handlers)
-      if (eventName === 'done') finishedByDoneEvent = true
-    })
-    if (finishedByDoneEvent) {
-      await reader.cancel().catch(() => {})
-      break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() || ''
+      chunks.forEach((chunk) => {
+        const eventName = handleSseChunk(chunk, handlers)
+        if (eventName === 'done') finishedByDoneEvent = true
+      })
+      if (finishedByDoneEvent) {
+        await reader.cancel().catch(() => {})
+        break
+      }
     }
+    if (buffer && !finishedByDoneEvent) handleSseChunk(buffer, handlers)
+    handlers.onDone?.()
+  } finally {
+    if (handlers.signal) handlers.signal.removeEventListener('abort', abortHandler)
   }
-  if (buffer && !finishedByDoneEvent) handleSseChunk(buffer, handlers)
-  handlers.onDone?.()
 }
 
 function handleSseChunk(chunk, handlers) {

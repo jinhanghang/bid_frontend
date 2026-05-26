@@ -19,7 +19,7 @@
             v-for="item in solutions"
             :key="item.id"
             class="solution-card"
-            :class="{ active: currentSolution?.id === item.id }"
+            :class="{ active: String(currentSolution?.id || '') === String(item.id || '') }"
             @click="loadDetail(item.id)"
           >
             <div class="solution-card-name">
@@ -299,7 +299,7 @@
     </section>
 
     <section v-if="showRightPreview" class="right-preview-card">
-      <div v-if="selectedSectionSolutionId === currentSolution?.id && selectedSectionDisplayContent" class="section-preview">
+      <div v-if="String(selectedSectionSolutionId || '') === String(currentSolution?.id || '') && selectedSectionDisplayContent" class="section-preview">
         <div class="section-preview-head">
           <div class="section-preview-title">
             <h3>{{ selectedSection.title }}</h3>
@@ -646,7 +646,7 @@
           <div
             v-for="item in versionList"
             :key="item.id"
-            :class="['version-card', selectedVersion?.id === item.id ? 'active' : '']"
+            :class="['version-card', String(selectedVersion?.id || '') === String(item.id || '') ? 'active' : '']"
             @click="selectVersion(item)"
           >
             <div class="version-card-title">V{{ item.versionNo }} {{ item.versionName || '' }}</div>
@@ -789,6 +789,7 @@ const SOLUTION_TASK_PENDING_KEY = 'ai_solution_generation_task_pending'
 const solutionTaskPending = reactive({ solutionId: '', taskId: '' })
 const solutionTaskPollingBusy = ref(false)
 const solutionTaskPollErrorCount = ref(0)
+const solutionTaskPollTick = ref(0)
 
 const createStep = ref(0)
 const parseTask = ref(null)
@@ -979,13 +980,13 @@ const selectedSectionDisplayContent = computed(() => {
 })
 const canCopySectionContent = computed(() => {
   return !!selectedSection.value?.id
-    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && String(selectedSectionSolutionId.value || '') === String(currentSolution.value?.id || '')
     && !!selectedSectionDisplayContent.value
     && !isSolutionBusy.value
 })
 const canEditSectionContent = computed(() => {
   return !!selectedSection.value?.id
-    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && String(selectedSectionSolutionId.value || '') === String(currentSolution.value?.id || '')
     && !!selectedSectionContent.value
     && !isSolutionBusy.value
     && !sectionGenerating.value
@@ -993,7 +994,7 @@ const canEditSectionContent = computed(() => {
 })
 const canOptimizeSectionContent = computed(() => {
   return !!selectedSection.value?.id
-    && selectedSectionSolutionId.value === currentSolution.value?.id
+    && String(selectedSectionSolutionId.value || '') === String(currentSolution.value?.id || '')
     && !!selectedSectionContent.value
     && !sectionContentEditMode.value
     && !isSolutionBusy.value
@@ -1222,6 +1223,7 @@ function pollOutlineStatus(solutionId) {
   clearInterval(outlineTimer)
 
   const tick = async () => {
+    if (document.hidden) return
     try {
       const data = await getSolution(solutionId)
       if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
@@ -1247,7 +1249,7 @@ function pollOutlineStatus(solutionId) {
   }
 
   tick()
-  outlineTimer = setInterval(tick, 2000)
+  outlineTimer = setInterval(tick, 5000)
 }
 
 function calcCreateStep(solution, task) {
@@ -1372,6 +1374,7 @@ function pollParseTask(taskId) {
   clearInterval(parseTimer)
 
   const tick = async () => {
+    if (document.hidden) return
     try {
       const task = await getParseTask(taskId)
       parseTask.value = task
@@ -1965,6 +1968,7 @@ function markSolutionTaskPending(solutionId, taskId) {
   solutionTaskPending.solutionId = String(solutionId)
   solutionTaskPending.taskId = String(taskId)
   solutionTaskPollErrorCount.value = 0
+  solutionTaskPollTick.value = 0
   localStorage.setItem(SOLUTION_TASK_PENDING_KEY, JSON.stringify({ solutionId: String(solutionId), taskId: String(taskId) }))
   startSolutionTaskPolling(taskId)
 }
@@ -1988,6 +1992,7 @@ function restoreSolutionTaskPending() {
       solutionTaskPending.solutionId = String(data.solutionId || '')
       solutionTaskPending.taskId = String(data.taskId)
       solutionTaskPollErrorCount.value = 0
+      solutionTaskPollTick.value = 0
       fullGenerating.value = true
       startSolutionTaskPolling(data.taskId)
     }
@@ -2001,11 +2006,12 @@ function startSolutionTaskPolling(taskId) {
   pollGenerationTask(taskId, true)
   taskTimer = setInterval(() => {
     pollGenerationTask(taskId, true)
-  }, 3000)
+  }, 5000)
 }
 
 async function pollGenerationTask(taskId, silent = true) {
   if (!taskId || solutionTaskPollingBusy.value) return
+  if (document.hidden) return
   solutionTaskPollingBusy.value = true
   try {
     const task = await getGenerationTask(taskId)
@@ -2015,10 +2021,13 @@ async function pollGenerationTask(taskId, silent = true) {
 
     if (['WAITING', 'RUNNING'].includes(status)) {
       fullGenerating.value = true
+      solutionTaskPollTick.value += 1
       if (!activeSolutionId.value || String(activeSolutionId.value) === String(taskSolutionId || '')) {
         await refreshCurrent()
       }
-      await loadList()
+      if (solutionTaskPollTick.value % 4 === 0) {
+        await loadList()
+      }
       return
     }
 
@@ -2397,8 +2406,8 @@ async function onDeleteSolution(item) {
 
   await ElMessageBox.confirm(message, '确认删除', { type: 'warning' })
   await deleteSolution(item.id)
-  solutions.value = solutions.value.filter((solution) => solution.id !== item.id)
-  if (currentSolution.value?.id === item.id) {
+  solutions.value = solutions.value.filter((solution) => String(solution.id || '') !== String(item.id || ''))
+  if (String(currentSolution.value?.id || '') === String(item.id || '')) {
     currentSolution.value = null
     selectedSection.value = null
     selectedSectionSolutionId.value = null
@@ -2502,7 +2511,7 @@ async function onExport() {
 
 function syncSolutionCard(data) {
   if (!data?.id) return
-  const index = solutions.value.findIndex((item) => item.id === data.id)
+  const index = solutions.value.findIndex((item) => String(item.id || '') === String(data.id || ''))
   if (index >= 0) {
     solutions.value[index] = {
       ...solutions.value[index],
@@ -2552,7 +2561,7 @@ function syncSelectedSectionAfterDetail(data) {
   }
 
   // 切换方案时不要沿用上一个方案的章节选中状态。
-  if (selectedSection.value?.id && selectedSectionSolutionId.value === data.id) {
+  if (selectedSection.value?.id && String(selectedSectionSolutionId.value || '') === String(data.id || '')) {
     const latest = findOutlineNodeById(data.outlines, selectedSection.value.id)
     if (latest) {
       selectedSection.value = latest
@@ -2580,7 +2589,7 @@ function syncSelectedSectionAfterDetail(data) {
 
 function findOutlineNodeById(nodes = [], id) {
   for (const node of nodes) {
-    if (node.id === id) return node
+    if (String(node.id || '') === String(id || '')) return node
     const child = findOutlineNodeById(node.children || [], id)
     if (child) return child
   }
@@ -2798,7 +2807,7 @@ async function selectVersion(item) {
   selectedVersion.value = item
   if (!item.snapshotJson) {
     const detail = await getSolutionVersion(item.id)
-    const index = versionList.value.findIndex((v) => v.id === item.id)
+    const index = versionList.value.findIndex((v) => String(v.id || '') === String(item.id || ''))
     if (index >= 0) versionList.value[index] = { ...versionList.value[index], ...detail }
     selectedVersion.value = { ...item, ...detail }
   }
@@ -2884,7 +2893,7 @@ function statusLabel(value) {
 function solutionCardStatusLabel(item) {
   // 列表接口只返回主表状态，正在查看的方案详情里有章节真实状态。
   // 当前方案的左侧卡片优先按详情章节计算，避免主表状态还没刷新时一直显示“部分完成”。
-  if (item?.id && currentSolution.value?.id === item.id) {
+  if (item?.id && String(currentSolution.value?.id || '') === String(item.id || '')) {
     if (hasRunningTask.value) return '生成中'
     const stat = leafGenerationStat.value
     if (stat.total > 0 && stat.done === stat.total) return '已完成'

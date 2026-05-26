@@ -899,7 +899,7 @@
           <div
             v-for="item in technicalVersionList"
             :key="item.id"
-            :class="['version-card', selectedTechnicalVersion?.id === item.id ? 'active' : '']"
+            :class="['version-card', String(selectedTechnicalVersion?.id || '') === String(item.id || '') ? 'active' : '']"
             @click="selectTechnicalVersion(item)"
           >
             <div class="version-card-title">V{{ item.versionNo }} {{ item.versionName || '' }}</div>
@@ -1101,6 +1101,7 @@ const technicalTaskPoller = ref(null)
 const technicalTaskPending = reactive({ projectId: '', taskId: '' })
 const technicalTaskPollingBusy = ref(false)
 const technicalTaskPollErrorCount = ref(0)
+const technicalTaskPollTick = ref(0)
 const technicalSolutionLoadErrorCount = ref(0)
 const TECH_OUTLINE_PENDING_KEY = 'ai_bid_technical_outline_pending_project_id'
 const TECH_TASK_PENDING_KEY = 'ai_bid_technical_task_pending'
@@ -2490,6 +2491,7 @@ function markTechnicalTaskPending(projectId, taskId) {
   technicalTaskPending.projectId = String(projectId)
   technicalTaskPending.taskId = String(taskId)
   technicalTaskPollErrorCount.value = 0
+  technicalTaskPollTick.value = 0
   localStorage.setItem(TECH_TASK_PENDING_KEY, JSON.stringify({ projectId: String(projectId), taskId: String(taskId) }))
   startTechnicalTaskPolling(projectId, taskId)
 }
@@ -2513,6 +2515,7 @@ function restoreTechnicalTaskPending() {
       technicalTaskPending.projectId = String(data.projectId)
       technicalTaskPending.taskId = String(data.taskId)
       technicalTaskPollErrorCount.value = 0
+      technicalTaskPollTick.value = 0
       fullGenerating.value = true
       startTechnicalTaskPolling(data.projectId, data.taskId)
     }
@@ -2526,11 +2529,12 @@ function startTechnicalTaskPolling(projectId, taskId) {
   pollTechnicalGenerationTask(projectId, taskId, true)
   technicalTaskPoller.value = setInterval(() => {
     pollTechnicalGenerationTask(projectId, taskId, true)
-  }, 3000)
+  }, 5000)
 }
 
 async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   if (!projectId || !taskId || technicalTaskPollingBusy.value) return
+  if (document.hidden) return
   technicalTaskPollingBusy.value = true
   try {
     const task = await getBidProjectTechnicalTask(projectId, taskId)
@@ -2538,10 +2542,13 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
     const status = String(task?.status || '').toUpperCase()
     if (['WAITING', 'RUNNING'].includes(status)) {
       fullGenerating.value = true
+      technicalTaskPollTick.value += 1
       if (String(selectedProject.value?.id || '') === String(projectId || '')) {
         await loadTechnicalSolution()
         selectLatestTechnicalPreviewLeaf()
-        await refreshWorkflow()
+        if (technicalTaskPollTick.value % 4 === 0) {
+          await refreshWorkflow()
+        }
       }
       return
     }
@@ -2758,11 +2765,11 @@ function startTechnicalOutlinePolling(projectId) {
   clearInterval(technicalOutlinePoller.value)
   technicalOutlinePoller.value = setInterval(() => {
     checkTechnicalOutlineReady(projectId, true)
-  }, 3000)
+  }, 5000)
 }
 
 async function checkTechnicalOutlineReady(projectId, silent = true) {
-  if (!projectId) return false
+  if (!projectId || document.hidden) return false
   try {
     const solution = await getBidProjectTechnicalSolution(projectId)
     const outlines = getTechnicalOutlinesFromSolution(solution)
@@ -3292,7 +3299,7 @@ async function selectTechnicalVersion(item) {
   selectedTechnicalVersion.value = item
   if (!item.snapshotJson) {
     const detail = await getBidProjectTechnicalVersion(selectedProject.value.id, item.id)
-    const index = technicalVersionList.value.findIndex((v) => v.id === item.id)
+    const index = technicalVersionList.value.findIndex((v) => String(v.id || '') === String(item.id || ''))
     if (index >= 0) technicalVersionList.value[index] = { ...technicalVersionList.value[index], ...detail }
     selectedTechnicalVersion.value = { ...item, ...detail }
   }
@@ -3453,6 +3460,7 @@ async function generateTechnicalSection() {
 function startPolling() {
   clearInterval(poller.value)
   poller.value = setInterval(async () => {
+    if (document.hidden) return
     if (!selectedProject.value?.id) return
     const hasParsing = projects.value.some((item) => ['PARSING', 'EXTRACTING'].includes(String(item.parseStatus || '').toUpperCase())) || isParseRunning.value
     if (!hasParsing) return
@@ -3464,7 +3472,7 @@ function startPolling() {
     } else {
       autoFillTechnicalRequirementAfterParse(false)
     }
-  }, 3000)
+  }, 5000)
 }
 
 function isOutlineGenerated(node) {

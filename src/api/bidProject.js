@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import { getToken } from '@/utils/storage'
+import { createRequestId } from '@/utils/requestId'
 
 // AI读标/生成/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
 const NO_TIMEOUT = 0
@@ -222,7 +223,9 @@ export function applyBidProjectTechnicalWordPreset(id, data) {
  * AI标书：技术方案开始生成正文
  */
 export function generateBidProjectTechnicalFull(id, data = {}) {
-  return request.post(`/bid-project/${id}/technical-solution/content/generate-full`, data, {
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`bid_${id}_tech_generate`)
+  return request.post(`/bid-project/${id}/technical-solution/content/generate-full`, payload, {
     timeout: NO_TIMEOUT
   })
 }
@@ -231,7 +234,9 @@ export function generateBidProjectTechnicalFull(id, data = {}) {
  * AI标书：技术方案重编全文
  */
 export function rewriteBidProjectTechnicalFull(id, data = {}) {
-  return request.post(`/bid-project/${id}/technical-solution/content/rewrite-full`, data, {
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`bid_${id}_tech_rewrite`)
+  return request.post(`/bid-project/${id}/technical-solution/content/rewrite-full`, payload, {
     timeout: NO_TIMEOUT
   })
 }
@@ -395,7 +400,8 @@ async function streamFetch(url, options = {}, handlers = {}) {
 
   const response = await fetch(base + url, {
     ...options,
-    headers
+    headers,
+    signal: handlers.signal || options.signal
   })
   if (!response.ok || !response.body) {
     const text = await response.text().catch(() => '')
@@ -403,26 +409,32 @@ async function streamFetch(url, options = {}, handlers = {}) {
   }
 
   const reader = response.body.getReader()
+  const abortHandler = () => reader.cancel().catch(() => {})
+  if (handlers.signal) handlers.signal.addEventListener('abort', abortHandler, { once: true })
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
   let finishedByDoneEvent = false
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const chunks = buffer.split('\n\n')
-    buffer = chunks.pop() || ''
-    chunks.forEach((chunk) => {
-      const eventName = handleSseChunk(chunk, handlers)
-      if (eventName === 'done') finishedByDoneEvent = true
-    })
-    if (finishedByDoneEvent) {
-      await reader.cancel().catch(() => {})
-      break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const chunks = buffer.split('\n\n')
+      buffer = chunks.pop() || ''
+      chunks.forEach((chunk) => {
+        const eventName = handleSseChunk(chunk, handlers)
+        if (eventName === 'done') finishedByDoneEvent = true
+      })
+      if (finishedByDoneEvent) {
+        await reader.cancel().catch(() => {})
+        break
+      }
     }
+    if (buffer && !finishedByDoneEvent) handleSseChunk(buffer, handlers)
+    handlers.onDone?.()
+  } finally {
+    if (handlers.signal) handlers.signal.removeEventListener('abort', abortHandler)
   }
-  if (buffer && !finishedByDoneEvent) handleSseChunk(buffer, handlers)
-  handlers.onDone?.()
 }
 
 function handleSseChunk(chunk, handlers) {

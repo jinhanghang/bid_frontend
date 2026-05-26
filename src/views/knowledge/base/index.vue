@@ -25,7 +25,7 @@
               v-for="item in bases"
               :key="item.id"
               class="kb-card"
-              :class="{ active: selectedBase?.id === item.id }"
+              :class="{ active: String(selectedBase?.id || '') === String(item.id || '') }"
               @click="selectBase(item)"
             >
               <div class="kb-card-top">
@@ -687,7 +687,7 @@ async function deleteBase(row) {
   await deleteKnowledgeBase(row.id)
   ElMessage.success('删除成功')
 
-  if (selectedBase.value?.id === row.id) {
+  if (String(selectedBase.value?.id || '') === String(row.id || '')) {
     selectedBase.value = null
     files.value = []
   }
