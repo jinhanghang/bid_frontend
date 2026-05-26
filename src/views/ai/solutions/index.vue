@@ -1364,6 +1364,10 @@ async function handleTenderFileChange(uploadFile) {
     await refreshCurrent()
     applySolutionNameFromParse(task)
     mode.value = 'create'
+    const status = String(task?.status || '').toUpperCase()
+    if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
+      ElMessage.info(task?.message || '解析任务已在排队或执行中，请等待完成')
+    }
     pollParseTask(task.id)
   } catch (e) {
     parseLoading.value = false

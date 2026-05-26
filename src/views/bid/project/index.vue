@@ -1759,7 +1759,12 @@ async function startReadTenderForSelected() {
   try {
     workflow.value = await startReadTenderProject(selectedProject.value.id)
     selectedProject.value = workflow.value?.project || selectedProject.value
-    ElMessage.success('已开始读标')
+    const status = String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()
+    if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
+      ElMessage.info(workflow.value?.parseTask?.message || '读标解析任务已在排队或执行中')
+    } else {
+      ElMessage.success('已开始读标')
+    }
     activeDoc.value = 'PARSE_REPORT'
     await loadProjects(selectedProject.value.id)
   } finally {
@@ -1781,7 +1786,12 @@ async function startReadTenderFromTechnical() {
   try {
     workflow.value = await startReadTenderProject(selectedProject.value.id)
     selectedProject.value = workflow.value?.project || selectedProject.value
-    ElMessage.success('已开始解析')
+    const status = String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()
+    if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
+      ElMessage.info(workflow.value?.parseTask?.message || '读标解析任务已在排队或执行中')
+    } else {
+      ElMessage.success('已开始解析')
+    }
     await loadProjects(selectedProject.value.id)
     activeDoc.value = currentDoc
     autoFillTechnicalRequirementAfterParse(false)

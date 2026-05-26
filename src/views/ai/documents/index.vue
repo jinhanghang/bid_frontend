@@ -718,7 +718,12 @@ async function onReferenceChange(uploadFile) {
   })
   parseTask.value = task
   pollParseTask(task.id)
-  ElMessage.success('资料已上传，正在解析')
+  const status = String(task?.status || '').toUpperCase()
+  if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
+    ElMessage.info(task?.message || '解析任务已在排队或执行中，请等待完成')
+  } else {
+    ElMessage.success('资料已上传，正在解析')
+  }
 }
 
 function resumeParsePolling() {
