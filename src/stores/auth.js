@@ -61,7 +61,8 @@ export const useAuthStore = defineStore('auth', {
     isLogin: (state) => Boolean(state.token),
     displayName: (state) => state.user?.fullName || state.user?.username || state.user?.phone || '未登录',
     roleCodes: (state) => normalizeRoleList(state.user?.roleCodes || state.user?.roles || []),
-    enterpriseId: (state) => state.user?.enterpriseId
+    enterpriseId: (state) => state.user?.enterpriseId,
+    needCompleteEnterprise: (state) => Boolean(state.user?.needCompleteEnterprise)
   },
   actions: {
     saveLoginState(res = {}) {

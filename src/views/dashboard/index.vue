@@ -73,7 +73,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Refresh } from '@element-plus/icons-vue'
 import { getDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/auth'
@@ -101,6 +101,10 @@ const stats = computed(() => [
 ])
 
 onMounted(loadStats)
+
+watch(() => auth.user?.enterpriseId, () => {
+  loadStats()
+})
 
 async function loadStats() {
   loading.value = true
