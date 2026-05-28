@@ -214,6 +214,15 @@
             <el-button :icon="editMode ? Close : EditPen" :disabled="!canEditOutline" @click="toggleEditMode">{{ editMode ? '退出编辑' : '编辑' }}</el-button>
           </div>
 
+          <el-alert
+            v-if="recoveryNoticeText"
+            class="recovery-alert"
+            type="warning"
+            show-icon
+            :closable="false"
+            :title="recoveryNoticeText"
+          />
+
           <template v-if="editMode">
             <div class="edit-tabs">
               <button :class="{ active: editTab === 'word' }" @click="editTab = 'word'">修改字数</button>
@@ -749,6 +758,7 @@ import {
   generateFull,
   generateOutline,
   getGenerationTask,
+  getCurrentUserRunningAiTask,
   getParseTask,
   getSolutionVersion,
   listSolutionVersions,
@@ -784,12 +794,14 @@ let searchTimer = null
 let parseTimer = null
 let taskTimer = null
 let outlineTimer = null
+let globalTaskTimer = null
 const notifiedTaskIds = new Set()
 const SOLUTION_TASK_PENDING_KEY = 'ai_solution_generation_task_pending'
 const solutionTaskPending = reactive({ solutionId: '', taskId: '' })
 const solutionTaskPollingBusy = ref(false)
 const solutionTaskPollErrorCount = ref(0)
 const solutionTaskPollTick = ref(0)
+const globalRunningTask = ref(null)
 
 const createStep = ref(0)
 const parseTask = ref(null)
@@ -838,6 +850,9 @@ const streamingOutlineId = ref(null)
 const fullGenerating = ref(false)
 const fullGenerateSettingVisible = ref(false)
 const fullGenerateAction = ref('GENERATE')
+// 记录打开“全文生成设置”弹窗时绑定的方案，避免异步保存偏好期间切换方案后，生成请求落到当前新选中的方案上。
+const fullGenerateTargetSolutionId = ref('')
+const fullGenerateTargetSolutionSnapshot = ref(null)
 const DEFAULT_BLIND_BID_REQUIREMENT = '输出内容中不得出现投标人的名称、企业标识、人员名称、企业独享的符号或图案等任何可识别投标人身份的信息。不得在页眉、页脚、正文、表格、图片说明、附件名称中出现可识别投标人身份的信息。'
 
 const fullGenerateForm = reactive({
@@ -998,6 +1013,7 @@ const canOptimizeSectionContent = computed(() => {
     && !!selectedSectionContent.value
     && !sectionContentEditMode.value
     && !isSolutionBusy.value
+    && !hasOtherSolutionRunningTask.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
 })
@@ -1009,6 +1025,24 @@ const hasRunningTask = computed(() => {
   const status = currentSolution.value?.runningTask?.status
   return status === 'WAITING' || status === 'RUNNING'
 })
+const runningSolutionStatuses = ['CONTENT_GENERATING']
+function isSolutionGenerating(item) {
+  if (!item) return false
+  const taskStatus = String(item.runningTask?.status || '').toUpperCase()
+  if (['WAITING', 'RUNNING'].includes(taskStatus)) return true
+  return runningSolutionStatuses.includes(String(item.status || '').toUpperCase())
+}
+const isGlobalAiTaskRunning = computed(() => ['WAITING', 'RUNNING'].includes(String(globalRunningTask.value?.status || '').toUpperCase()))
+const isGlobalAiTaskForCurrentSolution = computed(() => {
+  const currentId = normalizeId(activeSolutionId.value || currentSolution.value?.id)
+  return !!currentId && isSameId(globalRunningTask.value?.solutionId, currentId)
+})
+const hasOtherSolutionRunningTask = computed(() => {
+  const currentId = normalizeId(activeSolutionId.value || currentSolution.value?.id)
+  if (isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentSolution.value) return true
+  return solutions.value.some((item) => isSolutionGenerating(item) && !isSameId(item.id, currentId))
+})
+const otherSolutionRunningMessage = computed(() => hasOtherSolutionRunningTask.value ? '已有其他AI生成任务正在执行，请等待完成后再操作' : '')
 const isRewriteRunning = computed(() => {
   const task = currentSolution.value?.runningTask
   return !!task && task.taskType === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(task.status)
@@ -1027,10 +1061,21 @@ const runningTaskText = computed(() => {
   if (task.taskType === 'GENERATE_FULL') return `正在生成全文：${task.finishedNodes || 0} / ${task.totalNodes || 0} 章`
   return task.message || '任务执行中'
 })
+const recoveryNoticeText = computed(() => {
+  const solution = currentSolution.value
+  if (!solution || hasRunningTask.value) return ''
+  if (solution.recoveryMessage) return solution.recoveryMessage
+  if (solution.recoveredAfterRestart) return '上次生成因服务重启或任务中断未完成，系统已恢复为可重试状态，请点击“重试未完成章节”继续生成。'
+  const stat = leafGenerationStat.value
+  if (stat.total > 0 && stat.failed > 0) {
+    return '当前存在失败或未完成章节，可点击“重试未完成章节”继续生成。'
+  }
+  return ''
+})
 const canEditOutline = computed(() => currentSolution.value?.canEditOutline !== false && !isSolutionBusy.value)
-const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !isSolutionBusy.value)
+const canRewriteAll = computed(() => currentSolution.value?.canRewriteAll !== false && !isSolutionBusy.value && !hasOtherSolutionRunningTask.value)
 const allLeafGenerated = computed(() => leafGenerationStat.value.total > 0 && leafGenerationStat.value.done === leafGenerationStat.value.total)
-const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !isSolutionBusy.value && !allLeafGenerated.value)
+const canGenerate = computed(() => currentSolution.value?.canGenerate !== false && !isSolutionBusy.value && !hasOtherSolutionRunningTask.value && !allLeafGenerated.value)
 const canExport = computed(() => currentSolution.value?.canExport === true && allLeafGenerated.value && !isSolutionBusy.value)
 const generateActionText = computed(() => {
   const task = currentSolution.value?.runningTask
@@ -1061,8 +1106,10 @@ watch(
 )
 
 onMounted(async () => {
+  await loadGlobalRunningTask()
   await loadList()
   restoreSolutionTaskPending()
+  startGlobalTaskPolling()
 })
 
 onBeforeUnmount(() => {
@@ -1070,13 +1117,30 @@ onBeforeUnmount(() => {
   clearInterval(parseTimer)
   clearInterval(taskTimer)
   clearInterval(outlineTimer)
+  clearInterval(globalTaskTimer)
 })
+
+function startGlobalTaskPolling() {
+  clearInterval(globalTaskTimer)
+  globalTaskTimer = setInterval(() => {
+    if (!document.hidden) loadGlobalRunningTask()
+  }, 5000)
+}
+
+async function loadGlobalRunningTask() {
+  try {
+    globalRunningTask.value = await getCurrentUserRunningAiTask()
+  } catch (e) {
+    globalRunningTask.value = null
+  }
+}
 
 async function loadList() {
   loading.value = true
   try {
     const res = await pageSolutions(listQuery)
     solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+    await loadGlobalRunningTask()
 
     // 首次进入 AI方案页面时不默认选中第一条方案。
     // 保持右侧首页/空态，只有用户点击左侧方案卡片，或新建完成后，才进入方案详情。
@@ -1109,6 +1173,7 @@ async function loadDetail(id) {
   if (!solutionId) return
   const seq = ++detailRequestSeq.value
   activeSolutionId.value = solutionId
+  fullGenerating.value = false
   selectedSection.value = null
   selectedSectionSolutionId.value = null
   sectionContentEditMode.value = false
@@ -1194,9 +1259,10 @@ function applySolutionDetail(data) {
 
 function resumeRunningTaskIfNeeded() {
   const task = currentSolution.value?.runningTask
+  const solutionId = normalizeId(currentSolution.value?.id || task?.solutionId)
   if (task?.id && ['WAITING', 'RUNNING'].includes(task.status)) {
-    fullGenerating.value = true
-    markSolutionTaskPending(currentSolution.value?.id || task.solutionId, task.id)
+    setCurrentFullGenerating(solutionId, true)
+    markSolutionTaskPending(solutionId, task.id)
   }
 }
 
@@ -1685,6 +1751,31 @@ function normalizeId(id) {
   return text
 }
 
+function isSameId(a, b) {
+  const left = normalizeId(a)
+  const right = normalizeId(b)
+  return !!left && !!right && left === right
+}
+
+function isActiveSolution(solutionId) {
+  return isSameId(activeSolutionId.value || currentSolution.value?.id, solutionId)
+}
+
+function clonePlain(value) {
+  if (!value) return null
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch (e) {
+    return value
+  }
+}
+
+function setCurrentFullGenerating(solutionId, generating) {
+  if (isActiveSolution(solutionId)) {
+    fullGenerating.value = !!generating
+  }
+}
+
 function uniqueIds(ids = []) {
   return [...new Set((Array.isArray(ids) ? ids : []).map((id) => normalizeId(id)).filter(Boolean))]
 }
@@ -1854,14 +1945,15 @@ function mergePreferenceIntoRequirement(oldText, preferenceText) {
   return `${original ? original + '\n\n' : ''}${marker}\n${preferenceText}`
 }
 
-async function applySolutionFullGeneratePreferences() {
+async function applySolutionFullGeneratePreferences(solutionSnapshot = currentSolution.value) {
   const preferenceText = fullGeneratePreferenceText()
+  const solutionId = normalizeId(solutionSnapshot?.id)
 
-  if (!preferenceText || !currentSolution.value?.outlines?.length) {
+  if (!preferenceText || !solutionSnapshot?.outlines?.length || !solutionId) {
     return
   }
 
-  const leaves = flattenLeaf(currentSolution.value.outlines).filter((node) => node?.id)
+  const leaves = flattenLeaf(solutionSnapshot.outlines).filter((node) => node?.id)
   let changed = false
 
   for (const node of leaves) {
@@ -1890,12 +1982,19 @@ async function applySolutionFullGeneratePreferences() {
     changed = true
   }
 
-  if (changed) {
-    await refreshCurrent()
+  // 只刷新打开弹窗时绑定的方案；如果用户已经切到其他方案，不能把当前方案状态覆盖掉。
+  if (changed && isActiveSolution(solutionId)) {
+    await refreshCurrent(solutionId)
   }
 }
 
-function openFullGenerateDialog(action = 'GENERATE') {
+
+async function openFullGenerateDialog(action = 'GENERATE') {
+  await loadGlobalRunningTask()
+  if (hasOtherSolutionRunningTask.value) {
+    ElMessage.warning(otherSolutionRunningMessage.value)
+    return
+  }
   if (!currentSolution.value?.outlines?.length) {
     ElMessage.warning('请先生成目录')
     return
@@ -1912,6 +2011,8 @@ function openFullGenerateDialog(action = 'GENERATE') {
   }
 
   fullGenerateAction.value = action
+  fullGenerateTargetSolutionId.value = normalizeId(currentSolution.value?.id)
+  fullGenerateTargetSolutionSnapshot.value = clonePlain(currentSolution.value)
   resetFullGenerateBlindSetting()
   fullGenerateForm.writingStyle = currentSolution.value?.writingStyle || createForm.writingStyle || 'GENERAL'
   fullGenerateForm.contentDepth = 'STANDARD'
@@ -1924,18 +2025,31 @@ function openFullGenerateDialog(action = 'GENERATE') {
 }
 
 async function confirmFullGenerate() {
+  const targetSolutionId = normalizeId(fullGenerateTargetSolutionId.value || currentSolution.value?.id)
+  if (!targetSolutionId) {
+    ElMessage.warning('未找到要生成的方案，请重新选择方案后再生成')
+    return
+  }
+
   if (fullGenerateAction.value === 'REWRITE') {
     await ElMessageBox.confirm('系统会先自动保存当前版本，再基于当前目录重编全文。新内容生成成功后会覆盖当前章节正文，失败时可从历史版本恢复。是否开始？', '确认重编全文', { type: 'warning', confirmButtonText: '开始重编', cancelButtonText: '取消' })
   }
 
   fullGenerateSettingVisible.value = false
-  await startFullGenerate(fullGenerateAction.value === 'REWRITE')
+  await startFullGenerate(fullGenerateAction.value === 'REWRITE', targetSolutionId, fullGenerateTargetSolutionSnapshot.value)
 }
 
-async function startFullGenerate(rewrite = false) {
-  fullGenerating.value = true
+async function startFullGenerate(rewrite = false, targetSolutionId = currentSolution.value?.id, solutionSnapshot = currentSolution.value) {
+  await loadGlobalRunningTask()
+  const solutionId = normalizeId(targetSolutionId)
+  if (!solutionId) {
+    ElMessage.warning('未找到要生成的方案，请重新选择方案后再生成')
+    return
+  }
+
+  setCurrentFullGenerating(solutionId, true)
   try {
-    await applySolutionFullGeneratePreferences()
+    await applySolutionFullGeneratePreferences(solutionSnapshot || currentSolution.value)
 
     const selectedKbIds = parseKnowledgeIds(fullGenerateForm.knowledgeIds)
     const payload = {
@@ -1954,18 +2068,28 @@ async function startFullGenerate(rewrite = false) {
     }
 
     const task = rewrite
-      ? await rewriteFull(currentSolution.value.id, payload)
-      : await generateFull(currentSolution.value.id, payload)
+      ? await rewriteFull(solutionId, payload)
+      : await generateFull(solutionId, payload)
 
     if (task?.id) {
-      markSolutionTaskPending(currentSolution.value.id, task.id)
+      globalRunningTask.value = task
+      markSolutionTaskPending(solutionId, task.id)
       pollGenerationTask(task.id, false)
     }
-    await refreshCurrent()
+
+    if (isActiveSolution(solutionId)) {
+      await refreshCurrent(solutionId)
+    } else {
+      await loadList()
+    }
   } catch (e) {
-    fullGenerating.value = false
+    setCurrentFullGenerating(solutionId, false)
+  } finally {
+    fullGenerateTargetSolutionId.value = ''
+    fullGenerateTargetSolutionSnapshot.value = null
   }
 }
+
 
 function markSolutionTaskPending(solutionId, taskId) {
   if (!solutionId || !taskId) return
@@ -1993,11 +2117,12 @@ function restoreSolutionTaskPending() {
   try {
     const data = JSON.parse(raw)
     if (data?.taskId) {
-      solutionTaskPending.solutionId = String(data.solutionId || '')
+      const solutionId = normalizeId(data.solutionId || '')
+      solutionTaskPending.solutionId = solutionId
       solutionTaskPending.taskId = String(data.taskId)
       solutionTaskPollErrorCount.value = 0
       solutionTaskPollTick.value = 0
-      fullGenerating.value = true
+      setCurrentFullGenerating(solutionId, true)
       startSolutionTaskPolling(data.taskId)
     }
   } catch (e) {
@@ -2019,15 +2144,16 @@ async function pollGenerationTask(taskId, silent = true) {
   solutionTaskPollingBusy.value = true
   try {
     const task = await getGenerationTask(taskId)
+    globalRunningTask.value = ['WAITING', 'RUNNING'].includes(String(task?.status || '').toUpperCase()) ? task : null
     solutionTaskPollErrorCount.value = 0
     const status = String(task?.status || '').toUpperCase()
     const taskSolutionId = task?.solutionId || solutionTaskPending.solutionId
 
     if (['WAITING', 'RUNNING'].includes(status)) {
-      fullGenerating.value = true
+      setCurrentFullGenerating(taskSolutionId, true)
       solutionTaskPollTick.value += 1
-      if (!activeSolutionId.value || String(activeSolutionId.value) === String(taskSolutionId || '')) {
-        await refreshCurrent()
+      if (isActiveSolution(taskSolutionId)) {
+        await refreshCurrent(taskSolutionId)
       }
       if (solutionTaskPollTick.value % 4 === 0) {
         await loadList()
@@ -2036,13 +2162,13 @@ async function pollGenerationTask(taskId, silent = true) {
     }
 
     clearSolutionTaskPending(taskId)
-    fullGenerating.value = false
+    setCurrentFullGenerating(taskSolutionId, false)
 
     // 后端任务刚落 SUCCESS 时，方案状态和统计可能还在最后一次事务刷新中。
     // 等一小会儿再重新拉详情和列表，避免页面仍显示旧状态。
     await sleep(600)
-    if (!activeSolutionId.value || String(activeSolutionId.value) === String(taskSolutionId || '')) {
-      await refreshCurrent()
+    if (isActiveSolution(taskSolutionId)) {
+      await refreshCurrent(taskSolutionId)
     }
     await loadList()
 
@@ -2063,10 +2189,10 @@ async function pollGenerationTask(taskId, silent = true) {
     // 后端异步任务仍可能在继续执行，保留 localStorage 任务记录并继续轮询。
     const status = e?.response?.status
     solutionTaskPollErrorCount.value += 1
-    fullGenerating.value = true
+    setCurrentFullGenerating(solutionTaskPending.solutionId, true)
     if (status === 404) {
       clearSolutionTaskPending(taskId)
-      fullGenerating.value = false
+      setCurrentFullGenerating(solutionTaskPending.solutionId, false)
       return
     }
     if (!silent && solutionTaskPollErrorCount.value === 1) {
@@ -2275,6 +2401,11 @@ async function confirmShortenSection() {
 }
 
 async function optimizeSection(type = 'POLISH', customTargetWordCount = null) {
+  await loadGlobalRunningTask()
+  if (hasOtherSolutionRunningTask.value) {
+    ElMessage.warning(otherSolutionRunningMessage.value)
+    return
+  }
   if (!canOptimizeSectionContent.value || !selectedSection.value?.id) return
   const node = selectedSection.value
   const content = String(selectedSectionContent.value || '').trim()
@@ -2332,7 +2463,12 @@ async function optimizeSection(type = 'POLISH', customTargetWordCount = null) {
   }
 }
 
-function openSectionDialog(node) {
+async function openSectionDialog(node) {
+  await loadGlobalRunningTask()
+  if (hasOtherSolutionRunningTask.value) {
+    ElMessage.warning(otherSolutionRunningMessage.value)
+    return
+  }
   if (isSolutionBusy.value) {
     ElMessage.warning(currentSolution.value?.runningMessage || '当前方案正在生成中，完成后再单独操作章节')
     return
@@ -2361,7 +2497,12 @@ function openSectionDialog(node) {
 }
 
 async function onGenerateSection() {
+  await loadGlobalRunningTask()
   if (!sectionNode.value?.id) return
+  if (hasOtherSolutionRunningTask.value) {
+    ElMessage.warning(otherSolutionRunningMessage.value)
+    return
+  }
   if (hasRunningTask.value) {
     ElMessage.warning(currentSolution.value?.runningMessage || '当前方案有任务正在执行')
     return
@@ -3434,6 +3575,11 @@ const WritingDirectionEditor = defineComponent({
 .export-format-sub {
   color: #64748b;
   font-size: 13px;
+}
+
+.recovery-alert {
+  margin: 10px 0 12px;
+  border-radius: 10px;
 }
 
 .task-running-tip {

@@ -88,6 +88,7 @@
         <div class="toolbar">
           <el-input v-model="logQuery.keyword" placeholder="搜索场景 / 业务 / 备注" clearable @keyup.enter="loadLogs" />
           <el-button type="primary" @click="searchLogs">搜索</el-button>
+          <el-button plain @click="openQuotaAudit">额度核对</el-button>
         </div>
         <el-table :data="logs" class="ui-table" height="520">
           <el-table-column prop="userId" label="用户ID" width="90" show-overflow-tooltip />
@@ -272,6 +273,50 @@
         <el-button type="primary" @click="submitAdjust">确认调整</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="auditDialog.visible" title="额度消耗流水核对" width="980px" destroy-on-close>
+      <div v-loading="auditDialog.loading" class="quota-audit-box">
+        <template v-if="auditDialog.result">
+          <el-alert
+            :title="auditDialog.result.conclusion || '核对完成'"
+            :type="totalAuditIssueCount > 0 ? 'warning' : 'success'"
+            show-icon
+            :closable="false"
+          />
+          <div class="audit-summary-grid">
+            <div><span>用户数</span><strong>{{ formatNumber(auditDialog.result.userCount) }}</strong></div>
+            <div><span>流水数</span><strong>{{ formatNumber(auditDialog.result.logRecordCount) }}</strong></div>
+            <div><span>余额异常</span><strong>{{ formatNumber(auditDialog.result.balanceIssueCount) }}</strong></div>
+            <div><span>链路异常</span><strong>{{ formatNumber(auditDialog.result.chainIssueCount) }}</strong></div>
+            <div><span>负数权益</span><strong>{{ formatNumber(auditDialog.result.negativeMemberIssueCount) }}</strong></div>
+            <div><span>未结算预占</span><strong>{{ formatNumber(auditDialog.result.openReservationIssueCount) }}</strong></div>
+          </div>
+
+          <div class="audit-section-title">用户额度异常</div>
+          <el-table :data="auditDialog.result.userIssues || []" class="ui-table" height="240" empty-text="暂无用户额度异常">
+            <el-table-column prop="issueType" label="类型" width="170" />
+            <el-table-column prop="fullName" label="姓名" width="120" show-overflow-tooltip />
+            <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
+            <el-table-column prop="actualAvailableWords" label="权益余额" width="110" />
+            <el-table-column prop="latestLogAfterWords" label="流水余额" width="110" />
+            <el-table-column prop="message" label="说明" min-width="280" show-overflow-tooltip />
+          </el-table>
+
+          <div class="audit-section-title">预占额度异常</div>
+          <el-table :data="auditDialog.result.reservationIssues || []" class="ui-table" height="220" empty-text="暂无未结算预占异常">
+            <el-table-column prop="bizType" label="业务类型" width="130" />
+            <el-table-column prop="bizId" label="业务ID" width="190" show-overflow-tooltip />
+            <el-table-column prop="reserveWords" label="预占字数" width="110" />
+            <el-table-column prop="reserveTime" label="预占时间" width="170" />
+            <el-table-column prop="message" label="说明" min-width="300" show-overflow-tooltip />
+          </el-table>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="auditDialog.visible = false">关闭</el-button>
+        <el-button type="primary" :loading="auditDialog.loading" @click="runQuotaAudit">重新核对</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -283,6 +328,7 @@ import { useAuthStore } from '@/stores/auth'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import {
   adjustMemberQuota,
+  auditQuotaUsageLogs,
   confirmMemberOrderPaid,
   createMemberPlan,
   deleteMemberPlan,
@@ -313,10 +359,15 @@ const logPager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
 const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
+const auditDialog = reactive({ visible: false, loading: false, result: null })
 const modelDialog = reactive({ visible: false, form: emptyModel() })
 const diagnoseDialog = reactive({ visible: false, loading: false, records: [] })
 
 const canManageModels = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []).includes('SUPERADMIN'))
+const totalAuditIssueCount = computed(() => {
+  const r = auditDialog.result || {}
+  return Number(r.balanceIssueCount || 0) + Number(r.chainIssueCount || 0) + Number(r.negativeMemberIssueCount || 0) + Number(r.openReservationIssueCount || 0)
+})
 
 const sceneOptions = [
   { label: '通用生成', value: 'GENERIC_GENERATE' },
@@ -385,6 +436,20 @@ async function loadLogs() {
 function searchLogs() {
   logPager.current = 1
   loadLogs()
+}
+
+async function openQuotaAudit() {
+  auditDialog.visible = true
+  await runQuotaAudit()
+}
+
+async function runQuotaAudit() {
+  auditDialog.loading = true
+  try {
+    auditDialog.result = await auditQuotaUsageLogs({ issueLimit: 200 })
+  } finally {
+    auditDialog.loading = false
+  }
 }
 
 async function loadModels() {
@@ -665,4 +730,11 @@ p { margin-top: 8px; color: #64748b; }
 .plus { color: #16a34a; font-weight: 800; }
 .minus { color: #ef4444; font-weight: 800; }
 :deep(.ui-table .el-table__header-wrapper th .cell) { white-space: nowrap; }
+.quota-audit-box { min-height: 260px; }
+.audit-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.audit-summary-grid > div { padding: 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f8fafc; }
+.audit-summary-grid span { display: block; color: #64748b; font-size: 12px; }
+.audit-summary-grid strong { display: block; margin-top: 6px; color: #0f172a; font-size: 18px; }
+.audit-section-title { margin: 14px 0 8px; font-weight: 700; color: #1e293b; }
+
 </style>

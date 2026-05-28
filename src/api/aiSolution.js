@@ -96,6 +96,10 @@ export function getGenerationTask(taskId) {
   return request({ url: `/ai-solution/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT, silentError: true })
 }
 
+export function getCurrentUserRunningAiTask() {
+  return request({ url: '/ai-solution/task/current-user/running', method: 'get', timeout: NO_TIMEOUT, silentError: true })
+}
+
 export function listSolutionVersions(id) {
   return request({ url: `/ai-solution/${id}/versions`, method: 'get' })
 }

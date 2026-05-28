@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getMe, login as loginApi, logout as logoutApi, smsLogin as smsLoginApi } from '@/api/auth'
+import { completeEnterprise as completeEnterpriseApi, getMe, login as loginApi, logout as logoutApi, smsLogin as smsLoginApi } from '@/api/auth'
 import {
   clearAuthStorage,
   getStoredMenus,
@@ -42,7 +42,8 @@ function normalizeUserFromResponse(res = {}) {
     roleCodes,
     roleNames,
     permissions: Array.isArray(res?.permissions) ? res.permissions : [],
-    menus: Array.isArray(res?.menus) ? res.menus : []
+    menus: Array.isArray(res?.menus) ? res.menus : [],
+    needCompleteEnterprise: Boolean(res?.needCompleteEnterprise)
   }
 }
 
@@ -85,6 +86,11 @@ export const useAuthStore = defineStore('auth', {
 
     async smsLogin(payload) {
       const res = await smsLoginApi(payload)
+      return this.saveLoginState(res)
+    },
+
+    async completeEnterprise(payload) {
+      const res = await completeEnterpriseApi(payload)
       return this.saveLoginState(res)
     },
 

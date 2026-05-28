@@ -8,6 +8,16 @@
 
       <h1 class="welcome-title">欢迎使用恒鼎·智慧AI</h1>
 
+      <el-alert
+        v-if="loginExpiredTipVisible"
+        class="login-expired-alert"
+        title="登录已过期，请重新登录"
+        type="warning"
+        show-icon
+        :closable="true"
+        @close="loginExpiredTipVisible = false"
+      />
+
       <div class="login-tabs">
         <button
           type="button"
@@ -274,11 +284,50 @@
         <el-button type="primary" @click="agreementVisible = false">我知道了</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="enterpriseDialogVisible"
+      title="完善企业信息"
+      width="460px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+    >
+      <div class="enterprise-complete-tip">
+        登录成功。首次使用需要填写企业名称，系统会根据该名称自动创建企业资料，其余资料可以后续在企业资料中补充。
+      </div>
+      <el-form
+        ref="enterpriseFormRef"
+        :model="enterpriseForm"
+        :rules="enterpriseRules"
+        label-position="top"
+        @submit.prevent
+      >
+        <el-form-item label="企业名称" prop="enterpriseName">
+          <el-input
+            v-model.trim="enterpriseForm.enterpriseName"
+            maxlength="200"
+            show-word-limit
+            placeholder="请输入企业名称"
+            @keyup.enter="submitEnterpriseComplete"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button
+          type="primary"
+          :loading="enterpriseLoading"
+          @click="submitEnterpriseComplete"
+        >
+          保存并进入系统
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getCaptcha, resetPassword, sendResetPasswordSmsCode, sendSmsCode } from '@/api/auth'
@@ -293,15 +342,19 @@ const activeTab = ref('password')
 const smsFormRef = ref()
 const passwordFormRef = ref()
 const resetFormRef = ref()
+const enterpriseFormRef = ref()
 const loading = ref(false)
 const smsCodeLoading = ref(false)
 const resetCodeLoading = ref(false)
 const resetLoading = ref(false)
+const enterpriseLoading = ref(false)
+const enterpriseDialogVisible = ref(false)
 const captchaImage = ref('')
 const countdown = ref(0)
 const resetCountdown = ref(0)
 const agreementVisible = ref(false)
 const agreementType = ref('user')
+const loginExpiredTipVisible = ref(false)
 
 let countdownTimer = null
 let resetCountdownTimer = null
@@ -329,6 +382,10 @@ const resetForm = reactive({
   confirmPassword: ''
 })
 
+const enterpriseForm = reactive({
+  enterpriseName: ''
+})
+
 const smsRules = {
   phone: [
     { required: true, message: '请输入手机号', trigger: 'blur' },
@@ -347,6 +404,13 @@ const passwordRules = {
   ],
   password: [{ required: true, message: '请输入登录密码', trigger: 'blur' }],
   captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }]
+}
+
+const enterpriseRules = {
+  enterpriseName: [
+    { required: true, message: '请输入企业名称', trigger: 'blur' },
+    { max: 200, message: '企业名称长度不能超过200个字符', trigger: 'blur' }
+  ]
 }
 
 const resetRules = {
@@ -385,6 +449,14 @@ const agreementContent = computed(() => {
   }
   return '这里展示用户协议内容。后续如果有正式协议页面，可以把这里改成跳转到正式页面或展示后端维护的协议内容。'
 })
+
+watch(
+  () => route.query.expired,
+  (value) => {
+    loginExpiredTipVisible.value = String(value || '') === '1'
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   loadCaptcha()
@@ -446,13 +518,12 @@ async function submitSmsLogin() {
 
   loading.value = true
   try {
-    await auth.smsLogin({
+    const res = await auth.smsLogin({
       phone: smsForm.phone,
       smsCode: smsForm.smsCode,
       agreementAccepted: smsForm.agreementAccepted
     })
-    ElMessage.success('登录成功')
-    redirectAfterLogin()
+    handleLoginSuccess(res)
   } finally {
     loading.value = false
   }
@@ -467,14 +538,13 @@ async function submitPasswordLogin() {
 
   loading.value = true
   try {
-    await auth.login({
+    const res = await auth.login({
       phone: passwordForm.phone,
       password: passwordForm.password,
       captchaKey: passwordForm.captchaKey,
       captchaCode: passwordForm.captchaCode
     })
-    ElMessage.success('登录成功')
-    redirectAfterLogin()
+    handleLoginSuccess(res)
   } catch (e) {
     passwordForm.captchaCode = ''
     await loadCaptcha()
@@ -505,8 +575,35 @@ async function submitResetPassword() {
   }
 }
 
+function handleLoginSuccess(res = {}) {
+  ElMessage.success('登录成功')
+  if (res?.needCompleteEnterprise || auth.user?.needCompleteEnterprise) {
+    enterpriseForm.enterpriseName = ''
+    enterpriseDialogVisible.value = true
+    nextTick(() => enterpriseFormRef.value?.clearValidate?.())
+    return
+  }
+  redirectAfterLogin()
+}
+
+async function submitEnterpriseComplete() {
+  await enterpriseFormRef.value.validate()
+  enterpriseLoading.value = true
+  try {
+    await auth.completeEnterprise({
+      enterpriseName: enterpriseForm.enterpriseName
+    })
+    ElMessage.success('企业资料已创建')
+    enterpriseDialogVisible.value = false
+    redirectAfterLogin()
+  } finally {
+    enterpriseLoading.value = false
+  }
+}
+
 function redirectAfterLogin() {
-  const redirect = route.query.redirect ? decodeURIComponent(route.query.redirect) : '/dashboard'
+  const rawRedirect = Array.isArray(route.query.redirect) ? route.query.redirect[0] : route.query.redirect
+  const redirect = rawRedirect || '/dashboard'
   router.replace(redirect)
 }
 
@@ -683,6 +780,10 @@ function handleAppLogin() {
   font-size: 26px;
   font-weight: 800;
   line-height: 1.35;
+}
+
+.login-expired-alert {
+  margin: 0 0 18px;
 }
 
 .login-tabs {
@@ -896,6 +997,13 @@ function handleAppLogin() {
 .agreement-content {
   color: #4b5563;
   line-height: 1.8;
+}
+
+.enterprise-complete-tip {
+  margin-bottom: 18px;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .reset-page-card {

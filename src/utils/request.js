@@ -4,8 +4,48 @@ import router from '@/router'
 import { getToken, clearAuthStorage } from '@/utils/storage'
 
 let loginExpiredNotified = false
+let loginExpiredRedirecting = false
 
+const LOGIN_REQUIRED_CODE = 200001
 const AI_GENERIC_ERROR_MESSAGE = 'AI任务执行失败，请稍后重试或检查模型配置/额度'
+
+function isLoginRequiredCode(code) {
+  return Number(code) === LOGIN_REQUIRED_CODE || Number(code) === 401
+}
+
+function buildLoginQuery() {
+  const currentRoute = router.currentRoute.value
+  const currentFullPath = currentRoute?.fullPath || '/dashboard'
+  const redirect = currentRoute?.path === '/login' ? '/dashboard' : currentFullPath
+  return {
+    expired: '1',
+    redirect
+  }
+}
+
+function notifyLoginExpired(message = '登录已过期，请重新登录') {
+  if (loginExpiredNotified) return
+  loginExpiredNotified = true
+  ElMessage.warning(message)
+  window.setTimeout(() => {
+    loginExpiredNotified = false
+  }, 3000)
+}
+
+function handleLoginExpired(message = '登录已过期，请重新登录') {
+  clearAuthStorage()
+  notifyLoginExpired(message)
+
+  const currentRoute = router.currentRoute.value
+  if (currentRoute?.path === '/login' || loginExpiredRedirecting) return
+
+  loginExpiredRedirecting = true
+  router
+    .replace({ path: '/login', query: buildLoginQuery() })
+    .finally(() => {
+      loginExpiredRedirecting = false
+    })
+}
 
 function isAiModuleRequest(config) {
   const url = String(config?.url || '')
@@ -48,7 +88,6 @@ function safeResponseMessage(config, message, fallback = '接口请求失败') {
   return text
 }
 
-
 const service = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/ai_bid/api',
   timeout: 120000
@@ -72,7 +111,13 @@ service.interceptors.response.use(
     const body = response.data
     if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'code')) {
       if (body.code === 0) return body.data
+
       const message = safeResponseMessage(response.config, body.message, '接口请求失败')
+      if (isLoginRequiredCode(body.code)) {
+        handleLoginExpired(message || '登录已过期，请重新登录')
+        return Promise.reject(new Error(message))
+      }
+
       if (!response.config?.silentError) ElMessage.error(message)
       return Promise.reject(new Error(message))
     }
@@ -83,14 +128,7 @@ service.interceptors.response.use(
     const message = safeResponseMessage(error?.config, error?.response?.data?.message || error?.message, '网络异常，请检查后端服务是否启动')
 
     if (status === 401) {
-      clearAuthStorage()
-      if (!loginExpiredNotified) {
-        loginExpiredNotified = true
-        ElMessage.warning('登录已过期，请重新登录')
-      }
-      if (router.currentRoute.value.path !== '/login') {
-        router.replace('/login')
-      }
+      handleLoginExpired(message || '登录已过期，请重新登录')
       return Promise.reject(error)
     }
 

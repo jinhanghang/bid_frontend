@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { getToken } from '@/utils/storage'
+import { clearAuthStorage, getToken } from '@/utils/storage'
 import { useAuthStore } from '@/stores/auth'
 
 const AdminLayout = () => import('@/layout/AdminLayout.vue')
@@ -79,7 +79,7 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true
 
   if (!getToken()) {
-    return `/login?redirect=${encodeURIComponent(to.fullPath)}`
+    return { path: '/login', query: { redirect: to.fullPath } }
   }
 
   const auth = useAuthStore()
@@ -87,7 +87,12 @@ router.beforeEach(async (to) => {
     try {
       await auth.loadMe()
     } catch (e) {
-      return `/login?redirect=${encodeURIComponent(to.fullPath)}`
+      clearAuthStorage()
+      auth.token = ''
+      auth.user = null
+      auth.menus = []
+      auth.permissions = []
+      return { path: '/login', query: { expired: '1', redirect: to.fullPath } }
     }
   }
 

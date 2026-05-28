@@ -1067,6 +1067,7 @@ import {
   moveBidProjectTechnicalOutlineNode,
   updateBidProjectTechnicalSectionContent
 } from '@/api/bidProject'
+import { getCurrentUserRunningAiTask } from '@/api/aiSolution'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -1102,6 +1103,8 @@ const technicalTaskPending = reactive({ projectId: '', taskId: '' })
 const technicalTaskPollingBusy = ref(false)
 const technicalTaskPollErrorCount = ref(0)
 const technicalTaskPollTick = ref(0)
+const globalAiRunningTask = ref(null)
+let globalAiTaskPoller = null
 const technicalSolutionLoadErrorCount = ref(0)
 const TECH_OUTLINE_PENDING_KEY = 'ai_bid_technical_outline_pending_project_id'
 const TECH_TASK_PENDING_KEY = 'ai_bid_technical_task_pending'
@@ -1424,6 +1427,12 @@ const isTechnicalRunningByBackend = computed(() => {
   const status = String(technicalSolution.value?.runningTask?.status || '').toUpperCase()
   return ['WAITING', 'RUNNING'].includes(status)
 })
+const isGlobalAiTaskRunning = computed(() => ['WAITING', 'RUNNING'].includes(String(globalAiRunningTask.value?.status || '').toUpperCase()))
+const isGlobalAiTaskForCurrentTechnicalSolution = computed(() => {
+  const currentSolutionId = String(technicalSolution.value?.id || '')
+  return !!currentSolutionId && String(globalAiRunningTask.value?.solutionId || '') === currentSolutionId
+})
+const hasOtherAiTaskRunning = computed(() => isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentTechnicalSolution.value)
 const isTechnicalRewriteRunning = computed(() => {
   const task = technicalSolution.value?.runningTask
   return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
@@ -1431,6 +1440,7 @@ const isTechnicalRewriteRunning = computed(() => {
 const isTechnicalBusy = computed(() => {
   return fullGenerating.value
     || isTechnicalRunningByBackend.value
+    || hasOtherAiTaskRunning.value
     || sectionGenerating.value
     || !!sectionOptimizing.value
     || technicalSectionContentSaving.value
@@ -1447,8 +1457,10 @@ const technicalGenerateButtonText = computed(() => {
 })
 
 onMounted(async () => {
+  await loadGlobalAiRunningTask()
   await loadProjects()
   startPolling()
+  startGlobalAiTaskPolling()
   restoreTechnicalOutlinePending()
   restoreTechnicalTaskPending()
 })
@@ -1458,7 +1470,23 @@ onBeforeUnmount(() => {
   clearInterval(poller.value)
   clearInterval(technicalOutlinePoller.value)
   clearInterval(technicalTaskPoller.value)
+  clearInterval(globalAiTaskPoller)
 })
+
+function startGlobalAiTaskPolling() {
+  clearInterval(globalAiTaskPoller)
+  globalAiTaskPoller = setInterval(() => {
+    if (!document.hidden) loadGlobalAiRunningTask()
+  }, 5000)
+}
+
+async function loadGlobalAiRunningTask() {
+  try {
+    globalAiRunningTask.value = await getCurrentUserRunningAiTask()
+  } catch (e) {
+    globalAiRunningTask.value = null
+  }
+}
 
 function defaultDocuments(project) {
   const parseStatus = String(project?.parseStatus || 'WAIT_PARSE').toUpperCase()
@@ -2152,6 +2180,11 @@ function autoFillTechnicalRequirementAfterParse(showMessage = true) {
 }
 
 async function generateTechnicalOutline() {
+  await loadGlobalAiRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
     return
@@ -2396,6 +2429,7 @@ function openTechnicalFullGenerateDialog(action = 'GENERATE') {
   const allowed = isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value
   if (!allowed) {
     if (!technicalOutlines.value.length) ElMessage.warning('请先生成目录')
+    else if (hasOtherAiTaskRunning.value) ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
     else if (isTechnicalBusy.value) ElMessage.warning('技术方案正在生成中，完成后再操作')
     else if (isRewrite) ElMessage.warning('暂无可重编的章节')
     return
@@ -2453,6 +2487,11 @@ async function applyTechnicalFullGeneratePreferences() {
 }
 
 async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) {
+  await loadGlobalAiRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
     return
@@ -2486,6 +2525,7 @@ async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) 
       : await generateBidProjectTechnicalFull(selectedProject.value.id, payload)
 
     if (task?.id) {
+      globalAiRunningTask.value = task
       markTechnicalTaskPending(selectedProject.value.id, task.id)
       pollTechnicalGenerationTask(selectedProject.value.id, task.id, false)
     }
@@ -2548,6 +2588,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   technicalTaskPollingBusy.value = true
   try {
     const task = await getBidProjectTechnicalTask(projectId, taskId)
+    globalAiRunningTask.value = ['WAITING', 'RUNNING'].includes(String(task?.status || '').toUpperCase()) ? task : null
     technicalTaskPollErrorCount.value = 0
     const status = String(task?.status || '').toUpperCase()
     if (['WAITING', 'RUNNING'].includes(status)) {
@@ -2564,6 +2605,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
     }
 
     clearTechnicalTaskPending(projectId, taskId)
+    globalAiRunningTask.value = null
     fullGenerating.value = false
 
     if (String(selectedProject.value?.id || '') === String(projectId || '')) {
@@ -3212,6 +3254,11 @@ async function confirmTechnicalShortenSection() {
 }
 
 async function optimizeTechnicalSection(type = 'POLISH', customTargetWordCount = null) {
+  await loadGlobalAiRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (!canOptimizeTechnicalSection.value || !selectedTechnicalLeaf.value?.id) return
   const node = selectedTechnicalLeaf.value
   const content = String(selectedTechnicalLeafDisplayContent.value || '').trim()
@@ -3428,6 +3475,10 @@ function openTechnicalSectionDialog(node) {
     ElMessage.warning('当前目录节点缺少ID，请重新生成目录后再试')
     return
   }
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (isTechnicalBusy.value) {
     ElMessage.warning('全文正在生成中，请完成后再单独重编章节')
     return
@@ -3452,6 +3503,11 @@ function openTechnicalSectionDialog(node) {
 }
 
 async function generateTechnicalSection() {
+  await loadGlobalAiRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (!sectionNode.value?.id) return
   sectionGenerating.value = true
   sectionStreamingText.value = ''

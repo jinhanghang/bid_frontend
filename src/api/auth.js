@@ -24,6 +24,10 @@ export function login(data) {
   return request.post('/auth/login', data)
 }
 
+export function completeEnterprise(data) {
+  return request.post('/auth/complete-enterprise', data)
+}
+
 export function logout() {
   return request.post('/auth/logout')
 }

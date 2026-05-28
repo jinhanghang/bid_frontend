@@ -376,7 +376,7 @@ import {
   saveDocumentForm,
   uploadDocumentReference
 } from '@/api/aiDocument'
-import { downloadFileResource, streamSection, updateSectionContent } from '@/api/aiSolution'
+import { downloadFileResource, getCurrentUserRunningAiTask, streamSection, updateSectionContent } from '@/api/aiSolution'
 import { formatDateTime } from '@/utils/format'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
 
@@ -396,6 +396,7 @@ const sectionSaving = ref(false)
 const formDialogVisible = ref(false)
 const parseTask = ref(null)
 const runningTask = ref(null)
+const globalRunningTask = ref(null)
 const activeNode = ref(null)
 const sectionDraft = ref('')
 
@@ -419,6 +420,7 @@ let searchTimer = null
 let parseTimer = null
 let taskTimer = null
 let outlineTimer = null
+let globalTaskTimer = null
 
 const currentType = computed(() => documentTypes.value.find((item) => item.type === form.documentType) || documentTypes.value[0])
 const currentFields = computed(() => (currentType.value?.fields || []).filter((field) => !isBasicDuplicateField(field)))
@@ -427,7 +429,13 @@ const leafNodes = computed(() => flattenLeaves(outlineTree.value))
 const hasOutline = computed(() => outlineTree.value.length > 0)
 const isOutlineGenerating = computed(() => outlineLoading.value || isOutlineGeneratingStatus(currentDoc.value?.status))
 const hasRunningTask = computed(() => ['WAITING', 'RUNNING'].includes(String(runningTask.value?.status || '').toUpperCase()))
-const isOperationLocked = computed(() => Boolean(hasRunningTask.value || fullGenerating.value || sectionGenerating.value || isDocumentGeneratingStatus(currentDoc.value?.status)))
+const isGlobalAiTaskRunning = computed(() => ['WAITING', 'RUNNING'].includes(String(globalRunningTask.value?.status || '').toUpperCase()))
+const isGlobalAiTaskForCurrentDoc = computed(() => {
+  const currentId = String(currentDoc.value?.id || '')
+  return !!currentId && String(globalRunningTask.value?.solutionId || '') === currentId
+})
+const hasOtherAiTaskRunning = computed(() => isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentDoc.value)
+const isOperationLocked = computed(() => Boolean(hasRunningTask.value || hasOtherAiTaskRunning.value || fullGenerating.value || sectionGenerating.value || isDocumentGeneratingStatus(currentDoc.value?.status)))
 const canExport = computed(() => currentDoc.value?.canExport === true || (leafNodes.value.length > 0 && leafNodes.value.every((node) => node?.section?.content)))
 const progressStatus = computed(() => {
   const status = String(runningTask.value?.status || '').toUpperCase()
@@ -494,8 +502,10 @@ const OutlineNodeList = defineComponent({
 })
 
 onMounted(async () => {
+  await loadGlobalRunningTask()
   await loadTypes()
   await loadDocuments()
+  startGlobalTaskPolling()
 })
 
 onBeforeUnmount(() => {
@@ -503,7 +513,23 @@ onBeforeUnmount(() => {
   clearInterval(parseTimer)
   clearInterval(taskTimer)
   clearInterval(outlineTimer)
+  clearInterval(globalTaskTimer)
 })
+
+function startGlobalTaskPolling() {
+  clearInterval(globalTaskTimer)
+  globalTaskTimer = setInterval(() => {
+    if (!document.hidden) loadGlobalRunningTask()
+  }, 5000)
+}
+
+async function loadGlobalRunningTask() {
+  try {
+    globalRunningTask.value = await getCurrentUserRunningAiTask()
+  } catch (e) {
+    globalRunningTask.value = null
+  }
+}
 
 async function loadTypes() {
   documentTypes.value = await listDocumentTypes()
@@ -792,6 +818,11 @@ function resumeOutlinePolling(forceDocId) {
 }
 
 async function onGenerateOutline() {
+  await loadGlobalRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (isOperationLocked.value && !isOutlineGenerating.value) return
   if (!currentDoc.value?.id) return
   if (isOutlineGenerating.value) {
@@ -837,6 +868,11 @@ async function onApplyWordPreset() {
 }
 
 async function onGenerateFull(rewrite) {
+  await loadGlobalRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (isOperationLocked.value) return
   if (!currentDoc.value?.id) return
   await saveDocumentForm(currentDoc.value.id, buildFormPayload())
@@ -846,6 +882,7 @@ async function onGenerateFull(rewrite) {
       ? await rewriteDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle })
       : await generateDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle })
     runningTask.value = task
+    globalRunningTask.value = task
     pollGenerationTask(task.id)
   } finally {
     fullGenerating.value = false
@@ -867,6 +904,7 @@ function pollGenerationTask(taskId) {
       const task = await getDocumentGenerationTask(taskId)
       runningTask.value = task
       const status = String(task.status || '').toUpperCase()
+      globalRunningTask.value = ['WAITING', 'RUNNING'].includes(status) ? task : null
 
       // 任务进行中也刷新文档详情：大纲状态、章节字数、右侧正文都会实时更新。
       // preferLatestGenerated 会在当前选中章节尚未生成时，自动切到最新已生成章节。
@@ -898,6 +936,11 @@ function selectNode(node) {
 }
 
 async function onRegenerateSection() {
+  await loadGlobalRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
   if (isOperationLocked.value) return
   if (!activeNode.value?.id) return
   sectionGenerating.value = true

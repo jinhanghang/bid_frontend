@@ -40,6 +40,10 @@ export function pageAdminQuotaLogs(params) {
   return request.get('/member/admin/quota/page', { params })
 }
 
+export function auditQuotaUsageLogs(params) {
+  return request.get('/quota-usage-log/audit', { params })
+}
+
 export function pageMemberPlanManage(params) {
   return request.get('/member-plan/page', { params })
 }
