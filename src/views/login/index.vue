@@ -285,44 +285,6 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="enterpriseDialogVisible"
-      title="完善企业信息"
-      width="460px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="false"
-    >
-      <div class="enterprise-complete-tip">
-        登录成功。首次使用需要填写企业名称，系统会根据该名称自动创建企业资料，其余资料可以后续在企业资料中补充。
-      </div>
-      <el-form
-        ref="enterpriseFormRef"
-        :model="enterpriseForm"
-        :rules="enterpriseRules"
-        label-position="top"
-        @submit.prevent
-      >
-        <el-form-item label="企业名称" prop="enterpriseName">
-          <el-input
-            v-model.trim="enterpriseForm.enterpriseName"
-            maxlength="200"
-            show-word-limit
-            placeholder="请输入企业名称"
-            @keyup.enter="submitEnterpriseComplete"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button
-          type="primary"
-          :loading="enterpriseLoading"
-          @click="submitEnterpriseComplete"
-        >
-          保存并进入系统
-        </el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -342,13 +304,10 @@ const activeTab = ref('password')
 const smsFormRef = ref()
 const passwordFormRef = ref()
 const resetFormRef = ref()
-const enterpriseFormRef = ref()
 const loading = ref(false)
 const smsCodeLoading = ref(false)
 const resetCodeLoading = ref(false)
 const resetLoading = ref(false)
-const enterpriseLoading = ref(false)
-const enterpriseDialogVisible = ref(false)
 const captchaImage = ref('')
 const countdown = ref(0)
 const resetCountdown = ref(0)
@@ -382,9 +341,6 @@ const resetForm = reactive({
   confirmPassword: ''
 })
 
-const enterpriseForm = reactive({
-  enterpriseName: ''
-})
 
 const smsRules = {
   phone: [
@@ -406,12 +362,6 @@ const passwordRules = {
   captchaCode: [{ required: true, message: '请输入图形验证码', trigger: 'blur' }]
 }
 
-const enterpriseRules = {
-  enterpriseName: [
-    { required: true, message: '请输入企业名称', trigger: 'blur' },
-    { max: 200, message: '企业名称长度不能超过200个字符', trigger: 'blur' }
-  ]
-}
 
 const resetRules = {
   phone: [
@@ -575,30 +525,11 @@ async function submitResetPassword() {
   }
 }
 
-function handleLoginSuccess(res = {}) {
+function handleLoginSuccess() {
   ElMessage.success('登录成功')
-  if (res?.needCompleteEnterprise || auth.user?.needCompleteEnterprise) {
-    enterpriseForm.enterpriseName = ''
-    enterpriseDialogVisible.value = true
-    nextTick(() => enterpriseFormRef.value?.clearValidate?.())
-    return
-  }
+  // 企业信息补全不在登录页处理。
+  // 登录成功后先进入首页，由 AdminLayout 根据 auth.needCompleteEnterprise 弹出补全窗口。
   redirectAfterLogin()
-}
-
-async function submitEnterpriseComplete() {
-  await enterpriseFormRef.value.validate()
-  enterpriseLoading.value = true
-  try {
-    await auth.completeEnterprise({
-      enterpriseName: enterpriseForm.enterpriseName
-    })
-    ElMessage.success('企业资料已创建')
-    enterpriseDialogVisible.value = false
-    redirectAfterLogin()
-  } finally {
-    enterpriseLoading.value = false
-  }
 }
 
 function redirectAfterLogin() {
@@ -999,12 +930,6 @@ function handleAppLogin() {
   line-height: 1.8;
 }
 
-.enterprise-complete-tip {
-  margin-bottom: 18px;
-  color: #4b5563;
-  font-size: 14px;
-  line-height: 1.7;
-}
 
 .reset-page-card {
   position: relative;
