@@ -56,12 +56,12 @@
                 <el-tag v-else-if="item.fileId" size="small" type="danger" effect="light">附件丢失</el-tag>
               </div>
             </div>
-            <el-dropdown v-if="canManageCompanyMaterial" trigger="click" @click.stop>
+            <el-dropdown v-if="canEditArchive(item) || canManageCompanyMaterial" trigger="click" @click.stop>
               <span class="archive-more">•••</span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="selectArchive(item)">编辑资料</el-dropdown-item>
-                  <el-dropdown-item divided @click="removeArchive(item)">删除资料</el-dropdown-item>
+                  <el-dropdown-item v-if="canEditArchive(item)" @click="selectArchive(item)">编辑资料</el-dropdown-item>
+                  <el-dropdown-item v-if="canManageCompanyMaterial" divided @click="removeArchive(item)">删除资料</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -97,8 +97,8 @@
             <div class="top-spacer"></div>
             <div class="top-actions">
               <el-button :icon="View" :disabled="!canOpenFile(selectedArchive)" @click="openFile(selectedArchive)">查看附件</el-button>
-              <el-button v-if="canManageCompanyMaterial" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
-              <el-button v-if="canManageCompanyMaterial" type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
+              <el-button v-if="canEditCurrentArchive" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
+              <el-button v-if="canEditCurrentArchive" type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
             </div>
           </div>
 
@@ -107,7 +107,7 @@
               <div class="upload-card__title">上传资料附件</div>
               <div class="upload-card__desc">一个档案暂关联一个主附件，适合上传营业执照、证书扫描件、业绩合同或财务资料。</div>
               <FileUploadBox
-                v-if="canManageCompanyMaterial && profile.id"
+                v-if="canEditCurrentArchive && profile.id"
                 module-type="company_material"
                 :biz-id="profile.id"
                 :private-flag="true"
@@ -162,7 +162,7 @@
                     <p>维护企业注册信息，后续标书、AI方案可直接引用。</p>
                   </div>
                 </div>
-                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                <el-form label-position="top" class="archive-form" :disabled="!canEditCurrentArchive">
                   <div class="form-grid four">
                     <el-form-item v-if="canManagePlatform" label="所属企业" required>
                       <el-select v-model="profile.enterpriseId" filterable placeholder="请选择企业" style="width: 100%">
@@ -224,7 +224,7 @@
                     <p>补充企业规模、行业、地址、联系方式和投标人员结构。</p>
                   </div>
                 </div>
-                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                <el-form label-position="top" class="archive-form" :disabled="!canEditCurrentArchive">
                   <div class="form-grid four">
                     <el-form-item label="企业规模">
                       <el-select v-model="profile.company.scale" placeholder="请选择" style="width: 100%">
@@ -281,7 +281,7 @@
                     <p>维护开户名称、银行、账号和开户地址。</p>
                   </div>
                 </div>
-                <el-form label-position="top" class="archive-form" :disabled="!canManageCompanyMaterial">
+                <el-form label-position="top" class="archive-form" :disabled="!canEditCurrentArchive">
                   <div class="form-grid four">
                     <el-form-item label="开户名称" required>
                       <el-input v-model="profile.bank.accountName" placeholder="请输入开户名称" />
@@ -310,7 +310,7 @@
                   </div>
                   <div class="panel-actions">
                     <el-button :icon="Refresh" @click="loadArchives(selectedArchive?.id)">刷新</el-button>
-                    <el-button v-if="canManageCompanyMaterial" type="primary" :icon="Plus" @click="openRecordDialog(activeTab)">新增数据</el-button>
+                    <el-button v-if="canEditCurrentArchive" type="primary" :icon="Plus" @click="openRecordDialog(activeTab)">新增数据</el-button>
                   </div>
                 </div>
 
@@ -331,13 +331,13 @@
                   <el-table-column label="操作" width="120" fixed="right">
                     <template #default="{ row, $index }">
                       <el-button link type="primary" @click="openRecordDialog(activeTab, row, $index)">编辑</el-button>
-                      <el-button v-if="canManageCompanyMaterial" link type="danger" @click="removeRecord(activeTab, $index)">删除</el-button>
+                      <el-button v-if="canEditCurrentArchive" link type="danger" @click="removeRecord(activeTab, $index)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
               </template>
 
-              <div class="fixed-save-bar" v-if="canManageCompanyMaterial">
+              <div class="fixed-save-bar" v-if="canEditCurrentArchive">
                 <el-button @click="resetCurrentArchive">重置</el-button>
                 <el-button type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
               </div>
@@ -639,12 +639,17 @@ const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || au
 // 企业管理员、普通用户都固定在当前企业范围内，不展示跨企业筛选。
 const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
 const canManageCompanyMaterial = computed(() => canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const canEditCurrentArchive = computed(() => canManageCompanyMaterial.value || Boolean(selectedArchive.value?.canEdit))
 const currentTitle = computed(() => profile.license.companyName || selectedArchive.value?.title || '未命名资料档案')
 const currentEnterpriseName = computed(() => enterprises.value.find((item) => String(item.id) === String(profile.enterpriseId))?.enterpriseName || '')
 const formDirty = computed(() => editMode.value && profileSnapshot.value && profileSnapshot.value !== snapshotProfile())
 const activeTableMeta = computed(() => tableMetas[activeTab.value] || tableMetas.members)
 const activeTableRows = computed(() => profile[activeTableMeta.value.listKey] || [])
 const recordDialogTitle = computed(() => `${recordDialog.index >= 0 ? '编辑' : '新增'}${tableMetas[recordDialog.section]?.label || '数据'}`)
+
+function canEditArchive(item) {
+  return canManageCompanyMaterial.value || Boolean(item?.canEdit)
+}
 
 onMounted(async () => {
   await loadEnterprises()
@@ -878,8 +883,8 @@ async function confirmDiscardChanges() {
 }
 
 async function saveArchive() {
-  if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看资料库，不能保存修改')
+  if (!canEditCurrentArchive.value) {
+    ElMessage.warning('当前账号无权编辑该企业资料')
     return
   }
   if (!profile.enterpriseId && canManagePlatform.value) {
@@ -923,8 +928,8 @@ async function saveArchive() {
 }
 
 async function onUploadSuccess(file) {
-  if (!canManageCompanyMaterial.value) {
-    ElMessage.warning('普通用户只能查看资料库，不能上传附件')
+  if (!canEditCurrentArchive.value) {
+    ElMessage.warning('当前账号无权编辑该企业资料')
     return
   }
   if (!profile.id) {
@@ -949,6 +954,10 @@ async function removeArchive(row) {
 }
 
 function openRecordDialog(section, row = null, index = -1) {
+  if (!canEditCurrentArchive.value) {
+    ElMessage.warning('当前账号无权编辑该企业资料')
+    return
+  }
   const meta = tableMetas[section]
   if (!meta) return
   recordDialog.section = section
@@ -987,6 +996,10 @@ function saveRecord() {
 }
 
 async function removeRecord(section, index) {
+  if (!canEditCurrentArchive.value) {
+    ElMessage.warning('当前账号无权编辑该企业资料')
+    return
+  }
   const meta = tableMetas[section]
   if (!meta) return
   try {
