@@ -222,7 +222,18 @@
     >
       <el-form ref="baseFormRef" :model="baseForm" :rules="baseRules" label-width="110px">
         <el-form-item v-if="canManagePlatform" label="所属企业" prop="enterpriseId">
-          <el-select v-model="baseForm.enterpriseId" clearable filterable placeholder="请选择企业" style="width: 100%">
+          <el-select
+            v-model="baseForm.enterpriseId"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            :remote-method="remoteSearchEnterprises"
+            :loading="enterpriseLoading"
+            placeholder="请选择企业"
+            style="width: 100%"
+            @visible-change="onEnterpriseVisibleChange"
+          >
             <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
           </el-select>
         </el-form-item>
@@ -371,7 +382,7 @@ import {
   UploadFilled
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { listEnterprises } from '@/api/enterprise'
+import { pageEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import {
   askKnowledge,
@@ -396,6 +407,7 @@ const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 const baseLoading = ref(false)
 const baseAppendLoading = ref(false)
 const fileLoading = ref(false)
+const enterpriseLoading = ref(false)
 const keyword = ref('')
 const bases = ref([])
 const files = ref([])
@@ -404,6 +416,7 @@ const selectedBase = ref(null)
 const baseListScrollbar = ref()
 const baseFormRef = ref()
 const timer = ref(null)
+const enterpriseKeywordTimer = ref(null)
 const pollingTimer = ref(null)
 const rebuildingIds = ref(new Set())
 
@@ -487,6 +500,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearTimeout(timer.value)
+  clearTimeout(enterpriseKeywordTimer.value)
   stopFilePolling()
 })
 
@@ -527,16 +541,47 @@ function onKeywordInput() {
   }, 300)
 }
 
-async function loadEnterprises() {
+async function loadEnterprises(keyword = '') {
   if (!canManagePlatform.value) {
     enterprises.value = []
     return
   }
 
+  enterpriseLoading.value = true
   try {
-    enterprises.value = await listEnterprises({ status: 1 })
+    const res = await pageEnterprises({
+      current: 1,
+      size: 20,
+      pageNum: 1,
+      pageSize: 20,
+      status: 1,
+      keyword: keyword || undefined
+    })
+    enterprises.value = res?.records || []
   } catch (e) {
     enterprises.value = []
+  } finally {
+    enterpriseLoading.value = false
+  }
+}
+
+function remoteSearchEnterprises(keyword = '') {
+  if (!canManagePlatform.value) return
+  clearTimeout(enterpriseKeywordTimer.value)
+  enterpriseKeywordTimer.value = setTimeout(() => loadEnterprises(keyword), 300)
+}
+
+function onEnterpriseVisibleChange(visible) {
+  if (visible && canManagePlatform.value && enterprises.value.length === 0) {
+    loadEnterprises()
+  }
+}
+
+function ensureEnterpriseOption(id, name) {
+  if (!canManagePlatform.value || !id) return
+  const exists = enterprises.value.some((item) => String(item.id) === String(id))
+  if (!exists) {
+    enterprises.value = [{ id, enterpriseName: name || String(id) }].concat(enterprises.value)
   }
 }
 
@@ -618,9 +663,9 @@ async function loadFiles() {
   try {
     const res = await pageKnowledgeFiles({
       current: 1,
-      size: 200,
+      size: 50,
       pageNum: 1,
-      pageSize: 200,
+      pageSize: 50,
       knowledgeBaseId: selectedBase.value.id
     })
 

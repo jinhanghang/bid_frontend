@@ -633,9 +633,14 @@
         <el-select
           v-model="createDialog.enterpriseId"
           filterable
+          remote
+          reserve-keyword
           clearable
+          :remote-method="remoteSearchCreateEnterprises"
+          :loading="enterpriseLoading"
           placeholder="请选择所属企业"
           class="create-admin-select"
+          @visible-change="onCreateEnterpriseVisibleChange"
           @change="onCreateEnterpriseChange"
         >
           <el-option
@@ -1029,7 +1034,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from 'element-plus'
 import { listKnowledgeBases } from '@/api/knowledge'
-import { listEnterprises } from '@/api/enterprise'
+import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
 import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
@@ -1102,6 +1107,8 @@ const companyMaterialOptions = ref([])
 const companyMaterialDialog = reactive({ visible: false, loading: false, saving: false, selectedId: null })
 const enterpriseOptions = ref([])
 const ownerUserOptions = ref([])
+const enterpriseLoading = ref(false)
+const enterpriseKeywordTimer = ref(null)
 const timer = ref(null)
 const poller = ref(null)
 const technicalOutlinePoller = ref(null)
@@ -1477,6 +1484,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearTimeout(timer.value)
+  clearTimeout(enterpriseKeywordTimer.value)
   clearInterval(poller.value)
   clearInterval(technicalOutlinePoller.value)
   clearInterval(technicalTaskPoller.value)
@@ -1698,16 +1706,44 @@ async function openCreateProject() {
   })
 }
 
-async function loadCreateEnterprises() {
-  const list = await listEnterprises({ status: 1 })
-  enterpriseOptions.value = Array.isArray(list) ? list : (list?.records || [])
+async function loadCreateEnterprises(keyword = '') {
+  if (!isPlatformUser.value) {
+    enterpriseOptions.value = []
+    return
+  }
+  enterpriseLoading.value = true
+  try {
+    const res = await pageEnterprises({
+      current: 1,
+      size: 20,
+      pageNum: 1,
+      pageSize: 20,
+      status: 1,
+      keyword: keyword || undefined
+    })
+    enterpriseOptions.value = res?.records || []
+  } finally {
+    enterpriseLoading.value = false
+  }
+}
+
+function remoteSearchCreateEnterprises(keyword = '') {
+  if (!isPlatformUser.value) return
+  clearTimeout(enterpriseKeywordTimer.value)
+  enterpriseKeywordTimer.value = setTimeout(() => loadCreateEnterprises(keyword), 300)
+}
+
+function onCreateEnterpriseVisibleChange(visible) {
+  if (visible && isPlatformUser.value && enterpriseOptions.value.length === 0) {
+    loadCreateEnterprises()
+  }
 }
 
 async function onCreateEnterpriseChange(value) {
   createDialog.ownerUserId = null
   ownerUserOptions.value = []
   if (!value) return
-  const res = await pageUsers({ pageNum: 1, pageSize: 200, enterpriseId: value, status: 1 })
+  const res = await pageUsers({ pageNum: 1, pageSize: 50, enterpriseId: value, status: 1 })
   ownerUserOptions.value = res?.records || []
 }
 

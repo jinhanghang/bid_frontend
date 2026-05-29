@@ -175,7 +175,18 @@
                 <el-form label-position="top" class="archive-form" :disabled="!canEditCurrentArchive">
                   <div class="form-grid four">
                     <el-form-item v-if="canManagePlatform" label="所属企业" required>
-                      <el-select v-model="profile.enterpriseId" filterable placeholder="请选择企业" style="width: 100%">
+                      <el-select
+                        v-model="profile.enterpriseId"
+                        filterable
+                        remote
+                        reserve-keyword
+                        clearable
+                        :remote-method="remoteSearchEnterprises"
+                        :loading="enterpriseLoading"
+                        placeholder="请选择企业"
+                        style="width: 100%"
+                        @visible-change="onEnterpriseVisibleChange"
+                      >
                         <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
                       </el-select>
                     </el-form-item>
@@ -754,6 +765,27 @@ async function loadEnterprises(keyword = '') {
   }
 }
 
+
+function remoteSearchEnterprises(keyword = '') {
+  if (!canManagePlatform.value) return
+  clearTimeout(enterpriseKeywordTimer.value)
+  enterpriseKeywordTimer.value = setTimeout(() => loadEnterprises(keyword), 300)
+}
+
+function onEnterpriseVisibleChange(visible) {
+  if (visible && canManagePlatform.value && enterprises.value.length === 0) {
+    loadEnterprises()
+  }
+}
+
+function ensureEnterpriseOption(id, name) {
+  if (!canManagePlatform.value || !id) return
+  const exists = enterprises.value.some((item) => String(item.id) === String(id))
+  if (!exists) {
+    enterprises.value = [{ id, enterpriseName: name || String(id) }].concat(enterprises.value)
+  }
+}
+
 function onKeywordInput() {
   clearTimeout(keywordTimer.value)
   keywordTimer.value = setTimeout(() => reloadFirstPage(), 300)
@@ -835,6 +867,7 @@ async function selectArchive(row, options = {}) {
   if (!row?.id) return
   if (!options.skipConfirm && selectedArchive.value?.id !== row.id && !(await confirmDiscardChanges())) return
   const detail = await getCompanyMaterial(row.id)
+  ensureEnterpriseOption(detail?.enterpriseId, detail?.enterpriseName)
   selectedArchive.value = detail
   fillProfileFromMaterial(detail)
   editMode.value = true
