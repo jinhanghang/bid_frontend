@@ -17,10 +17,10 @@
         :prefix-icon="Search"
         :disabled="isOperationLocked"
         @input="onSearchInput"
-        @clear="loadDocuments"
+        @clear="reloadDocumentsFirstPage"
       />
 
-      <el-scrollbar class="doc-list-scroll">
+      <el-scrollbar ref="docListScrollbar" class="doc-list-scroll" v-loading="loading && documents.length === 0" @scroll="onDocumentListScroll">
         <div v-if="documents.length" class="doc-list">
           <div
             v-for="item in documents"
@@ -42,8 +42,13 @@
               <el-button link type="danger" :disabled="isOperationLocked" @click.stop="onDelete(item)">删除</el-button>
             </div>
           </div>
+          <div v-if="documents.length" class="doc-list-load-state">
+            <span v-if="appendLoading">正在加载更多...</span>
+            <span v-else-if="documentNoMore">—没有更多AI文档了—</span>
+            <span v-else>下滑加载更多</span>
+          </div>
         </div>
-        <el-empty v-else description="暂无AI文档" :image-size="100" />
+        <el-empty v-else-if="!loading" description="暂无AI文档" :image-size="100" />
       </el-scrollbar>
     </aside>
 
@@ -382,6 +387,8 @@ import { openWordExportDialog } from '@/utils/wordExportDialog'
 
 const router = useRouter()
 
+const loading = ref(false)
+const appendLoading = ref(false)
 const documentTypes = ref([])
 const documents = ref([])
 const currentDoc = ref(null)
@@ -401,6 +408,8 @@ const activeNode = ref(null)
 const sectionDraft = ref('')
 
 const query = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
+const docListScrollbar = ref()
+const documentPager = reactive({ page: 1, size: 20, total: 0 })
 const form = reactive({
   documentType: 'FEASIBILITY',
   documentTitle: '',
@@ -444,6 +453,8 @@ const progressStatus = computed(() => {
   return undefined
 })
 const sectionPromptText = computed(() => (activeNode.value?.writingDirection || activeNode.value?.writingRequirement || '').trim())
+const documentNoMore = computed(() => documentPager.total > 0 && documents.value.length >= documentPager.total)
+
 const activeStep = computed(() => {
   const status = String(currentDoc.value?.status || '').toUpperCase()
   if (canExport.value) return 4
@@ -536,11 +547,46 @@ async function loadTypes() {
   if (!documentTypes.value.length) documentTypes.value = fallbackTypes()
 }
 
-async function loadDocuments() {
-  const res = await pageDocuments({ ...query, keyword: query.keyword?.trim() || undefined })
-  // 删除后的 AI文档只应出现在“回收站”，不能继续显示在当前工作台左侧列表。
-  // 这里前端再做一层兜底过滤，避免历史数据或接口缓存把 DELETED/PURGED 状态带回来。
-  documents.value = (res?.records || []).filter(isVisibleDocument)
+async function loadDocuments(options = {}) {
+  const append = Boolean(options.append)
+  if ((append && documentNoMore.value) || loading.value || appendLoading.value) return
+
+  const pageToLoad = append ? documentPager.page + 1 : 1
+  if (append) {
+    appendLoading.value = true
+  } else {
+    loading.value = true
+  }
+
+  try {
+    const res = await pageDocuments({
+      ...query,
+      current: pageToLoad,
+      size: documentPager.size,
+      pageNum: pageToLoad,
+      pageSize: documentPager.size,
+      keyword: query.keyword?.trim() || undefined
+    })
+    const records = (res?.records || []).filter(isVisibleDocument)
+    documentPager.page = pageToLoad
+    documentPager.total = Number(res?.total || 0)
+
+    if (append) {
+      const exists = new Set(documents.value.map((item) => String(item.id)))
+      documents.value = documents.value.concat(records.filter((item) => item?.id && !exists.has(String(item.id))))
+      return
+    }
+
+    // 删除后的 AI文档只应出现在“回收站”，不能继续显示在当前工作台左侧列表。
+    // 这里前端再做一层兜底过滤，避免历史数据或接口缓存把 DELETED/PURGED 状态带回来。
+    documents.value = records
+  } finally {
+    if (append) {
+      appendLoading.value = false
+    } else {
+      loading.value = false
+    }
+  }
 }
 
 function isVisibleDocument(item) {
@@ -549,9 +595,24 @@ function isVisibleDocument(item) {
   return item.deleted !== 1 && status !== 'DELETED' && status !== 'PURGED'
 }
 
+function reloadDocumentsFirstPage() {
+  documentPager.page = 1
+  documents.value = []
+  loadDocuments()
+}
+
 function onSearchInput() {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadDocuments, 300)
+  searchTimer = setTimeout(reloadDocumentsFirstPage, 300)
+}
+
+function onDocumentListScroll() {
+  const el = docListScrollbar.value?.wrapRef
+  if (!el || loading.value || appendLoading.value || documentNoMore.value) return
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain <= 80) {
+    loadDocuments({ append: true })
+  }
 }
 
 function resetWorkspace() {
@@ -1177,6 +1238,13 @@ function fallbackTypes() {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.doc-list-load-state {
+  padding: 16px 0 6px;
+  color: #8a95a8;
+  text-align: center;
+  font-size: 13px;
 }
 
 .doc-item {

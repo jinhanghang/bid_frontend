@@ -19,7 +19,7 @@
           @input="onKeywordInput"
         />
 
-        <el-scrollbar class="kb-list-scroll" v-loading="baseLoading">
+        <el-scrollbar ref="baseListScrollbar" class="kb-list-scroll" v-loading="baseLoading && bases.length === 0" @scroll="onBaseListScroll">
           <div class="kb-list">
             <div
               v-for="item in bases"
@@ -69,7 +69,9 @@
             </div>
 
             <div v-if="bases.length" class="kb-list-end">
-              {{ basePager.total > bases.length ? '可通过搜索定位更多知识库' : '—没有更多知识库了—' }}
+              <span v-if="baseAppendLoading">正在加载更多...</span>
+              <span v-else-if="baseNoMore">—没有更多知识库了—</span>
+              <span v-else>下滑加载更多</span>
             </div>
           </div>
         </el-scrollbar>
@@ -392,12 +394,14 @@ const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
 const baseLoading = ref(false)
+const baseAppendLoading = ref(false)
 const fileLoading = ref(false)
 const keyword = ref('')
 const bases = ref([])
 const files = ref([])
 const enterprises = ref([])
 const selectedBase = ref(null)
+const baseListScrollbar = ref()
 const baseFormRef = ref()
 const timer = ref(null)
 const pollingTimer = ref(null)
@@ -405,7 +409,7 @@ const rebuildingIds = ref(new Set())
 
 const basePager = reactive({
   page: 1,
-  size: 50,
+  size: 20,
   total: 0
 })
 
@@ -461,6 +465,7 @@ const canManageKnowledge = computed(() => {
 })
 
 const hasProcessingFiles = computed(() => files.value.some(isFileProcessing))
+const baseNoMore = computed(() => basePager.total > 0 && bases.value.length >= basePager.total)
 
 const baseRules = computed(() => {
   const rules = {
@@ -517,6 +522,7 @@ function onKeywordInput() {
   clearTimeout(timer.value)
   timer.value = setTimeout(() => {
     basePager.page = 1
+    bases.value = []
     loadBases()
   }, 300)
 }
@@ -534,19 +540,37 @@ async function loadEnterprises() {
   }
 }
 
-async function loadBases(selectId) {
-  baseLoading.value = true
+async function loadBases(selectId, options = {}) {
+  const append = Boolean(options.append)
+  if ((append && baseNoMore.value) || baseLoading.value || baseAppendLoading.value) return
+
+  const pageToLoad = append ? basePager.page + 1 : 1
+  if (append) {
+    baseAppendLoading.value = true
+  } else {
+    baseLoading.value = true
+  }
+
   try {
     const res = await pageKnowledgeBases({
-      current: basePager.page,
+      current: pageToLoad,
       size: basePager.size,
-      pageNum: basePager.page,
+      pageNum: pageToLoad,
       pageSize: basePager.size,
-      keyword: keyword.value || undefined
+      keyword: keyword.value?.trim() || undefined
     })
 
-    bases.value = res?.records || []
+    const records = res?.records || []
+    basePager.page = pageToLoad
     basePager.total = Number(res?.total || 0)
+
+    if (append) {
+      const exists = new Set(bases.value.map((item) => String(item.id)))
+      bases.value = bases.value.concat(records.filter((item) => item?.id && !exists.has(String(item.id))))
+      return
+    }
+
+    bases.value = records
 
     // 首次进入知识库页面时不默认选中第一条知识库。
     // 明确传入 selectId（例如新建后、上传后刷新）才自动定位；否则只保留用户原本已经选中的知识库。
@@ -564,7 +588,20 @@ async function loadBases(selectId) {
       files.value = []
     }
   } finally {
-    baseLoading.value = false
+    if (append) {
+      baseAppendLoading.value = false
+    } else {
+      baseLoading.value = false
+    }
+  }
+}
+
+function onBaseListScroll() {
+  const el = baseListScrollbar.value?.wrapRef
+  if (!el || baseLoading.value || baseAppendLoading.value || baseNoMore.value) return
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain <= 80) {
+    loadBases(null, { append: true })
   }
 }
 

@@ -11,7 +11,7 @@
         @input="onKeywordInput"
       />
 
-      <el-scrollbar class="project-scroll" v-loading="projectLoading">
+      <el-scrollbar ref="projectListScrollbar" class="project-scroll" v-loading="projectLoading && projects.length === 0" @scroll="onProjectListScroll">
         <div v-if="projects.length" class="project-list">
           <div
             v-for="project in projects"
@@ -65,8 +65,13 @@
 
             </div>
           </div>
+          <div v-if="projects.length" class="project-list-load-state">
+            <span v-if="projectAppendLoading">正在加载更多...</span>
+            <span v-else-if="projectNoMore">—没有更多项目了—</span>
+            <span v-else>下滑加载更多</span>
+          </div>
         </div>
-        <div v-else class="empty-project">
+        <div v-else-if="!projectLoading" class="empty-project">
           <div class="empty-illustration">AI</div>
           <p>暂无项目，您可先新建项目</p>
         </div>
@@ -1074,8 +1079,11 @@ const auth = useAuthStore()
 
 const keyword = ref('')
 const projectLoading = ref(false)
+const projectAppendLoading = ref(false)
 const projects = ref([])
 const selectedProject = ref(null)
+const projectListScrollbar = ref()
+const projectPager = reactive({ page: 1, size: 20, total: 0 })
 const expandedProjectId = ref('')
 const workflow = ref(null)
 const activeDoc = ref('')
@@ -1445,6 +1453,8 @@ const isTechnicalBusy = computed(() => {
     || !!sectionOptimizing.value
     || technicalSectionContentSaving.value
 })
+const projectNoMore = computed(() => projectPager.total > 0 && projects.value.length >= projectPager.total)
+
 const technicalGenerateButtonText = computed(() => {
   const task = technicalSolution.value?.runningTask
   if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
@@ -1550,20 +1560,43 @@ function projectStatusSummary(project) {
 
 function onKeywordInput() {
   clearTimeout(timer.value)
-  timer.value = setTimeout(loadProjects, 300)
+  timer.value = setTimeout(() => {
+    projectPager.page = 1
+    projects.value = []
+    loadProjects()
+  }, 300)
 }
 
-async function loadProjects(selectId) {
-  projectLoading.value = true
+async function loadProjects(selectId, options = {}) {
+  const append = Boolean(options.append)
+  if ((append && projectNoMore.value) || projectLoading.value || projectAppendLoading.value) return
+
+  const pageToLoad = append ? projectPager.page + 1 : 1
+  if (append) {
+    projectAppendLoading.value = true
+  } else {
+    projectLoading.value = true
+  }
+
   try {
     const res = await pageBidProjects({
-      current: 1,
-      size: 100,
-      pageNum: 1,
-      pageSize: 100,
-      keyword: keyword.value || undefined
+      current: pageToLoad,
+      size: projectPager.size,
+      pageNum: pageToLoad,
+      pageSize: projectPager.size,
+      keyword: keyword.value?.trim() || undefined
     })
-    projects.value = res?.records || []
+    const records = res?.records || []
+    projectPager.page = pageToLoad
+    projectPager.total = Number(res?.total || 0)
+
+    if (append) {
+      const exists = new Set(projects.value.map((item) => String(item.id)))
+      projects.value = projects.value.concat(records.filter((item) => item?.id && !exists.has(String(item.id))))
+      return
+    }
+
+    projects.value = records
 
     // 首次进入 AI标书页面时不自动选中第一个项目，也不自动展开左侧项目文件下拉。
     // 只有以下两种情况才选中项目：
@@ -1586,7 +1619,20 @@ async function loadProjects(selectId) {
       resetTechnicalWorkspace()
     }
   } finally {
-    projectLoading.value = false
+    if (append) {
+      projectAppendLoading.value = false
+    } else {
+      projectLoading.value = false
+    }
+  }
+}
+
+function onProjectListScroll() {
+  const el = projectListScrollbar.value?.wrapRef
+  if (!el || projectLoading.value || projectAppendLoading.value || projectNoMore.value) return
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain <= 80) {
+    loadProjects(null, { append: true })
   }
 }
 
@@ -2345,7 +2391,9 @@ async function loadKnowledgeBases() {
   knowledgeLoading.value = true
   try {
     const list = await listKnowledgeBases({
-      keyword: knowledgeKeyword.value,
+      pageNum: 1,
+      pageSize: 20,
+      keyword: knowledgeKeyword.value?.trim() || undefined,
       status: 1
     })
     knowledgeBaseList.value = Array.isArray(list) ? list : []
@@ -3739,6 +3787,13 @@ const WritingDirectionEditor = defineComponent({
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.project-list-load-state {
+  padding: 16px 0 6px;
+  color: #8a95a8;
+  text-align: center;
+  font-size: 13px;
 }
 
 .project-card {

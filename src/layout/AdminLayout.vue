@@ -57,8 +57,8 @@
                     </el-tag>
                   </span>
                 </el-dropdown-item>
-                <el-dropdown-item v-if="showManagerEntry" @click="goManager">管理后台</el-dropdown-item>
-                <el-dropdown-item v-if="showManagerEntry" @click="goMemberAdmin">会员运营</el-dropdown-item>
+                <el-dropdown-item v-if="showManagerEntry" @click="goManager">用户管理</el-dropdown-item>
+                <el-dropdown-item v-if="showMemberAdminEntry" @click="goMemberAdmin">会员运营</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -150,6 +150,7 @@ const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_A
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
 const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
+const showMemberAdminEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const showCompanyApprovalEntry = computed(() => showManagerEntry.value)
 // 是否需要补全企业信息以后只以后端返回的 needCompleteEnterprise 为准。
 // 超级管理员、平台管理员等无企业归属账号由后端统一返回 false，避免前端仅根据 enterpriseId 为空误弹。

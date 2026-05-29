@@ -13,7 +13,7 @@
         :prefix-icon="Search"
         @input="onSearchInput"
       />
-      <el-scrollbar class="solution-list-scroll">
+      <el-scrollbar ref="solutionListScrollbar" class="solution-list-scroll" v-loading="loading && solutions.length === 0" @scroll="onSolutionListScroll">
         <div v-if="solutions.length" class="solution-list">
           <div
             v-for="item in solutions"
@@ -40,9 +40,13 @@
               </el-tooltip>
             </div>
           </div>
-          <div class="no-more">——没有更多方案了——</div>
+          <div class="no-more">
+            <span v-if="appendLoading">正在加载更多...</span>
+            <span v-else-if="solutionNoMore">——没有更多方案了——</span>
+            <span v-else>下滑加载更多</span>
+          </div>
         </div>
-        <el-empty v-else description="暂无方案，您可先新建方案" :image-size="110" />
+        <el-empty v-else-if="!loading" description="暂无方案，您可先新建方案" :image-size="110" />
       </el-scrollbar>
       <el-button class="new-btn" type="primary" :loading="creatingDraft" @click="startCreate('QUICK')">新建方案</el-button>
     </aside>
@@ -783,6 +787,7 @@ import { openWordExportDialog } from '@/utils/wordExportDialog'
 const router = useRouter()
 const mode = ref('home')
 const loading = ref(false)
+const appendLoading = ref(false)
 const solutions = ref([])
 const currentSolution = ref(null)
 const activeSolutionId = ref(null)
@@ -790,6 +795,8 @@ const detailRequestSeq = ref(0)
 const selectedSection = ref(null)
 const selectedSectionSolutionId = ref(null)
 const listQuery = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
+const solutionListScrollbar = ref()
+const solutionPager = reactive({ page: 1, size: 20, total: 0 })
 let searchTimer = null
 let parseTimer = null
 let taskTimer = null
@@ -1091,6 +1098,7 @@ const generateActionText = computed(() => {
   return '开始生成'
 })
 const exportButtonText = computed(() => exportLoading.value ? '正在导出' : '导出')
+const solutionNoMore = computed(() => solutionPager.total > 0 && solutions.value.length >= solutionPager.total)
 
 watch(() => createForm.solutionType, () => {
   createForm.solutionSubType = '不限'
@@ -1135,11 +1143,37 @@ async function loadGlobalRunningTask() {
   }
 }
 
-async function loadList() {
-  loading.value = true
+async function loadList(options = {}) {
+  const append = Boolean(options.append)
+  if ((append && solutionNoMore.value) || loading.value || appendLoading.value) return
+
+  const pageToLoad = append ? solutionPager.page + 1 : 1
+  if (append) {
+    appendLoading.value = true
+  } else {
+    loading.value = true
+  }
+
   try {
-    const res = await pageSolutions(listQuery)
-    solutions.value = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+    const res = await pageSolutions({
+      ...listQuery,
+      current: pageToLoad,
+      size: solutionPager.size,
+      pageNum: pageToLoad,
+      pageSize: solutionPager.size,
+      keyword: listQuery.keyword?.trim() || undefined
+    })
+    const records = (res?.records || []).filter((item) => item?.deleted !== 1 && item?.status !== 'DELETED')
+    solutionPager.page = pageToLoad
+    solutionPager.total = Number(res?.total || 0)
+
+    if (append) {
+      const exists = new Set(solutions.value.map((item) => String(item.id)))
+      solutions.value = solutions.value.concat(records.filter((item) => item?.id && !exists.has(String(item.id))))
+      return
+    }
+
+    solutions.value = records
     await loadGlobalRunningTask()
 
     // 首次进入 AI方案页面时不默认选中第一条方案。
@@ -1159,13 +1193,30 @@ async function loadList() {
       }
     }
   } finally {
-    loading.value = false
+    if (append) {
+      appendLoading.value = false
+    } else {
+      loading.value = false
+    }
   }
 }
 
 function onSearchInput() {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadList, 300)
+  searchTimer = setTimeout(() => {
+    solutionPager.page = 1
+    solutions.value = []
+    loadList()
+  }, 300)
+}
+
+function onSolutionListScroll() {
+  const el = solutionListScrollbar.value?.wrapRef
+  if (!el || loading.value || appendLoading.value || solutionNoMore.value) return
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain <= 80) {
+    loadList({ append: true })
+  }
 }
 
 async function loadDetail(id) {
@@ -1858,7 +1909,9 @@ async function loadKnowledgeBases() {
   knowledgeLoading.value = true
   try {
     const list = await listKnowledgeBases({
-      keyword: knowledgeKeyword.value,
+      pageNum: 1,
+      pageSize: 20,
+      keyword: knowledgeKeyword.value?.trim() || undefined,
       status: 1
     })
     knowledgeBaseList.value = Array.isArray(list) ? list : []

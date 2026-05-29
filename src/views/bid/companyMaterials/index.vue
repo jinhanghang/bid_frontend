@@ -25,7 +25,12 @@
           class="enterprise-filter"
           clearable
           filterable
+          remote
+          reserve-keyword
+          :remote-method="remoteSearchEnterprises"
+          :loading="enterpriseLoading"
           placeholder="按企业筛选"
+          @visible-change="onEnterpriseVisibleChange"
           @change="reloadFirstPage"
         >
           <el-option
@@ -36,7 +41,7 @@
           />
         </el-select>
 
-        <div v-loading="loading" class="archive-list">
+        <div v-loading="loading && archiveList.length === 0" class="archive-list" @scroll="onArchiveListScroll">
           <div
             v-for="item in archiveList"
             :key="item.id"
@@ -68,6 +73,11 @@
           </div>
 
           <el-empty v-if="!loading && archiveList.length === 0" description="暂无资料档案" :image-size="90" />
+
+          <div v-if="archiveList.length > 0" class="archive-load-state">
+            <span v-if="appendLoading">正在加载更多...</span>
+            <span v-else-if="noMore">已加载全部</span>
+          </div>
         </div>
 
         <div class="sidebar-footer">
@@ -465,7 +475,7 @@ import {
   View
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { listEnterprises } from '@/api/enterprise'
+import { pageEnterprises } from '@/api/enterprise'
 import {
   attachCompanyMaterialFile,
   createCompanyMaterial,
@@ -483,6 +493,8 @@ const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 const CONTENT_VERSION = 'MATERIAL_ARCHIVE_V1'
 
 const loading = ref(false)
+const appendLoading = ref(false)
+const enterpriseLoading = ref(false)
 const saving = ref(false)
 const editMode = ref(false)
 const showUpload = ref(false)
@@ -491,6 +503,7 @@ const archiveList = ref([])
 const enterprises = ref([])
 const selectedArchive = ref(null)
 const keywordTimer = ref(null)
+const enterpriseKeywordTimer = ref(null)
 const profileSnapshot = ref('')
 
 const filters = reactive({
@@ -500,7 +513,7 @@ const filters = reactive({
 
 const pager = reactive({
   page: 1,
-  size: 100,
+  size: 20,
   total: 0
 })
 
@@ -646,6 +659,7 @@ const formDirty = computed(() => editMode.value && profileSnapshot.value && prof
 const activeTableMeta = computed(() => tableMetas[activeTab.value] || tableMetas.members)
 const activeTableRows = computed(() => profile[activeTableMeta.value.listKey] || [])
 const recordDialogTitle = computed(() => `${recordDialog.index >= 0 ? '编辑' : '新增'}${tableMetas[recordDialog.section]?.label || '数据'}`)
+const noMore = computed(() => pager.total > 0 && archiveList.value.length >= pager.total)
 
 function canEditArchive(item) {
   return canManageCompanyMaterial.value || Boolean(item?.canEdit)
@@ -656,7 +670,10 @@ onMounted(async () => {
   await loadArchives()
 })
 
-onBeforeUnmount(() => clearTimeout(keywordTimer.value))
+onBeforeUnmount(() => {
+  clearTimeout(keywordTimer.value)
+  clearTimeout(enterpriseKeywordTimer.value)
+})
 
 function defaultProfile() {
   return {
@@ -711,15 +728,29 @@ function defaultProfile() {
   }
 }
 
-async function loadEnterprises() {
+async function loadEnterprises(keyword = '') {
   if (!canManagePlatform.value) {
     enterprises.value = []
     return
   }
+  enterpriseLoading.value = true
   try {
-    enterprises.value = await listEnterprises({ status: 1 })
+    // 资料库页面只需要企业筛选下拉，不允许一次性加载全部企业。
+    // 原来调用 /enterprise/list?status=1 会返回全部企业，企业数量较多时会导致浏览器渲染 el-option 卡死。
+    // 这里改为分页取前 20 条；需要找其他企业时，通过下拉远程搜索继续按 20 条返回。
+    const res = await pageEnterprises({
+      current: 1,
+      size: 20,
+      pageNum: 1,
+      pageSize: 20,
+      status: 1,
+      keyword: keyword || undefined
+    })
+    enterprises.value = Array.isArray(res?.records) ? res.records : []
   } catch (e) {
     enterprises.value = []
+  } finally {
+    enterpriseLoading.value = false
   }
 }
 
@@ -730,22 +761,53 @@ function onKeywordInput() {
 
 function reloadFirstPage() {
   pager.page = 1
+  archiveList.value = []
   loadArchives()
 }
 
-async function loadArchives(selectId) {
-  loading.value = true
+function onArchiveListScroll(event) {
+  const el = event?.target
+  if (!el || loading.value || appendLoading.value || noMore.value) return
+
+  // 距离底部 80px 内开始加载下一页，保持左侧原布局，只追加列表数据。
+  const remain = el.scrollHeight - el.scrollTop - el.clientHeight
+  if (remain <= 80) {
+    loadArchives(null, { append: true })
+  }
+}
+
+async function loadArchives(selectId, options = {}) {
+  const append = Boolean(options.append)
+  if ((append && noMore.value) || loading.value || appendLoading.value) return
+
+  const pageToLoad = append ? pager.page + 1 : 1
+  if (append) {
+    appendLoading.value = true
+  } else {
+    loading.value = true
+  }
+
   try {
     const res = await pageCompanyMaterials({
-      current: pager.page,
+      current: pageToLoad,
       size: pager.size,
-      pageNum: pager.page,
+      pageNum: pageToLoad,
       pageSize: pager.size,
       keyword: filters.keyword || undefined,
       enterpriseId: filters.enterpriseId || undefined
     })
-    archiveList.value = res?.records || []
+
+    const records = Array.isArray(res?.records) ? res.records : []
+    pager.page = pageToLoad
     pager.total = Number(res?.total || 0)
+
+    if (append) {
+      const exists = new Set(archiveList.value.map((item) => String(item.id)))
+      archiveList.value = archiveList.value.concat(records.filter((item) => item?.id && !exists.has(String(item.id))))
+      return
+    }
+
+    archiveList.value = records
 
     const targetId = selectId || selectedArchive.value?.id
     if (targetId) {
@@ -761,7 +823,11 @@ async function loadArchives(selectId) {
       closeDetail()
     }
   } finally {
-    loading.value = false
+    if (append) {
+      appendLoading.value = false
+    } else {
+      loading.value = false
+    }
   }
 }
 
@@ -1159,6 +1225,13 @@ function normalizeRoleList(values = []) {
   flex: 1;
   overflow: auto;
   padding-right: 4px;
+}
+
+.archive-load-state {
+  padding: 8px 0 4px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-sub);
 }
 
 .archive-card {

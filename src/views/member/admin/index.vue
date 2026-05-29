@@ -67,10 +67,10 @@
 
       <el-tab-pane label="用户额度" name="accounts">
         <div class="toolbar">
-          <el-input v-model="accountQuery.keyword" placeholder="搜索用户 / 手机号 / 企业" clearable @keyup.enter="loadAccounts" />
-          <el-button type="primary" @click="loadAccounts">搜索</el-button>
+          <el-input v-model="accountQuery.keyword" placeholder="搜索用户 / 手机号 / 企业" clearable @keyup.enter="searchAccounts" />
+          <el-button type="primary" @click="searchAccounts">搜索</el-button>
         </div>
-        <el-table :data="accounts" class="ui-table" height="560">
+        <el-table :data="accounts" class="ui-table" height="520">
           <el-table-column prop="fullName" label="姓名" min-width="120" />
           <el-table-column prop="phone" label="手机号" min-width="130" />
           <el-table-column prop="enterpriseName" label="企业" min-width="160" show-overflow-tooltip />
@@ -82,6 +82,12 @@
             <template #default="{ row }"><el-button link type="primary" @click="openAdjust(row)">调整额度</el-button></template>
           </el-table-column>
         </el-table>
+        <PageFooterPager
+          :total="accountPager.total"
+          v-model:page="accountPager.current"
+          v-model:size="accountPager.size"
+          @change="loadAccounts"
+        />
       </el-tab-pane>
 
       <el-tab-pane label="消耗流水" name="logs">
@@ -355,6 +361,7 @@ const logQuery = reactive({ keyword: '' })
 const modelQuery = reactive({ keyword: '', modelType: '' })
 
 const orderPager = reactive({ current: 1, size: 10, total: 0 })
+const accountPager = reactive({ current: 1, size: 10, total: 0 })
 const logPager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
@@ -423,8 +430,14 @@ function searchOrders() {
 }
 
 async function loadAccounts() {
-  const res = await pageMemberAccounts({ current: 1, size: 100, keyword: accountQuery.keyword })
+  const res = await pageMemberAccounts({ current: accountPager.current, size: accountPager.size, keyword: accountQuery.keyword })
   accounts.value = res?.records || []
+  accountPager.total = Number(res?.total || 0)
+}
+
+function searchAccounts() {
+  accountPager.current = 1
+  loadAccounts()
 }
 
 async function loadLogs() {
