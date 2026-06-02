@@ -355,6 +355,27 @@
                 </div>
 
                 <div class="tech-form-section">
+                  <div class="tech-label">目录知识库：</div>
+                  <div class="knowledge-setting">
+                    <div class="knowledge-actions">
+                      <el-button @click="goKnowledgeBasePage">上传</el-button>
+                      <el-button @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
+                    </div>
+                    <div v-if="selectedOutlineKnowledgeBases.length" class="selected-kb-list">
+                      <el-tag
+                        v-for="kb in selectedOutlineKnowledgeBases"
+                        :key="kb.id"
+                        closable
+                        @close="removeSelectedKnowledgeBase(kb.id, 'outline')"
+                      >
+                        {{ kb.kbName }}
+                      </el-tag>
+                    </div>
+                    <div v-else class="selected-kb-empty">未选择知识库，目录会主要按采购需求和评分项生成</div>
+                  </div>
+                </div>
+
+                <div class="tech-form-section">
                   <div class="tech-inline-title">
                     <span class="required">采购需求：</span>
                     <el-button size="small" :disabled="!isParseSuccess" @click="extractTechnicalRequirement">从解析报告重新提取</el-button>
@@ -1185,6 +1206,7 @@ const tempSelectedKnowledgeIds = ref([])
 const knowledgeSelectorTarget = ref('full')
 const selectedKnowledgeBaseCache = ref([])
 const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
+const selectedOutlineKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(technicalForm.knowledgeIds)))
 const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
 
 const technicalVersionDialogVisible = ref(false)
@@ -1242,7 +1264,8 @@ const technicalForm = reactive({
   purchaseRequirement: '',
   scoreRequirement: '',
   outlineMode: 'SCORE_ITEM',
-  outlineRequirement: ''
+  outlineRequirement: '',
+  knowledgeIds: []
 })
 const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
 
@@ -1276,7 +1299,8 @@ function resetTechnicalWorkspace() {
     purchaseRequirement: '',
     scoreRequirement: '',
     outlineMode: 'SCORE_ITEM',
-    outlineRequirement: ''
+    outlineRequirement: '',
+    knowledgeIds: []
   })
   resetBidDocumentWorkspace()
 }
@@ -2210,6 +2234,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
   technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement
+  technicalForm.knowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
   extractTechnicalRequirement(false, false)
   technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 2 : 1)
 }
@@ -2297,7 +2322,8 @@ async function generateTechnicalOutline() {
       purchaseRequirement: technicalForm.purchaseRequirement,
       scoreRequirement: technicalForm.scoreRequirement,
       outlineMode: technicalForm.outlineMode,
-      outlineRequirement: technicalForm.outlineRequirement
+      outlineRequirement: technicalForm.outlineRequirement,
+      knowledgeIds: stringifyKnowledgeIds(technicalForm.knowledgeIds)
     })
 
     // 如果用户在生成期间切换了项目，不要把返回结果写到别的项目页面。
@@ -2397,15 +2423,17 @@ function collectTechnicalFullGenerateKnowledgeIds() {
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
-  return target === 'section'
-    ? parseKnowledgeIds(sectionForm.knowledgeIds)
-    : normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
+  if (target === 'section') return parseKnowledgeIds(sectionForm.knowledgeIds)
+  if (target === 'outline') return parseKnowledgeIds(technicalForm.knowledgeIds)
+  return normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
   const normalized = normalizeKnowledgeIds(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
+  } else if (target === 'outline') {
+    technicalForm.knowledgeIds = normalized
   } else {
     fullGenerateForm.knowledgeIds = normalized
   }

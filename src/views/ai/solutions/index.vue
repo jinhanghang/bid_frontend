@@ -169,6 +169,27 @@
               </div>
 
               <div class="form-section">
+                <div class="form-label">目录知识库：</div>
+                <div class="knowledge-setting">
+                  <div class="knowledge-actions">
+                    <el-button @click="goKnowledgeBasePage">上传</el-button>
+                    <el-button @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
+                  </div>
+                  <div v-if="selectedOutlineKnowledgeBases.length" class="selected-kb-list">
+                    <el-tag
+                      v-for="kb in selectedOutlineKnowledgeBases"
+                      :key="kb.id"
+                      closable
+                      @close="removeSelectedKnowledgeBase(kb.id, 'outline')"
+                    >
+                      {{ kb.kbName }}
+                    </el-tag>
+                  </div>
+                  <div v-else class="selected-kb-empty">未选择知识库，目录会主要按采购需求和评分项生成</div>
+                </div>
+              </div>
+
+              <div class="form-section">
                 <div class="inline-title">
                   <span class="required">采购需求：</span>
                   <el-button size="small" :loading="parseLoading" @click="reExtractFromParse">从招标文件重新提取</el-button>
@@ -283,6 +304,8 @@
               <OutlineTree :nodes="currentSolution.outlines" mode="generate" @preview="selectSectionPreview" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
+              <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openRequirementExtractDrawer">评分项/需求解析</el-button>
+              <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openQualityCheckDrawer">质量检查</el-button>
               <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id || hasRunningTask" @click="openVersionDialog">历史版本</el-button>
               <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">{{ isRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
               <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
@@ -310,6 +333,290 @@
         </div>
       </template>
     </section>
+
+    <el-drawer
+      v-model="qualityCheckVisible"
+      title="章节质量检查"
+      size="60%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="qualityCheckLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">章节质量评分与风险复核</div>
+            <div class="quality-check-desc">数据来自最近一次章节生成/重编时写入的质量事件日志；重新生成章节后可刷新查看。</div>
+          </div>
+          <el-button type="primary" plain :disabled="!currentSolution?.id" :loading="qualityCheckLoading" @click="loadQualityCheck">刷新</el-button>
+        </div>
+
+        <div class="quality-stat-grid">
+          <div v-for="item in qualityStatCards" :key="item.label" class="quality-stat-card">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+            <small>{{ item.desc }}</small>
+          </div>
+        </div>
+
+        <el-alert
+          v-if="qualityCheckData.noQualityLogSections"
+          class="quality-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="部分章节暂无质量检查记录"
+          :description="`还有 ${qualityCheckData.noQualityLogSections || 0} 个章节没有质量日志。通常是尚未生成，或生成时未开启质量检查。`"
+        />
+
+        <el-table
+          class="ui-table quality-table"
+          :data="qualityItems"
+          border
+          stripe
+          size="small"
+          empty-text="暂无质量检查数据"
+          :row-class-name="qualityRowClassName"
+        >
+          <el-table-column label="序号" type="index" width="70" align="center" />
+          <el-table-column prop="title" label="章节" min-width="180" show-overflow-tooltip />
+          <el-table-column label="质量评分" width="130" align="center">
+            <template #default="{ row }">
+              <div v-if="row.hasQualityLog" class="quality-score-cell">
+                <el-progress :percentage="safePercent(row.score)" :stroke-width="8" :show-text="false" :status="qualityProgressStatus(row.score)" />
+                <strong>{{ row.score ?? '-' }}</strong>
+              </div>
+              <span v-else class="muted-text">未检查</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="等级" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="qualityLevelTagType(row.qualityLevel, row.score)" effect="light">{{ row.qualityLevel || '未检查' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="问题等级" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="issueSeverityTagType(row.issueSeverity)" effect="light">{{ row.issueSeverity || '-' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="证据覆盖" width="100" align="center">
+            <template #default="{ row }">{{ row.hasQualityLog ? `${row.evidenceCoveragePercent || 0}%` : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="动作/交付/验收" width="130" align="center">
+            <template #default="{ row }">
+              {{ row.hasQualityLog ? `${row.actionVerbHits || 0}/${row.deliverableHits || 0}/${row.verificationHits || 0}` : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="风险" width="150" align="center">
+            <template #default="{ row }">
+              <div class="quality-risk-tags">
+                <el-tag v-if="row.factRiskHits" size="small" type="danger" effect="light">强事实 {{ row.factRiskHits }}</el-tag>
+                <el-tag v-if="row.internalTraceLeakHits" size="small" type="danger" effect="light">内部痕迹 {{ row.internalTraceLeakHits }}</el-tag>
+                <el-tag v-if="row.formatRiskHits" size="small" type="warning" effect="light">格式 {{ row.formatRiskHits }}</el-tag>
+                <span v-if="!row.factRiskHits && !row.internalTraceLeakHits && !row.formatRiskHits" class="muted-text">-</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="主要问题 / 建议" min-width="280" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="quality-problem-text">
+                <strong>{{ row.problem || '无明显问题' }}</strong>
+                <span>{{ row.suggestion || row.structureAdvice || row.typeAdvice || row.executionChecklist || '' }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="处理建议" width="110" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-tag v-if="row.recommendRewrite" size="small" type="danger">建议重编</el-tag>
+              <el-tag v-else-if="row.recommendReview" size="small" type="warning">人工复核</el-tag>
+              <el-tag v-else-if="row.hasQualityLog" size="small" type="success">可用</el-tag>
+              <el-tag v-else size="small" type="info">待生成</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
+
+    <el-drawer
+      v-model="requirementExtractVisible"
+      title="评分项 / 需求解析"
+      size="58%"
+      destroy-on-close
+      class="requirement-extract-drawer"
+    >
+      <div class="requirement-extract-wrap" v-loading="requirementExtractLoading">
+        <div class="requirement-extract-toolbar">
+          <div>
+            <div class="requirement-extract-title">招标文件结构化解析结果</div>
+            <div class="requirement-extract-desc">用于目录生成、章节绑定和正文生成；修改采购需求或评分标准后可重新解析。</div>
+          </div>
+          <div class="requirement-extract-actions">
+            <el-button :disabled="!requirementExtract?.hasExtract" @click="openExtractSummaryDialog">编辑摘要</el-button>
+            <el-button :disabled="!requirementExtract?.hasExtract" @click="openScoreItemDialog()">新增评分项</el-button>
+            <el-button :disabled="!requirementExtract?.hasExtract" @click="openRequirementItemDialog()">新增要求</el-button>
+            <el-button :loading="requirementOutlineSyncing" :disabled="!requirementExtract?.hasExtract || !currentSolution?.id || hasRunningTask" @click="onSyncRequirementExtractToOutline">同步到章节</el-button>
+            <el-button type="primary" :loading="requirementExtractRebuilding" :disabled="!currentSolution?.id" @click="onRebuildRequirementExtract">重新解析</el-button>
+          </div>
+        </div>
+
+        <el-empty v-if="!requirementExtract?.hasExtract" description="暂无结构化解析结果，请点击重新解析" :image-size="120" />
+
+        <template v-else>
+          <div class="requirement-extract-summary">
+            <div class="summary-stat-card">
+              <span>评分项</span>
+              <strong>{{ requirementExtract.scoreItemCount || 0 }}</strong>
+            </div>
+            <div class="summary-stat-card">
+              <span>要求明细</span>
+              <strong>{{ requirementExtract.requirementItemCount || 0 }}</strong>
+            </div>
+            <div class="summary-stat-card wide">
+              <span>解析状态</span>
+              <strong>{{ requirementExtract.extract?.parseStatus || '-' }}</strong>
+              <small>{{ requirementExtract.extract?.parseMessage || '' }}</small>
+            </div>
+          </div>
+
+          <div v-if="requirementTypeCountTags.length" class="requirement-type-tags">
+            <el-tag v-for="item in requirementTypeCountTags" :key="item.type" :type="requirementTypeTagType(item.type)" effect="light">
+              {{ requirementTypeLabel(item.type) }}：{{ item.count }}
+            </el-tag>
+          </div>
+
+          <el-descriptions class="extract-desc-box" :column="2" border>
+            <el-descriptions-item label="项目名称">{{ requirementExtract.extract?.projectName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="采购人/招标人">{{ requirementExtract.extract?.buyerName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="预算/最高限价">{{ requirementExtract.extract?.budgetAmount || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="工期/服务期">{{ requirementExtract.extract?.periodRequirement || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="投标截止">{{ requirementExtract.extract?.bidDeadline || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="更新时间">{{ formatDateTime(requirementExtract.extract?.updateTime || requirementExtract.extract?.createTime) }}</el-descriptions-item>
+          </el-descriptions>
+
+          <el-collapse class="extract-collapse" model-value="score">
+            <el-collapse-item title="结构化摘要" name="summary">
+              <div class="summary-text-grid">
+                <div v-for="item in requirementSummaryItems" :key="item.key" class="summary-text-item">
+                  <strong>{{ item.label }}</strong>
+                  <p>{{ item.value || '未提取' }}</p>
+                </div>
+              </div>
+            </el-collapse-item>
+
+            <el-collapse-item title="评分项" name="score">
+              <el-table class="ui-table" :data="requirementExtract.scoreItems || []" border stripe size="small" empty-text="暂无评分项">
+                <el-table-column label="序号" type="index" width="70" align="center" />
+                <el-table-column prop="itemName" label="评分项" min-width="140" show-overflow-tooltip />
+                <el-table-column prop="scoreText" label="分值" width="100" show-overflow-tooltip />
+                <el-table-column prop="requirementText" label="评分要求" min-width="240" show-overflow-tooltip />
+                <el-table-column prop="responseStrategy" label="响应策略" min-width="240" show-overflow-tooltip />
+                <el-table-column prop="suggestedChapter" label="建议章节" min-width="160" show-overflow-tooltip />
+                <el-table-column label="操作" width="120" fixed="right" align="center">
+                  <template #default="{ row }">
+                    <el-button link type="primary" size="small" @click="openScoreItemDialog(row)">编辑</el-button>
+                    <el-button link type="danger" size="small" @click="onDeleteScoreItem(row)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-collapse-item>
+
+            <el-collapse-item title="要求明细" name="requirement">
+              <el-table class="ui-table" :data="requirementExtract.requirementItems || []" border stripe size="small" empty-text="暂无要求明细">
+                <el-table-column label="序号" type="index" width="70" align="center" />
+                <el-table-column label="类型" width="110">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="requirementTypeTagType(row.requirementType)" effect="light">{{ requirementTypeLabel(row.requirementType) }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="requirementTitle" label="标题" min-width="140" show-overflow-tooltip />
+                <el-table-column label="强制" width="80" align="center">
+                  <template #default="{ row }">{{ row.mandatory === 1 ? '是' : '否' }}</template>
+                </el-table-column>
+                <el-table-column prop="riskLevel" label="风险等级" width="100" show-overflow-tooltip />
+                <el-table-column prop="requirementText" label="要求内容" min-width="260" show-overflow-tooltip />
+                <el-table-column prop="suggestedResponse" label="建议响应" min-width="240" show-overflow-tooltip />
+                <el-table-column prop="suggestedChapter" label="建议章节" min-width="160" show-overflow-tooltip />
+                <el-table-column label="操作" width="120" fixed="right" align="center">
+                  <template #default="{ row }">
+                    <el-button link type="primary" size="small" @click="openRequirementItemDialog(row)">编辑</el-button>
+                    <el-button link type="danger" size="small" @click="onDeleteRequirementItem(row)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-collapse-item>
+          </el-collapse>
+        </template>
+      </div>
+    </el-drawer>
+
+    <el-dialog v-model="extractSummaryDialogVisible" title="编辑结构化摘要" width="860px" append-to-body destroy-on-close>
+      <el-form label-width="120px" class="requirement-edit-form">
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="项目名称"><el-input v-model="extractSummaryForm.projectName" maxlength="300" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="采购人"><el-input v-model="extractSummaryForm.buyerName" maxlength="300" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="预算/限价"><el-input v-model="extractSummaryForm.budgetAmount" maxlength="120" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="工期/服务期"><el-input v-model="extractSummaryForm.periodRequirement" maxlength="500" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="投标截止"><el-input v-model="extractSummaryForm.bidDeadline" maxlength="120" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item label="技术摘要"><el-input v-model="extractSummaryForm.technicalSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+        <el-form-item label="商务摘要"><el-input v-model="extractSummaryForm.businessSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+        <el-form-item label="服务/交付摘要"><el-input v-model="extractSummaryForm.serviceSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+        <el-form-item label="资格摘要"><el-input v-model="extractSummaryForm.qualificationSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+        <el-form-item label="风险摘要"><el-input v-model="extractSummaryForm.riskSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+        <el-form-item label="否决/禁止项"><el-input v-model="extractSummaryForm.forbiddenSummary" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="extractSummaryDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="extractSummarySaving" @click="onSaveExtractSummary">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="scoreItemDialogVisible" :title="scoreItemEditingId ? '编辑评分项' : '新增评分项'" width="760px" append-to-body destroy-on-close>
+      <el-form label-width="96px" class="requirement-edit-form">
+        <el-row :gutter="12">
+          <el-col :span="14"><el-form-item label="评分项"><el-input v-model="scoreItemForm.itemName" maxlength="300" placeholder="例如：项目实施方案" /></el-form-item></el-col>
+          <el-col :span="10"><el-form-item label="分值"><el-input v-model="scoreItemForm.scoreText" maxlength="120" placeholder="例如：15分" /></el-form-item></el-col>
+          <el-col :span="14"><el-form-item label="建议章节"><el-input v-model="scoreItemForm.suggestedChapter" maxlength="300" placeholder="例如：项目实施方案" /></el-form-item></el-col>
+          <el-col :span="10"><el-form-item label="排序"><el-input-number v-model="scoreItemForm.sortNo" :min="1" :max="9999" style="width: 100%" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item label="评分要求"><el-input v-model="scoreItemForm.requirementText" type="textarea" :rows="5" maxlength="2000" show-word-limit /></el-form-item>
+        <el-form-item label="响应策略"><el-input v-model="scoreItemForm.responseStrategy" type="textarea" :rows="5" maxlength="2000" show-word-limit /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="scoreItemDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="scoreItemSaving" @click="onSaveScoreItem">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="requirementItemDialogVisible" :title="requirementItemEditingId ? '编辑要求明细' : '新增要求明细'" width="820px" append-to-body destroy-on-close>
+      <el-form label-width="104px" class="requirement-edit-form">
+        <el-row :gutter="12">
+          <el-col :span="8">
+            <el-form-item label="要求类型">
+              <el-select v-model="requirementItemForm.requirementType" style="width: 100%">
+                <el-option v-for="item in requirementTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="风险等级">
+              <el-select v-model="requirementItemForm.riskLevel" style="width: 100%">
+                <el-option v-for="item in riskLevelOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8"><el-form-item label="强制响应"><el-switch v-model="requirementItemForm.mandatory" active-text="是" inactive-text="否" /></el-form-item></el-col>
+          <el-col :span="16"><el-form-item label="要求标题"><el-input v-model="requirementItemForm.requirementTitle" maxlength="300" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="requirementItemForm.sortNo" :min="1" :max="9999" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="建议章节"><el-input v-model="requirementItemForm.suggestedChapter" maxlength="300" /></el-form-item></el-col>
+        </el-row>
+        <el-form-item label="要求内容"><el-input v-model="requirementItemForm.requirementText" type="textarea" :rows="5" maxlength="2000" show-word-limit /></el-form-item>
+        <el-form-item label="建议响应"><el-input v-model="requirementItemForm.suggestedResponse" type="textarea" :rows="5" maxlength="2000" show-word-limit /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="requirementItemDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="requirementItemSaving" @click="onSaveRequirementItem">保存</el-button>
+      </template>
+    </el-dialog>
 
     <section v-if="showRightPreview" class="right-preview-card">
       <div v-if="String(selectedSectionSolutionId || '') === String(currentSolution?.id || '') && selectedSectionDisplayContent" class="section-preview">
@@ -754,7 +1061,11 @@ import {
   applyWordCountPreset,
   batchUpdateOutlineWordCount,
   createSolution,
+  createRequirementItem,
+  createRequirementScoreItem,
   deleteOutlineNodes,
+  deleteRequirementItem,
+  deleteRequirementScoreItem,
   deleteSolution,
   downloadFileResource,
   startSolutionExportTask,
@@ -767,6 +1078,9 @@ import {
   getSolutionVersion,
   listSolutionVersions,
   getSolution,
+  getSolutionQualityCheck,
+  getRequirementExtract,
+  rebuildRequirementExtract,
   moveOutlineNode,
   pageSolutions,
   restoreSolutionVersion,
@@ -776,7 +1090,11 @@ import {
   saveRequirement,
   streamSection,
   streamWritingDirection,
+  syncRequirementExtractToOutline,
   updateOutlineWordCount,
+  updateRequirementExtractSummary,
+  updateRequirementItem,
+  updateRequirementScoreItem,
   updateSectionContent,
   updateWritingConfig,
   uploadAndParseTenderFile
@@ -844,6 +1162,68 @@ const generateOutlineButtonText = computed(() => {
   return '生成目录'
 })
 const scoreDialogVisible = ref(false)
+const requirementExtractVisible = ref(false)
+const qualityCheckVisible = ref(false)
+const qualityCheckLoading = ref(false)
+const qualityCheckData = ref({ items: [], totalSections: 0, checkedSections: 0, averageScore: 0, excellentSections: 0, usableSections: 0, attentionSections: 0, rewriteSections: 0, noQualityLogSections: 0 })
+const requirementExtractLoading = ref(false)
+const requirementExtractRebuilding = ref(false)
+const requirementOutlineSyncing = ref(false)
+const requirementExtract = ref({ hasExtract: false, extract: null, scoreItems: [], requirementItems: [], requirementTypeCounts: {} })
+const extractSummaryDialogVisible = ref(false)
+const extractSummarySaving = ref(false)
+const scoreItemDialogVisible = ref(false)
+const scoreItemSaving = ref(false)
+const scoreItemEditingId = ref('')
+const requirementItemDialogVisible = ref(false)
+const requirementItemSaving = ref(false)
+const requirementItemEditingId = ref('')
+const extractSummaryForm = reactive({
+  projectName: '',
+  buyerName: '',
+  budgetAmount: '',
+  periodRequirement: '',
+  bidDeadline: '',
+  technicalSummary: '',
+  businessSummary: '',
+  serviceSummary: '',
+  qualificationSummary: '',
+  riskSummary: '',
+  forbiddenSummary: ''
+})
+const scoreItemForm = reactive({
+  itemName: '',
+  scoreText: '',
+  requirementText: '',
+  responseStrategy: '',
+  suggestedChapter: '',
+  sortNo: 1
+})
+const requirementItemForm = reactive({
+  requirementType: 'TECHNICAL',
+  requirementTitle: '',
+  requirementText: '',
+  mandatory: false,
+  riskLevel: 'LOW',
+  suggestedResponse: '',
+  suggestedChapter: '',
+  sortNo: 1
+})
+const requirementTypeOptions = [
+  { label: '技术要求', value: 'TECHNICAL' },
+  { label: '商务要求', value: 'BUSINESS' },
+  { label: '服务要求', value: 'SERVICE' },
+  { label: '资格/资质/业绩', value: 'QUALIFICATION' },
+  { label: '交付要求', value: 'DELIVERY' },
+  { label: '验收要求', value: 'ACCEPTANCE' },
+  { label: '风险/否决/偏离', value: 'RISK' },
+  { label: '其他要求', value: 'OTHER' }
+]
+const riskLevelOptions = [
+  { label: '低', value: 'LOW' },
+  { label: '中', value: 'MEDIUM' },
+  { label: '高', value: 'HIGH' }
+]
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
 const wordPreset = reactive({ mode: 'FIXED', wordCount: 300 })
@@ -882,6 +1262,7 @@ const tempSelectedKnowledgeIds = ref([])
 const knowledgeSelectorTarget = ref('full')
 const selectedKnowledgeBaseCache = ref([])
 const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
+const selectedOutlineKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(outlineForm.knowledgeIds)))
 const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
@@ -926,7 +1307,8 @@ const requirementForm = reactive({
 
 const outlineForm = reactive({
   outlineMode: 'SCORE_ITEM',
-  writingDirection: ''
+  writingDirection: '',
+  knowledgeIds: []
 })
 
 const sectionForm = reactive({
@@ -990,6 +1372,36 @@ const generatePercent = computed(() => {
 })
 
 const showRightPreview = computed(() => mode.value === 'detail' && !!currentSolution.value)
+const requirementTypeCountTags = computed(() => {
+  const counts = requirementExtract.value?.requirementTypeCounts || {}
+  return Object.entries(counts).map(([type, count]) => ({ type, count }))
+})
+
+const qualityItems = computed(() => qualityCheckData.value?.items || [])
+
+const qualityStatCards = computed(() => {
+  const data = qualityCheckData.value || {}
+  return [
+    { label: '章节总数', value: data.totalSections || 0, desc: '当前目录末级章节' },
+    { label: '已检查', value: data.checkedSections || 0, desc: '已有质量日志章节' },
+    { label: '平均分', value: data.averageScore || 0, desc: '仅统计已检查章节' },
+    { label: '需重编', value: data.rewriteSections || 0, desc: '低于最低质量线' },
+    { label: '需关注', value: data.attentionSections || 0, desc: '建议人工复核' },
+    { label: '优秀/可用', value: `${data.excellentSections || 0}/${data.usableSections || 0}`, desc: '优秀 / 可用章节' }
+  ]
+})
+
+const requirementSummaryItems = computed(() => {
+  const extract = requirementExtract.value?.extract || {}
+  return [
+    { key: 'technicalSummary', label: '技术摘要', value: extract.technicalSummary },
+    { key: 'businessSummary', label: '商务摘要', value: extract.businessSummary },
+    { key: 'serviceSummary', label: '服务摘要', value: extract.serviceSummary },
+    { key: 'qualificationSummary', label: '资格摘要', value: extract.qualificationSummary },
+    { key: 'riskSummary', label: '风险摘要', value: extract.riskSummary },
+    { key: 'forbiddenSummary', label: '否决/禁止项', value: extract.forbiddenSummary }
+  ]
+})
 const selectedSectionContent = computed(() => selectedSection.value?.section?.content || '')
 const sectionContentDirty = computed(() => normalizeSectionContent(sectionContentDraft.value) !== normalizeSectionContent(selectedSectionContent.value))
 const sectionEditorWordCount = computed(() => countTextWords(sectionContentDraft.value || ''))
@@ -1219,6 +1631,293 @@ function onSolutionListScroll() {
   }
 }
 
+function requirementTypeLabel(type) {
+  const map = {
+    TECHNICAL: '技术',
+    BUSINESS: '商务',
+    SERVICE: '服务',
+    QUALIFICATION: '资格',
+    DELIVERY: '交付',
+    ACCEPTANCE: '验收',
+    RISK: '风险',
+    OTHER: '其他'
+  }
+  return map[type] || type || '其他'
+}
+
+function requirementTypeTagType(type) {
+  const map = {
+    TECHNICAL: 'primary',
+    BUSINESS: 'success',
+    SERVICE: 'warning',
+    QUALIFICATION: 'info',
+    DELIVERY: 'success',
+    ACCEPTANCE: 'primary',
+    RISK: 'danger',
+    OTHER: 'info'
+  }
+  return map[type] || 'info'
+}
+
+
+async function openQualityCheckDrawer() {
+  if (!currentSolution.value?.id) return
+  qualityCheckVisible.value = true
+  await loadQualityCheck()
+}
+
+async function loadQualityCheck() {
+  if (!qualityCheckVisible.value || !currentSolution.value?.id) return
+  qualityCheckLoading.value = true
+  try {
+    qualityCheckData.value = normalizeQualityCheckPayload(await getSolutionQualityCheck(currentSolution.value.id))
+  } finally {
+    qualityCheckLoading.value = false
+  }
+}
+
+function normalizeQualityCheckPayload(data) {
+  return data || { items: [], totalSections: 0, checkedSections: 0, averageScore: 0, excellentSections: 0, usableSections: 0, attentionSections: 0, rewriteSections: 0, noQualityLogSections: 0 }
+}
+
+function safePercent(value) {
+  const n = Number(value || 0)
+  return Math.min(100, Math.max(0, Number.isFinite(n) ? n : 0))
+}
+
+function qualityLevelTagType(level, score) {
+  const n = Number(score || 0)
+  if (String(level || '').includes('重写') || n < 72) return 'danger'
+  if (String(level || '').includes('关注') || n < 82) return 'warning'
+  if (String(level || '').includes('优秀') || n >= 92) return 'success'
+  return 'primary'
+}
+
+function qualityProgressStatus(score) {
+  const n = Number(score || 0)
+  if (n < 72) return 'exception'
+  if (n < 82) return 'warning'
+  if (n >= 92) return 'success'
+  return ''
+}
+
+function issueSeverityTagType(value) {
+  const v = String(value || '').toUpperCase()
+  if (v === 'HIGH') return 'danger'
+  if (v === 'MEDIUM') return 'warning'
+  if (v === 'LOW') return 'info'
+  return 'success'
+}
+
+function qualityRowClassName({ row }) {
+  if (!row?.hasQualityLog) return 'quality-row-missing'
+  if (row.recommendRewrite) return 'quality-row-rewrite'
+  if (row.recommendReview) return 'quality-row-review'
+  return ''
+}
+
+async function openRequirementExtractDrawer() {
+  if (!currentSolution.value?.id) return
+  requirementExtractVisible.value = true
+  await loadRequirementExtract()
+}
+
+async function loadRequirementExtract() {
+  if (!requirementExtractVisible.value || !currentSolution.value?.id) return
+  requirementExtractLoading.value = true
+  try {
+    requirementExtract.value = normalizeRequirementExtractPayload(await getRequirementExtract(currentSolution.value.id))
+  } finally {
+    requirementExtractLoading.value = false
+  }
+}
+
+async function onRebuildRequirementExtract() {
+  if (!currentSolution.value?.id) return
+  try {
+    await ElMessageBox.confirm('重新解析会失效旧的评分项/需求结构化结果，并按当前采购需求、技术要求、服务要求和评分标准重新生成。是否继续？', '重新解析确认', {
+      type: 'warning',
+      confirmButtonText: '重新解析',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  requirementExtractRebuilding.value = true
+  requirementExtractLoading.value = true
+  try {
+    requirementExtract.value = normalizeRequirementExtractPayload(await rebuildRequirementExtract(currentSolution.value.id))
+    ElMessage.success('结构化解析已更新')
+  } finally {
+    requirementExtractRebuilding.value = false
+    requirementExtractLoading.value = false
+  }
+}
+
+async function onSyncRequirementExtractToOutline() {
+  if (!currentSolution.value?.id) return
+  try {
+    await ElMessageBox.confirm('将当前评分项/要求同步到所有末级章节的编写要求中。已生成正文不会自动改写，后续重编或单章生成会使用最新绑定。是否继续？', '同步到章节确认', {
+      type: 'warning',
+      confirmButtonText: '同步到章节',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  requirementOutlineSyncing.value = true
+  try {
+    const detail = await syncRequirementExtractToOutline(currentSolution.value.id)
+    currentSolution.value = detail
+    ElMessage.success('评分项/要求已同步到目录章节')
+  } finally {
+    requirementOutlineSyncing.value = false
+  }
+}
+
+
+function normalizeRequirementExtractPayload(data) {
+  return data || { hasExtract: false, extract: null, scoreItems: [], requirementItems: [], requirementTypeCounts: {} }
+}
+
+function openExtractSummaryDialog() {
+  const extract = requirementExtract.value?.extract || {}
+  Object.assign(extractSummaryForm, {
+    projectName: extract.projectName || '',
+    buyerName: extract.buyerName || '',
+    budgetAmount: extract.budgetAmount || '',
+    periodRequirement: extract.periodRequirement || '',
+    bidDeadline: extract.bidDeadline || '',
+    technicalSummary: extract.technicalSummary || '',
+    businessSummary: extract.businessSummary || '',
+    serviceSummary: extract.serviceSummary || '',
+    qualificationSummary: extract.qualificationSummary || '',
+    riskSummary: extract.riskSummary || '',
+    forbiddenSummary: extract.forbiddenSummary || ''
+  })
+  extractSummaryDialogVisible.value = true
+}
+
+async function onSaveExtractSummary() {
+  if (!currentSolution.value?.id) return
+  extractSummarySaving.value = true
+  try {
+    requirementExtract.value = normalizeRequirementExtractPayload(await updateRequirementExtractSummary(currentSolution.value.id, { ...extractSummaryForm }))
+    extractSummaryDialogVisible.value = false
+    ElMessage.success('结构化摘要已保存')
+  } finally {
+    extractSummarySaving.value = false
+  }
+}
+
+function openScoreItemDialog(row = null) {
+  scoreItemEditingId.value = row?.id || ''
+  Object.assign(scoreItemForm, {
+    itemName: row?.itemName || '',
+    scoreText: row?.scoreText || '',
+    requirementText: row?.requirementText || '',
+    responseStrategy: row?.responseStrategy || '',
+    suggestedChapter: row?.suggestedChapter || '',
+    sortNo: row?.sortNo || nextScoreItemSortNo()
+  })
+  scoreItemDialogVisible.value = true
+}
+
+function nextScoreItemSortNo() {
+  const items = requirementExtract.value?.scoreItems || []
+  const max = items.reduce((num, item) => Math.max(num, Number(item?.sortNo || 0)), 0)
+  return max + 1
+}
+
+async function onSaveScoreItem() {
+  if (!currentSolution.value?.id) return
+  if (!String(scoreItemForm.itemName || '').trim() && !String(scoreItemForm.requirementText || '').trim()) {
+    ElMessage.warning('评分项名称和评分要求至少填写一项')
+    return
+  }
+  scoreItemSaving.value = true
+  try {
+    const payload = { ...scoreItemForm }
+    requirementExtract.value = normalizeRequirementExtractPayload(scoreItemEditingId.value
+      ? await updateRequirementScoreItem(currentSolution.value.id, scoreItemEditingId.value, payload)
+      : await createRequirementScoreItem(currentSolution.value.id, payload))
+    scoreItemDialogVisible.value = false
+    ElMessage.success('评分项已保存')
+  } finally {
+    scoreItemSaving.value = false
+  }
+}
+
+async function onDeleteScoreItem(row) {
+  if (!currentSolution.value?.id || !row?.id) return
+  try {
+    await ElMessageBox.confirm('删除后该评分项不会继续参与目录和章节生成，是否继续？', '删除评分项', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  requirementExtract.value = normalizeRequirementExtractPayload(await deleteRequirementScoreItem(currentSolution.value.id, row.id))
+  ElMessage.success('评分项已删除')
+}
+
+function openRequirementItemDialog(row = null) {
+  requirementItemEditingId.value = row?.id || ''
+  Object.assign(requirementItemForm, {
+    requirementType: row?.requirementType || 'TECHNICAL',
+    requirementTitle: row?.requirementTitle || '',
+    requirementText: row?.requirementText || '',
+    mandatory: row?.mandatory === true || row?.mandatory === 1,
+    riskLevel: row?.riskLevel || 'LOW',
+    suggestedResponse: row?.suggestedResponse || '',
+    suggestedChapter: row?.suggestedChapter || '',
+    sortNo: row?.sortNo || nextRequirementItemSortNo()
+  })
+  requirementItemDialogVisible.value = true
+}
+
+function nextRequirementItemSortNo() {
+  const items = requirementExtract.value?.requirementItems || []
+  const max = items.reduce((num, item) => Math.max(num, Number(item?.sortNo || 0)), 0)
+  return max + 1
+}
+
+async function onSaveRequirementItem() {
+  if (!currentSolution.value?.id) return
+  if (!String(requirementItemForm.requirementTitle || '').trim() && !String(requirementItemForm.requirementText || '').trim()) {
+    ElMessage.warning('要求标题和要求内容至少填写一项')
+    return
+  }
+  requirementItemSaving.value = true
+  try {
+    const payload = { ...requirementItemForm }
+    requirementExtract.value = normalizeRequirementExtractPayload(requirementItemEditingId.value
+      ? await updateRequirementItem(currentSolution.value.id, requirementItemEditingId.value, payload)
+      : await createRequirementItem(currentSolution.value.id, payload))
+    requirementItemDialogVisible.value = false
+    ElMessage.success('要求明细已保存')
+  } finally {
+    requirementItemSaving.value = false
+  }
+}
+
+async function onDeleteRequirementItem(row) {
+  if (!currentSolution.value?.id || !row?.id) return
+  try {
+    await ElMessageBox.confirm('删除后该要求不会继续参与目录和章节生成，是否继续？', '删除要求明细', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  requirementExtract.value = normalizeRequirementExtractPayload(await deleteRequirementItem(currentSolution.value.id, row.id))
+  ElMessage.success('要求明细已删除')
+}
+
 async function loadDetail(id) {
   const solutionId = normalizeId(id)
   if (!solutionId) return
@@ -1408,6 +2107,7 @@ async function startCreate(solutionMode = 'QUICK') {
   createForm.solutionName = '新建AI方案'
   outlineForm.outlineMode = 'SCORE_ITEM'
   outlineForm.writingDirection = ''
+  outlineForm.knowledgeIds = []
 
   Object.assign(requirementForm, {
     purchaseRequirement: '',
@@ -1651,7 +2351,8 @@ async function onGenerateOutline() {
       writingStyle: createForm.writingStyle,
       extraRequirement: requirementForm.outlineRequirement,
       outlineRequirement: requirementForm.outlineRequirement,
-      writingDirection
+      writingDirection,
+      knowledgeIds: stringifyKnowledgeIds(outlineForm.knowledgeIds)
     })
 
     applySolutionDetail(data)
@@ -1877,15 +2578,17 @@ function collectSolutionKnowledgeIds(solution = currentSolution.value) {
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
-  return target === 'section'
-    ? parseKnowledgeIds(sectionForm.knowledgeIds)
-    : parseKnowledgeIds(fullGenerateForm.knowledgeIds)
+  if (target === 'section') return parseKnowledgeIds(sectionForm.knowledgeIds)
+  if (target === 'outline') return parseKnowledgeIds(outlineForm.knowledgeIds)
+  return parseKnowledgeIds(fullGenerateForm.knowledgeIds)
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
   const normalized = uniqueIds(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
+  } else if (target === 'outline') {
+    outlineForm.knowledgeIds = normalized
   } else {
     fullGenerateForm.knowledgeIds = normalized
   }
@@ -1934,6 +2637,7 @@ function confirmKnowledgeSelection() {
   })
   selectedKnowledgeBaseCache.value = uniqueIds([
     ...parseKnowledgeIds(fullGenerateForm.knowledgeIds),
+    ...parseKnowledgeIds(outlineForm.knowledgeIds),
     ...parseKnowledgeIds(sectionForm.knowledgeIds)
   ]).map((id) => cacheMap.get(normalizeId(id))).filter(Boolean)
 
@@ -3134,7 +3838,15 @@ const OutlineTree = defineComponent({
           }
         })
         : null
-      const title = h('span', { class: ['tree-title', hasChildren ? 'parent' : 'leaf'] }, node.title)
+      const bindingTag = !hasChildren && node.structuredBindingFlag
+        ? h(ElTooltip, { content: node.structuredBindingSummary || '已绑定结构化评分项/要求', placement: 'top', 'show-after': 200 }, {
+          default: () => h(ElTag, { size: 'small', type: 'success', effect: 'light', class: 'binding-tag' }, () => `绑定 ${node.structuredScoreItemCount || 0}评/${node.structuredRequirementItemCount || 0}求`)
+        })
+        : null
+      const title = h('span', { class: ['tree-title-wrap', hasChildren ? 'parent' : 'leaf'] }, [
+        h('span', { class: ['tree-title', hasChildren ? 'parent' : 'leaf'] }, node.title),
+        bindingTag
+      ])
       const controls = []
       if (props.mode === 'word') {
         if (hasChildren) {
@@ -3596,6 +4308,248 @@ const WritingDirectionEditor = defineComponent({
   color: #909399;
 }
 
+
+
+.requirement-extract-wrap {
+  min-height: 320px;
+}
+
+.requirement-extract-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.requirement-extract-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.requirement-edit-form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.requirement-edit-form :deep(.el-textarea__inner) {
+  line-height: 1.7;
+}
+
+.requirement-extract-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.requirement-extract-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.requirement-extract-summary {
+  display: grid;
+  grid-template-columns: 160px 160px 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.summary-stat-card {
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.summary-stat-card span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.summary-stat-card strong {
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.summary-stat-card small {
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.requirement-type-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.extract-desc-box {
+  margin-bottom: 16px;
+}
+
+.extract-collapse {
+  border-top: 1px solid #e5e7eb;
+}
+
+.summary-text-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-text-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.summary-text-item strong {
+  display: block;
+  font-size: 14px;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.summary-text-item p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+
+.quality-check-wrap {
+  min-height: 360px;
+}
+
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.quality-check-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.quality-check-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.quality-stat-card {
+  min-height: 76px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.quality-stat-card span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.quality-stat-card strong {
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.quality-stat-card small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.quality-alert {
+  margin-bottom: 14px;
+}
+
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-score-cell strong {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.quality-risk-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.55;
+}
+
+.quality-problem-text strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.quality-problem-text span,
+.muted-text {
+  color: #64748b;
+}
+
+.quality-table :deep(.quality-row-rewrite td) {
+  background: #fff1f2 !important;
+}
+
+.quality-table :deep(.quality-row-review td) {
+  background: #fffbeb !important;
+}
+
+.quality-table :deep(.quality-row-missing td) {
+  background: #f8fafc !important;
+}
+
+@media (max-width: 1280px) {
+  .quality-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 </style>
 
 
@@ -3763,6 +4717,127 @@ const WritingDirectionEditor = defineComponent({
   font-size: 13px;
 }
 
+
+.quality-check-wrap {
+  min-height: 360px;
+}
+
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.quality-check-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.quality-check-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.quality-stat-card {
+  min-height: 76px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.quality-stat-card span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.quality-stat-card strong {
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.quality-stat-card small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.quality-alert {
+  margin-bottom: 14px;
+}
+
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-score-cell strong {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.quality-risk-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.55;
+}
+
+.quality-problem-text strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.quality-problem-text span,
+.muted-text {
+  color: #64748b;
+}
+
+.quality-table :deep(.quality-row-rewrite td) {
+  background: #fff1f2 !important;
+}
+
+.quality-table :deep(.quality-row-review td) {
+  background: #fffbeb !important;
+}
+
+.quality-table :deep(.quality-row-missing td) {
+  background: #f8fafc !important;
+}
+
+@media (max-width: 1280px) {
+  .quality-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 </style>
 
 
@@ -3773,6 +4848,127 @@ const WritingDirectionEditor = defineComponent({
   line-height: 20px;
   color: #8a95a8;
 }
+
+.quality-check-wrap {
+  min-height: 360px;
+}
+
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.quality-check-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.quality-check-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.quality-stat-card {
+  min-height: 76px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.quality-stat-card span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.quality-stat-card strong {
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.quality-stat-card small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.quality-alert {
+  margin-bottom: 14px;
+}
+
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-score-cell strong {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.quality-risk-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.55;
+}
+
+.quality-problem-text strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.quality-problem-text span,
+.muted-text {
+  color: #64748b;
+}
+
+.quality-table :deep(.quality-row-rewrite td) {
+  background: #fff1f2 !important;
+}
+
+.quality-table :deep(.quality-row-review td) {
+  background: #fffbeb !important;
+}
+
+.quality-table :deep(.quality-row-missing td) {
+  background: #f8fafc !important;
+}
+
+@media (max-width: 1280px) {
+  .quality-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 </style>
 
 <style scoped>
@@ -3799,13 +4995,26 @@ const WritingDirectionEditor = defineComponent({
   padding-right: 0;
 }
 
-.solution-shell :deep(.tree-title) {
+.solution-shell :deep(.tree-title-wrap) {
   flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.solution-shell :deep(.tree-title) {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 22px;
+}
+
+.solution-shell :deep(.binding-tag) {
+  flex: 0 0 auto;
 }
 
 .solution-shell :deep(.tree-title.parent) {
@@ -3885,4 +5094,125 @@ const WritingDirectionEditor = defineComponent({
   font-size: 17px;
   line-height: 1.9;
 }
+
+.quality-check-wrap {
+  min-height: 360px;
+}
+
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.quality-check-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 6px;
+}
+
+.quality-check-desc {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.quality-stat-card {
+  min-height: 76px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  justify-content: center;
+}
+
+.quality-stat-card span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.quality-stat-card strong {
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.quality-stat-card small {
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.quality-alert {
+  margin-bottom: 14px;
+}
+
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-score-cell strong {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.quality-risk-tags {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.55;
+}
+
+.quality-problem-text strong {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.quality-problem-text span,
+.muted-text {
+  color: #64748b;
+}
+
+.quality-table :deep(.quality-row-rewrite td) {
+  background: #fff1f2 !important;
+}
+
+.quality-table :deep(.quality-row-review td) {
+  background: #fffbeb !important;
+}
+
+.quality-table :deep(.quality-row-missing td) {
+  background: #f8fafc !important;
+}
+
+@media (max-width: 1280px) {
+  .quality-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 </style>
