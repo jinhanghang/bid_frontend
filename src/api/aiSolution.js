@@ -251,3 +251,50 @@ export function compressSolutionDuplicateSections(id) {
 export function reviewSolutionByAi(id) {
   return request({ url: `/ai-solution/${id}/ai-review`, method: 'post', timeout: NO_TIMEOUT })
 }
+
+
+// 兼容 AI方案页面使用的命名：AI方案审稿
+export function runSolutionAiReview(id) {
+  return reviewSolutionByAi(id)
+}
+
+// ==================== 招标需求结构化解析 / 评分项 / 要求明细 ====================
+export function getRequirementExtract(id) {
+  return request({ url: `/ai-solution/${id}/requirement-extract`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function rebuildRequirementExtract(id) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/rebuild`, method: 'post', timeout: NO_TIMEOUT })
+}
+
+export function updateRequirementExtractSummary(id, data) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/summary`, method: 'put', data, timeout: NO_TIMEOUT })
+}
+
+export function createRequirementScoreItem(id, data) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/score-items`, method: 'post', data, timeout: NO_TIMEOUT })
+}
+
+export function updateRequirementScoreItem(id, itemId, data) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/score-items/${itemId}`, method: 'put', data, timeout: NO_TIMEOUT })
+}
+
+export function deleteRequirementScoreItem(id, itemId) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/score-items/${itemId}`, method: 'delete', timeout: NO_TIMEOUT })
+}
+
+export function createRequirementItem(id, data) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items`, method: 'post', data, timeout: NO_TIMEOUT })
+}
+
+export function updateRequirementItem(id, itemId, data) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items/${itemId}`, method: 'put', data, timeout: NO_TIMEOUT })
+}
+
+export function deleteRequirementItem(id, itemId) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items/${itemId}`, method: 'delete', timeout: NO_TIMEOUT })
+}
+
+export function syncRequirementExtractToOutline(id) {
+  return request({ url: `/ai-solution/${id}/requirement-extract/sync-outline`, method: 'post', timeout: NO_TIMEOUT })
+}

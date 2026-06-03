@@ -93,10 +93,10 @@
           <div class="header-actions">
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
             <el-button :icon="Refresh" :loading="detailLoading" @click="refreshCurrent">刷新</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentWordCount">字数检查</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentQualityCheck">质量检查</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="reviewDocument">AI审稿</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentDuplicateCheck">重复检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">字数检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentQualityCheckDrawer">质量检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentReviewDrawer">AI审稿</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">重复检查</el-button>
             <el-button type="success" :loading="exportLoading" :disabled="!canExport || isOperationLocked" @click="onExport">导出</el-button>
           </div>
         </section>
@@ -360,6 +360,200 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-drawer
+      v-model="docQualityCheckVisible"
+      title="AI文档质量检查"
+      size="60%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="docQualityCheckLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">章节质量评分与风险复核</div>
+            <div class="quality-check-desc">数据来自最近一次章节生成/重编时写入的质量事件日志；重新生成章节后可刷新查看。</div>
+          </div>
+          <el-button type="primary" plain :disabled="!currentDoc?.id" :loading="docQualityCheckLoading" @click="loadDocumentQualityCheck">刷新</el-button>
+        </div>
+
+        <div class="quality-stat-grid">
+          <div v-for="item in docQualityStatCards" :key="item.label" class="quality-stat-card">
+            <span>{{ item.label }}</span>
+            <strong>{{ item.value }}</strong>
+            <small>{{ item.desc }}</small>
+          </div>
+        </div>
+
+        <el-alert
+          v-if="docQualityCheckData.noQualityLogSections"
+          class="quality-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="部分章节暂无质量检查记录"
+          :description="`还有 ${docQualityCheckData.noQualityLogSections || 0} 个章节没有质量日志。通常是尚未生成，或生成时未开启质量检查。`"
+        />
+
+        <el-table
+          class="ui-table quality-table"
+          :data="docQualityItems"
+          border
+          stripe
+          size="small"
+          empty-text="暂无质量检查数据"
+          :row-class-name="qualityRowClassName"
+        >
+          <el-table-column label="序号" type="index" width="70" align="center" />
+          <el-table-column prop="title" label="章节" min-width="180" show-overflow-tooltip />
+          <el-table-column label="质量评分" width="130" align="center">
+            <template #default="{ row }">
+              <div v-if="row.hasQualityLog" class="quality-score-cell">
+                <el-progress :percentage="safePercent(row.score)" :stroke-width="8" :show-text="false" :status="qualityProgressStatus(row.score)" />
+                <strong>{{ row.score ?? '-' }}</strong>
+              </div>
+              <span v-else class="muted-text">未检查</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="等级" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="qualityLevelTagType(row.qualityLevel, row.score)" effect="light">{{ row.qualityLevel || '未检查' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="问题等级" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="issueSeverityTagType(row.issueSeverity)" effect="light">{{ row.issueSeverity || '-' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="证据覆盖" width="100" align="center">
+            <template #default="{ row }">{{ row.hasQualityLog ? `${row.evidenceCoveragePercent || 0}%` : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="动作/交付/验收" width="130" align="center">
+            <template #default="{ row }">
+              {{ row.hasQualityLog ? `${row.actionVerbHits || 0}/${row.deliverableHits || 0}/${row.verificationHits || 0}` : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="风险" width="150" align="center">
+            <template #default="{ row }">
+              <div class="quality-risk-tags">
+                <el-tag v-if="row.factRiskHits" size="small" type="danger" effect="light">强事实 {{ row.factRiskHits }}</el-tag>
+                <el-tag v-if="row.internalTraceLeakHits" size="small" type="danger" effect="light">内部痕迹 {{ row.internalTraceLeakHits }}</el-tag>
+                <el-tag v-if="row.formatRiskHits" size="small" type="warning" effect="light">格式 {{ row.formatRiskHits }}</el-tag>
+                <span v-if="!row.factRiskHits && !row.internalTraceLeakHits && !row.formatRiskHits" class="muted-text">-</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="主要问题 / 建议" min-width="280" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="quality-problem-text">
+                <strong>{{ row.problem || '无明显问题' }}</strong>
+                <span>{{ row.suggestion || row.structureAdvice || row.typeAdvice || row.executionChecklist || '' }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="处理建议" width="110" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-tag v-if="row.recommendRewrite" size="small" type="danger">建议重编</el-tag>
+              <el-tag v-else-if="row.recommendReview" size="small" type="warning">人工复核</el-tag>
+              <el-tag v-else-if="row.hasQualityLog" size="small" type="success">可用</el-tag>
+              <el-tag v-else size="small" type="info">待生成</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
+
+    <el-drawer
+      v-model="docWordCountVisible"
+      title="字数检查与重复内容"
+      size="58%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="docWordCountLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">目标字数、生成字数与重复内容</div>
+            <div class="quality-check-desc">仅展示用户可理解的字数和重复段落信息，不展示 Token、费用、模型调用次数等内部数据。</div>
+          </div>
+          <div class="toolbar-actions">
+            <el-button plain :disabled="!currentDoc?.id" @click="loadDocumentWordCountStats">刷新</el-button>
+            <el-button type="warning" plain :disabled="!docDuplicateCheckData?.recommendCompress || isOperationLocked" :loading="docDuplicateCompressing" @click="onCompressDocumentDuplicates">一键压缩重复</el-button>
+          </div>
+        </div>
+
+        <div class="quality-stat-grid">
+          <div class="quality-stat-card"><span>目标字数</span><strong>{{ docWordCountStats.targetWordCount || 0 }}</strong><small>文档目标</small></div>
+          <div class="quality-stat-card"><span>生成字数</span><strong>{{ docWordCountStats.actualWordCount || 0 }}</strong><small>当前正文</small></div>
+          <div class="quality-stat-card"><span>完成度</span><strong>{{ docWordCountStats.ratioPercent || 0 }}%</strong><small>{{ docWordCountStats.summary || '-' }}</small></div>
+          <div class="quality-stat-card"><span>重复段落</span><strong>{{ docDuplicateCheckData.duplicateParagraphCount || 0 }}</strong><small>{{ docDuplicateCheckData.summary || '未检查' }}</small></div>
+        </div>
+
+        <el-alert v-if="docWordCountStats.overSections" type="warning" show-icon :closable="false" class="quality-alert" :title="`发现 ${docWordCountStats.overSections} 个章节超出目标字数`" description="建议优先压缩重复背景、通用口号和同义反复，保留核心结论、依据、措施和交付物。" />
+
+        <el-table class="ui-table quality-table" :data="docWordCountStats.items || []" border stripe size="small" empty-text="暂无字数数据">
+          <el-table-column label="序号" type="index" width="70" align="center" />
+          <el-table-column prop="path" label="章节" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="targetWordCount" label="目标" width="90" align="center" />
+          <el-table-column prop="actualWordCount" label="生成" width="90" align="center" />
+          <el-table-column prop="ratioPercent" label="比例" width="90" align="center"><template #default="{ row }">{{ row.ratioPercent || 0 }}%</template></el-table-column>
+          <el-table-column prop="status" label="状态" width="120" align="center"><template #default="{ row }"><el-tag size="small" :type="wordStatusTagType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
+          <el-table-column prop="suggestion" label="建议" min-width="220" show-overflow-tooltip />
+        </el-table>
+
+        <el-divider content-position="left">重复段落明细</el-divider>
+        <el-alert v-if="!docDuplicateCheckData?.recommendCompress" type="success" show-icon :closable="false" class="quality-alert" :title="docDuplicateCheckData?.summary || '未发现明显重复内容'" />
+        <el-table v-else class="ui-table quality-table" :data="docDuplicateItems" border stripe size="small" empty-text="暂无重复段落明细">
+          <el-table-column prop="preview" label="重复内容预览" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="repeatCount" label="重复次数" width="100" align="center" />
+          <el-table-column label="涉及章节" min-width="260" show-overflow-tooltip>
+            <template #default="{ row }">{{ duplicateSectionsText(row.sections) }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
+
+    <el-drawer
+      v-model="docReviewVisible"
+      title="AI文档二次审稿"
+      size="58%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="docReviewLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">全文统一口径与审稿建议</div>
+            <div class="quality-check-desc">用于正式导出前检查术语、周期、交付物、结论、重复内容和风险表达。</div>
+          </div>
+          <el-button type="primary" :disabled="!currentDoc?.id || isOperationLocked" :loading="docReviewLoading" @click="runDocumentAiReviewNow">开始审稿</el-button>
+        </div>
+
+        <el-descriptions v-if="docConsistencyPackage" :column="1" border class="extract-summary">
+          <el-descriptions-item label="统一术语">{{ docConsistencyPackage.unifiedTerms || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一周期">{{ docConsistencyPackage.unifiedPeriod || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一人员">{{ docConsistencyPackage.unifiedPersonnel || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一交付物">{{ docConsistencyPackage.unifiedDeliverables || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="服务承诺">{{ docConsistencyPackage.unifiedServiceCommitment || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="风险边界">{{ docConsistencyPackage.unifiedRiskBoundary || '-' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <template v-if="docReviewResult">
+          <div class="quality-stat-grid">
+            <div class="quality-stat-card"><span>审稿得分</span><strong>{{ docReviewResult.overallScore ?? '-' }}</strong><small>{{ docReviewResult.summary || '-' }}</small></div>
+            <div class="quality-stat-card"><span>风险等级</span><strong>{{ docReviewResult.riskLevel || '-' }}</strong><small>LOW / MEDIUM / HIGH</small></div>
+            <div class="quality-stat-card"><span>问题数量</span><strong>{{ (docReviewResult.issues || []).length }}</strong><small>建议逐项处理</small></div>
+          </div>
+          <el-table class="ui-table quality-table" :data="docReviewResult.issues || []" border stripe size="small" empty-text="暂无审稿问题">
+            <el-table-column prop="severity" label="等级" width="100" align="center" />
+            <el-table-column prop="title" label="问题" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="修改建议" min-width="260" show-overflow-tooltip />
+          </el-table>
+          <el-input v-if="docReviewResult.aiReviewText" class="review-textarea" type="textarea" :rows="12" readonly :model-value="docReviewResult.aiReviewText" />
+        </template>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -381,6 +575,7 @@ import {
   getDocumentParseTask,
   getDocumentQualityCheck,
   getDocumentWordCountStats,
+  getDocumentConsistencyPackage,
   getDocumentDuplicateCheck,
   compressDocumentDuplicateSections,
   reviewDocumentByAi,
@@ -388,7 +583,8 @@ import {
   pageDocuments,
   rewriteDocumentFull,
   saveDocumentForm,
-  uploadDocumentReference
+  uploadDocumentReference,
+  autoFillDocumentFromReference
 } from '@/api/aiDocument'
 import { downloadFileResource, getCurrentUserRunningAiTask, streamSection, updateSectionContent } from '@/api/aiSolution'
 import { formatDateTime } from '@/utils/format'
@@ -411,10 +607,24 @@ const sectionGenerating = ref(false)
 const sectionSaving = ref(false)
 const formDialogVisible = ref(false)
 const parseTask = ref(null)
+const autoFillRunning = ref(false)
+const autoFillDoneTaskIds = new Set()
 const runningTask = ref(null)
 const globalRunningTask = ref(null)
 const activeNode = ref(null)
 const sectionDraft = ref('')
+const docQualityCheckVisible = ref(false)
+const docQualityCheckLoading = ref(false)
+const docQualityCheckData = ref({ items: [] })
+const docWordCountVisible = ref(false)
+const docWordCountLoading = ref(false)
+const docWordCountStats = ref({ items: [] })
+const docDuplicateCheckData = ref({ duplicates: [] })
+const docDuplicateCompressing = ref(false)
+const docReviewVisible = ref(false)
+const docReviewLoading = ref(false)
+const docReviewResult = ref(null)
+const docConsistencyPackage = ref(null)
 
 const query = reactive({ pageNum: 1, pageSize: 20, keyword: '' })
 const docListScrollbar = ref()
@@ -463,6 +673,19 @@ const progressStatus = computed(() => {
 })
 const sectionPromptText = computed(() => (activeNode.value?.writingDirection || activeNode.value?.writingRequirement || '').trim())
 const documentNoMore = computed(() => documentPager.total > 0 && documents.value.length >= documentPager.total)
+const docQualityItems = computed(() => docQualityCheckData.value?.items || [])
+const docQualityStatCards = computed(() => {
+  const data = docQualityCheckData.value || {}
+  return [
+    { label: '章节总数', value: data.totalSections || 0, desc: '当前目录末级章节' },
+    { label: '已检查', value: data.checkedSections || 0, desc: '已有质量日志章节' },
+    { label: '平均分', value: data.averageScore || 0, desc: '仅统计已检查章节' },
+    { label: '需重编', value: data.rewriteSections || 0, desc: '低于最低质量线' },
+    { label: '需关注', value: data.attentionSections || 0, desc: '建议人工复核' },
+    { label: '优秀/可用', value: `${data.excellentSections || 0}/${data.usableSections || 0}`, desc: '优秀 / 可用章节' }
+  ]
+})
+const docDuplicateItems = computed(() => docDuplicateCheckData.value?.duplicates || [])
 
 const activeStep = computed(() => {
   const status = String(currentDoc.value?.status || '').toUpperCase()
@@ -687,57 +910,141 @@ async function refreshCurrent() {
   }
 }
 
-function textBlock(title, lines = []) {
-  return `<div style="line-height:1.8"><b>${title}</b><br/>${lines.filter(Boolean).map(i => String(i)).join('<br/>')}</div>`
+function normalizeQualityCheckPayload(data) {
+  return data || { items: [], totalSections: 0, checkedSections: 0, averageScore: 0, excellentSections: 0, usableSections: 0, attentionSections: 0, rewriteSections: 0, noQualityLogSections: 0 }
 }
 
-async function showDocumentWordCount() {
-  if (!currentDoc.value?.id) return
-  const data = await getDocumentWordCountStats(currentDoc.value.id)
-  await ElMessageBox.alert(textBlock('字数检查', [
-    data?.summary,
-    `目标字数：${data?.targetWordCount || 0}`,
-    `生成字数：${data?.actualWordCount || 0}`,
-    `超字数章节：${data?.overSections || 0}`,
-    `偏短章节：${data?.shortSections || 0}`
-  ]), 'AI文档字数检查', { dangerouslyUseHTMLString: true })
+function safePercent(value) {
+  const n = Number(value || 0)
+  return Math.min(100, Math.max(0, Number.isFinite(n) ? n : 0))
 }
 
-async function showDocumentQualityCheck() {
-  if (!currentDoc.value?.id) return
-  const data = await getDocumentQualityCheck(currentDoc.value.id)
-  await ElMessageBox.alert(textBlock('质量检查', [
-    `平均分：${data?.averageScore || 0}`,
-    `需关注章节：${data?.attentionSections || 0}`,
-    `建议重编章节：${data?.rewriteSections || 0}`,
-    `已检查章节：${data?.checkedSections || 0}/${data?.totalSections || 0}`
-  ]), 'AI文档质量检查', { dangerouslyUseHTMLString: true })
+function qualityLevelTagType(level, score) {
+  const n = Number(score || 0)
+  if (String(level || '').includes('重写') || n < 72) return 'danger'
+  if (String(level || '').includes('关注') || n < 82) return 'warning'
+  if (String(level || '').includes('优秀') || n >= 92) return 'success'
+  return 'primary'
 }
 
-async function showDocumentDuplicateCheck() {
+function qualityProgressStatus(score) {
+  const n = Number(score || 0)
+  if (n < 72) return 'exception'
+  if (n < 82) return 'warning'
+  if (n >= 92) return 'success'
+  return ''
+}
+
+function issueSeverityTagType(value) {
+  const v = String(value || '').toUpperCase()
+  if (v === 'HIGH') return 'danger'
+  if (v === 'MEDIUM') return 'warning'
+  if (v === 'LOW') return 'info'
+  return 'success'
+}
+
+function qualityRowClassName({ row }) {
+  if (!row?.hasQualityLog) return 'quality-row-missing'
+  if (row.recommendRewrite) return 'quality-row-rewrite'
+  if (row.recommendReview) return 'quality-row-review'
+  return ''
+}
+
+function wordStatusTagType(status) {
+  if (status === '字数正常') return 'success'
+  if (status === '略超字数' || status === '明显偏短') return 'warning'
+  if (status === '明显超字数') return 'danger'
+  return 'info'
+}
+
+function duplicateSectionsText(sections = []) {
+  return (sections || []).map((item) => item.path || item.title || item.outlineId).filter(Boolean).join('；') || '-'
+}
+
+async function openDocumentQualityCheckDrawer() {
   if (!currentDoc.value?.id) return
-  const data = await getDocumentDuplicateCheck(currentDoc.value.id)
-  const confirm = data?.recommendCompress
-    ? await ElMessageBox.confirm(textBlock('重复检查', [data?.summary, `预计可压缩：${data?.estimatedRemovableWords || 0} 字`, '是否一键压缩重复内容？']), 'AI文档重复检查', { dangerouslyUseHTMLString: true, confirmButtonText: '一键压缩', cancelButtonText: '暂不处理' }).catch(() => false)
-    : false
-  if (confirm) {
-    const updated = await compressDocumentDuplicateSections(currentDoc.value.id)
-    applyDoc(updated)
-    ElMessage.success('重复内容已压缩')
-  } else if (!data?.recommendCompress) {
-    ElMessage.success(data?.summary || '未发现明显重复内容')
+  docQualityCheckVisible.value = true
+  await loadDocumentQualityCheck()
+}
+
+async function loadDocumentQualityCheck() {
+  if (!docQualityCheckVisible.value || !currentDoc.value?.id) return
+  docQualityCheckLoading.value = true
+  try {
+    docQualityCheckData.value = normalizeQualityCheckPayload(await getDocumentQualityCheck(currentDoc.value.id))
+  } catch (e) {
+    ElMessage.error(e?.message || '加载质量检查失败')
+  } finally {
+    docQualityCheckLoading.value = false
   }
 }
 
-async function reviewDocument() {
+async function openDocumentWordCountDrawer() {
   if (!currentDoc.value?.id) return
-  const data = await reviewDocumentByAi(currentDoc.value.id)
-  await ElMessageBox.alert(textBlock('AI审稿', [
-    data?.summary,
-    `审稿得分：${data?.overallScore || 0}`,
-    `风险等级：${data?.riskLevel || '-'}`,
-    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 5).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
-  ]), 'AI文档二次审稿', { dangerouslyUseHTMLString: true })
+  docWordCountVisible.value = true
+  await loadDocumentWordCountStats()
+}
+
+async function loadDocumentWordCountStats() {
+  if (!docWordCountVisible.value || !currentDoc.value?.id) return
+  docWordCountLoading.value = true
+  try {
+    const [wordRes, duplicateRes] = await Promise.all([
+      getDocumentWordCountStats(currentDoc.value.id),
+      getDocumentDuplicateCheck(currentDoc.value.id)
+    ])
+    docWordCountStats.value = wordRes || { items: [] }
+    docDuplicateCheckData.value = duplicateRes || { duplicates: [] }
+  } catch (e) {
+    ElMessage.error(e?.message || '加载字数检查失败')
+  } finally {
+    docWordCountLoading.value = false
+  }
+}
+
+async function onCompressDocumentDuplicates() {
+  if (!currentDoc.value?.id) return
+  await ElMessageBox.confirm('系统将删除跨章节重复段落，保留首次出现内容。该操作不会新增事实内容，是否继续？', '一键压缩重复内容', {
+    type: 'warning', confirmButtonText: '开始压缩', cancelButtonText: '取消'
+  })
+  docDuplicateCompressing.value = true
+  try {
+    const updated = await compressDocumentDuplicateSections(currentDoc.value.id)
+    applyDoc(updated)
+    ElMessage.success('重复内容已压缩')
+    await loadDocumentWordCountStats()
+  } catch (e) {
+    ElMessage.error(e?.message || '压缩重复内容失败')
+  } finally {
+    docDuplicateCompressing.value = false
+  }
+}
+
+async function openDocumentReviewDrawer() {
+  if (!currentDoc.value?.id) return
+  docReviewVisible.value = true
+  docReviewResult.value = null
+  docReviewLoading.value = true
+  try {
+    docConsistencyPackage.value = await getDocumentConsistencyPackage(currentDoc.value.id)
+  } catch (e) {
+    ElMessage.error(e?.message || '加载全文统一口径失败')
+  } finally {
+    docReviewLoading.value = false
+  }
+}
+
+async function runDocumentAiReviewNow() {
+  if (!currentDoc.value?.id) return
+  docReviewLoading.value = true
+  try {
+    docReviewResult.value = await reviewDocumentByAi(currentDoc.value.id)
+    ElMessage.success('AI二次审稿完成')
+  } catch (e) {
+    ElMessage.error(e?.message || 'AI二次审稿失败')
+  } finally {
+    docReviewLoading.value = false
+  }
 }
 
 // 全文生成中需要轻量刷新右侧正文和左侧大纲。
@@ -756,7 +1063,7 @@ function applyDoc(data, options = {}) {
   runningTask.value = data?.runningTask || null
   form.documentType = data?.solutionType || 'FEASIBILITY'
   form.documentTitle = data?.solutionName || docTypeLabel(form.documentType)
-  form.projectName = data?.solutionName || ''
+  form.projectName = ''
   form.aiLevel = data?.aiLevel || 'STANDARD'
   form.writingStyle = data?.writingStyle || 'PROFESSIONAL'
   form.mainRequirement = data?.requirement?.purchaseRequirement || ''
@@ -766,7 +1073,9 @@ function applyDoc(data, options = {}) {
   parseTask.value = data?.latestParseTask || parseTask.value
   Object.keys(formData).forEach((key) => delete formData[key])
   fillFormDataFromSummary(data?.requirement?.technicalRequirement || '')
+  form.projectName = String(formData.projectName || data?.solutionName || '')
   ensureCurrentFields()
+  scheduleAutoFillForCurrentDoc()
   const leaves = leafNodes.value
   const previousNode = leaves.find((node) => String(node?.id || '') === String(previousActiveId || ''))
   const latestGeneratedNode = [...leaves].reverse().find((node) => node?.section?.content)
@@ -813,8 +1122,14 @@ function validateForm() {
     return false
   }
   for (const field of currentFields.value) {
-    if (field.required && !String(formData[field.prop] || '').trim()) {
+    if (!field.required) continue
+    const value = String(formData[field.prop] || '').trim()
+    if (!value) {
       ElMessage.warning(`请填写${field.label}`)
+      return false
+    }
+    if (isWeakFormValue(field, value)) {
+      ElMessage.warning(`请补充有效的${field.label}`)
       return false
     }
   }
@@ -839,6 +1154,9 @@ function buildFormPayload() {
 async function saveFormOnly() {
   if (isOperationLocked.value) return false
   if (!currentDoc.value?.id) return false
+  if (requiredMissingFields().length) {
+    await tryAutoFillFromLatestParseTask({ force: true, silent: true })
+  }
   if (!validateForm()) return false
   saving.value = true
   try {
@@ -892,13 +1210,116 @@ function pollParseTask(taskId) {
       clearInterval(parseTimer)
       parseTimer = null
       if (status === 'SUCCESS') {
-        await refreshCurrent()
-        ElMessage.success('资料解析完成')
+        await autoFillAfterParseSuccess(taskId)
       }
     }
   }
   tick()
   parseTimer = setInterval(tick, 2500)
+}
+
+
+async function autoFillAfterParseSuccess(taskId) {
+  await tryAutoFillFromLatestParseTask({ taskId, force: true, silent: false, successPrefix: '资料解析完成' })
+}
+
+function latestSuccessfulParseTaskId() {
+  const candidates = [parseTask.value, currentDoc.value?.latestParseTask]
+  for (const task of candidates) {
+    const status = String(task?.status || '').toUpperCase()
+    if (task?.id && status === 'SUCCESS') return task.id
+  }
+  return ''
+}
+
+function shouldAutoFillCurrentDoc() {
+  return !!currentDoc.value?.id && !!latestSuccessfulParseTaskId() && requiredMissingFields().length > 0
+}
+
+function scheduleAutoFillForCurrentDoc() {
+  const taskId = latestSuccessfulParseTaskId()
+  if (!taskId || autoFillDoneTaskIds.has(String(taskId)) || autoFillRunning.value) return
+  if (!shouldAutoFillCurrentDoc()) return
+  window.setTimeout(() => {
+    const latestTaskId = latestSuccessfulParseTaskId()
+    if (!latestTaskId || autoFillDoneTaskIds.has(String(latestTaskId)) || autoFillRunning.value) return
+    if (!shouldAutoFillCurrentDoc()) return
+    tryAutoFillFromLatestParseTask({ taskId: latestTaskId, force: false, silent: true })
+  }, 0)
+}
+
+async function tryAutoFillFromLatestParseTask(options = {}) {
+  if (!currentDoc.value?.id || autoFillRunning.value) return false
+  const taskId = options.taskId || latestSuccessfulParseTaskId()
+  if (!taskId) return false
+  if (!options.force && autoFillDoneTaskIds.has(String(taskId))) return false
+  autoFillRunning.value = true
+  try {
+    const updated = await autoFillDocumentFromReference(
+      currentDoc.value.id,
+      { taskId },
+      { silentError: !!options.silent }
+    )
+    autoFillDoneTaskIds.add(String(taskId))
+    applyDoc(updated)
+    await loadDocuments()
+    const missing = requiredMissingFields()
+    if (!options.silent) {
+      const prefix = options.successPrefix || '参考资料识别完成'
+      if (missing.length) {
+        ElMessage.warning(`${prefix}，已自动填充部分内容，请补充：${missing.join('、')}`)
+      } else {
+        ElMessage.success(`${prefix}，已自动填充表单内容`)
+      }
+    }
+    return true
+  } catch (e) {
+    autoFillDoneTaskIds.add(String(taskId))
+    await refreshCurrent()
+    if (!options.silent) {
+      ElMessage.warning('资料解析完成，但自动填充失败，请手工补充后再生成大纲')
+    }
+    return false
+  } finally {
+    autoFillRunning.value = false
+  }
+}
+
+function requiredMissingFields() {
+  const missing = []
+  if (!form.documentTitle?.trim()) missing.push('文档标题')
+  currentFields.value.forEach((field) => {
+    if (!field.required) return
+    const value = String(formData[field.prop] || '').trim()
+    if (!value || isWeakFormValue(field, value)) {
+      missing.push(field.label)
+    }
+  })
+  return missing
+}
+
+function isWeakFormValue(field, value) {
+  const prop = String(field?.prop || '').trim()
+  const compact = String(value || '').replace(/\s+/g, '')
+  if (!compact) return true
+  if (/请输入|请填写|示例|例如|如：|如:|确认意见|审核意见|评审意见|目录要求|整体编写方向|补充你希望|章节篇幅|自动分配/.test(compact)) return true
+  if (/投标文件格式要求|工期质量要求|商务报价要求|评分办法|评标办法|投标人须知|废标条款|资格审查|形式评审|响应性评审/.test(compact)) return true
+  if (['constructionContent', 'content', 'scope', 'pollution', 'roads'].includes(prop)) {
+    return compact.length < 18 || /^(建设内容|主要建设内容|项目内容|服务内容|招标范围|承包范围|工程概况)[。.:：]*$/.test(compact)
+  }
+  if (['builder', 'partyA', 'partyB'].includes(prop)) {
+    return compact.length > 80 || /确认意见|单位确认|盖章|签字/.test(compact) || /^(建设单位|甲方|乙方|采购人|招标人)[。.:：]*$/.test(compact)
+  }
+  if (prop === 'period') {
+    return compact.length > 80 || /质量要求|商务报价|评分|评标|格式要求/.test(compact) || /^(工期|建设周期|实施周期)[。.:：]*$/.test(compact)
+  }
+  if (['investment', 'amount'].includes(prop)) {
+    return /^(金额|投资金额|总投资|合同金额|报价)[。.:：]*$/.test(compact)
+  }
+  if (prop === 'location') {
+    return /^(项目地点|建设地点|工程地点|项目位置)[。.:：]*$/.test(compact)
+  }
+  return false
 }
 
 function isOutlineGeneratingStatus(status) {
@@ -951,6 +1372,9 @@ async function onGenerateOutline() {
   if (isOutlineGenerating.value) {
     ElMessage.warning('大纲正在生成中，请等待完成')
     return
+  }
+  if (requiredMissingFields().length) {
+    await tryAutoFillFromLatestParseTask({ force: true, silent: true })
   }
   if (!validateForm()) return
   outlineLoading.value = true
@@ -3681,5 +4105,139 @@ function fallbackTypes() {
 .generate-dock-tools :deep(.el-button.is-disabled),
 .generate-dock-tools :deep(.el-select.is-disabled .el-select__wrapper) {
   opacity: .72;
+}
+</style>
+
+
+<style scoped>
+.quality-check-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.quality-check-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1f2937;
+}
+
+.quality-check-desc {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quality-stat-card {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid #e6eef8;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.quality-stat-card span {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.quality-stat-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.2;
+  color: #1d4ed8;
+}
+
+.quality-stat-card small {
+  display: block;
+  margin-top: 4px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.quality-alert {
+  margin: 0;
+}
+
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 36px;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-score-cell strong {
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.quality-risk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.5;
+}
+
+.quality-problem-text strong {
+  color: #1f2937;
+}
+
+.quality-problem-text span,
+.muted-text {
+  color: #94a3b8;
+}
+
+.review-textarea {
+  margin-top: 12px;
+}
+
+.quality-table :deep(.quality-row-rewrite td) {
+  background: #fff1f2 !important;
+}
+
+.quality-table :deep(.quality-row-review td) {
+  background: #fffbeb !important;
+}
+
+.quality-table :deep(.quality-row-missing td) {
+  background: #f8fafc !important;
+}
+
+@media (max-width: 1200px) {
+  .quality-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

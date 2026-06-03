@@ -46,6 +46,16 @@ export function getDocumentParseTask(taskId) {
   return request({ url: `/ai-document/parse/task/${taskId}`, method: 'get' })
 }
 
+export function autoFillDocumentFromReference(id, data = {}, options = {}) {
+  return request({
+    url: `/ai-document/${id}/reference/auto-fill`,
+    method: 'post',
+    data,
+    timeout: NO_TIMEOUT,
+    silentError: !!options.silentError
+  })
+}
+
 export function generateDocumentOutline(id, data) {
   return request({ url: `/ai-document/${id}/outline/generate`, method: 'post', data, timeout: NO_TIMEOUT })
 }
