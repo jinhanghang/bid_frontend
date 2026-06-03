@@ -81,3 +81,27 @@ export function startDocumentExportTask(id, format, data = {}) {
 export function getDocumentExportTask(exportId) {
   return request({ url: `/ai-document/export-task/${exportId}`, method: 'get', timeout: NO_TIMEOUT })
 }
+
+export function getDocumentQualityCheck(id) {
+  return request({ url: `/ai-document/${id}/quality-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function getDocumentWordCountStats(id) {
+  return request({ url: `/ai-document/${id}/word-count-stats`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function getDocumentConsistencyPackage(id) {
+  return request({ url: `/ai-document/${id}/consistency-package`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function getDocumentDuplicateCheck(id) {
+  return request({ url: `/ai-document/${id}/duplicate-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function compressDocumentDuplicateSections(id) {
+  return request({ url: `/ai-document/${id}/duplicate-compress`, method: 'post', timeout: NO_TIMEOUT })
+}
+
+export function reviewDocumentByAi(id) {
+  return request({ url: `/ai-document/${id}/ai-review`, method: 'post', timeout: NO_TIMEOUT })
+}

@@ -93,6 +93,10 @@
           <div class="header-actions">
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
             <el-button :icon="Refresh" :loading="detailLoading" @click="refreshCurrent">刷新</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentWordCount">字数检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentQualityCheck">质量检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="reviewDocument">AI审稿</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="showDocumentDuplicateCheck">重复检查</el-button>
             <el-button type="success" :loading="exportLoading" :disabled="!canExport || isOperationLocked" @click="onExport">导出</el-button>
           </div>
         </section>
@@ -375,6 +379,11 @@ import {
   getDocument,
   getDocumentGenerationTask,
   getDocumentParseTask,
+  getDocumentQualityCheck,
+  getDocumentWordCountStats,
+  getDocumentDuplicateCheck,
+  compressDocumentDuplicateSections,
+  reviewDocumentByAi,
   listDocumentTypes,
   pageDocuments,
   rewriteDocumentFull,
@@ -676,6 +685,59 @@ async function refreshCurrent() {
   } finally {
     detailLoading.value = false
   }
+}
+
+function textBlock(title, lines = []) {
+  return `<div style="line-height:1.8"><b>${title}</b><br/>${lines.filter(Boolean).map(i => String(i)).join('<br/>')}</div>`
+}
+
+async function showDocumentWordCount() {
+  if (!currentDoc.value?.id) return
+  const data = await getDocumentWordCountStats(currentDoc.value.id)
+  await ElMessageBox.alert(textBlock('字数检查', [
+    data?.summary,
+    `目标字数：${data?.targetWordCount || 0}`,
+    `生成字数：${data?.actualWordCount || 0}`,
+    `超字数章节：${data?.overSections || 0}`,
+    `偏短章节：${data?.shortSections || 0}`
+  ]), 'AI文档字数检查', { dangerouslyUseHTMLString: true })
+}
+
+async function showDocumentQualityCheck() {
+  if (!currentDoc.value?.id) return
+  const data = await getDocumentQualityCheck(currentDoc.value.id)
+  await ElMessageBox.alert(textBlock('质量检查', [
+    `平均分：${data?.averageScore || 0}`,
+    `需关注章节：${data?.attentionSections || 0}`,
+    `建议重编章节：${data?.rewriteSections || 0}`,
+    `已检查章节：${data?.checkedSections || 0}/${data?.totalSections || 0}`
+  ]), 'AI文档质量检查', { dangerouslyUseHTMLString: true })
+}
+
+async function showDocumentDuplicateCheck() {
+  if (!currentDoc.value?.id) return
+  const data = await getDocumentDuplicateCheck(currentDoc.value.id)
+  const confirm = data?.recommendCompress
+    ? await ElMessageBox.confirm(textBlock('重复检查', [data?.summary, `预计可压缩：${data?.estimatedRemovableWords || 0} 字`, '是否一键压缩重复内容？']), 'AI文档重复检查', { dangerouslyUseHTMLString: true, confirmButtonText: '一键压缩', cancelButtonText: '暂不处理' }).catch(() => false)
+    : false
+  if (confirm) {
+    const updated = await compressDocumentDuplicateSections(currentDoc.value.id)
+    applyDoc(updated)
+    ElMessage.success('重复内容已压缩')
+  } else if (!data?.recommendCompress) {
+    ElMessage.success(data?.summary || '未发现明显重复内容')
+  }
+}
+
+async function reviewDocument() {
+  if (!currentDoc.value?.id) return
+  const data = await reviewDocumentByAi(currentDoc.value.id)
+  await ElMessageBox.alert(textBlock('AI审稿', [
+    data?.summary,
+    `审稿得分：${data?.overallScore || 0}`,
+    `风险等级：${data?.riskLevel || '-'}`,
+    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 5).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
+  ]), 'AI文档二次审稿', { dangerouslyUseHTMLString: true })
 }
 
 // 全文生成中需要轻量刷新右侧正文和左侧大纲。

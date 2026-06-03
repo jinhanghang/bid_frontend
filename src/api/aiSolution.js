@@ -228,49 +228,8 @@ function handleSseChunk(chunk, handlers) {
   return eventName
 }
 
-
 export function getSolutionQualityCheck(id) {
   return request({ url: `/ai-solution/${id}/quality-check`, method: 'get', timeout: NO_TIMEOUT })
-}
-
-export function getRequirementExtract(id) {
-  return request({ url: `/ai-solution/${id}/requirement-extract`, method: 'get', timeout: NO_TIMEOUT })
-}
-
-export function rebuildRequirementExtract(id) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/rebuild`, method: 'post', timeout: NO_TIMEOUT })
-}
-
-export function syncRequirementExtractToOutline(id) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/sync-outline`, method: 'post', timeout: NO_TIMEOUT })
-}
-
-export function updateRequirementExtractSummary(id, data) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/summary`, method: 'put', data })
-}
-
-export function createRequirementScoreItem(id, data) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/score-items`, method: 'post', data })
-}
-
-export function updateRequirementScoreItem(id, itemId, data) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/score-items/${itemId}`, method: 'put', data })
-}
-
-export function deleteRequirementScoreItem(id, itemId) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/score-items/${itemId}`, method: 'delete' })
-}
-
-export function createRequirementItem(id, data) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items`, method: 'post', data })
-}
-
-export function updateRequirementItem(id, itemId, data) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items/${itemId}`, method: 'put', data })
-}
-
-export function deleteRequirementItem(id, itemId) {
-  return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items/${itemId}`, method: 'delete' })
 }
 
 export function getSolutionWordCountStats(id) {
@@ -289,6 +248,6 @@ export function compressSolutionDuplicateSections(id) {
   return request({ url: `/ai-solution/${id}/duplicate-compress`, method: 'post', timeout: NO_TIMEOUT })
 }
 
-export function runSolutionAiReview(id) {
+export function reviewSolutionByAi(id) {
   return request({ url: `/ai-solution/${id}/ai-review`, method: 'post', timeout: NO_TIMEOUT })
 }

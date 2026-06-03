@@ -355,27 +355,6 @@
                 </div>
 
                 <div class="tech-form-section">
-                  <div class="tech-label">目录知识库：</div>
-                  <div class="knowledge-setting">
-                    <div class="knowledge-actions">
-                      <el-button @click="goKnowledgeBasePage">上传</el-button>
-                      <el-button @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
-                    </div>
-                    <div v-if="selectedOutlineKnowledgeBases.length" class="selected-kb-list">
-                      <el-tag
-                        v-for="kb in selectedOutlineKnowledgeBases"
-                        :key="kb.id"
-                        closable
-                        @close="removeSelectedKnowledgeBase(kb.id, 'outline')"
-                      >
-                        {{ kb.kbName }}
-                      </el-tag>
-                    </div>
-                    <div v-else class="selected-kb-empty">未选择知识库，目录会主要按采购需求和评分项生成</div>
-                  </div>
-                </div>
-
-                <div class="tech-form-section">
                   <div class="tech-inline-title">
                     <span class="required">采购需求：</span>
                     <el-button size="small" :disabled="!isParseSuccess" @click="extractTechnicalRequirement">从解析报告重新提取</el-button>
@@ -515,6 +494,10 @@
 
                     <div class="tech-preview-actions detail-actions-like-solution">
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalVersionDialog">历史版本</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalWordCountCheck">字数检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalQualityCheck">质量检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalDuplicateCheck">重复检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="reviewTechnicalByAi">AI审稿</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
@@ -1096,7 +1079,12 @@ import {
   addBidProjectTechnicalOutlineNode,
   deleteBidProjectTechnicalOutlineNodes,
   moveBidProjectTechnicalOutlineNode,
-  updateBidProjectTechnicalSectionContent
+  updateBidProjectTechnicalSectionContent,
+  getBidProjectTechnicalQualityCheck,
+  getBidProjectTechnicalWordCountStats,
+  getBidProjectTechnicalDuplicateCheck,
+  compressBidProjectTechnicalDuplicateSections,
+  reviewBidProjectTechnicalByAi
 } from '@/api/bidProject'
 import { getCurrentUserRunningAiTask } from '@/api/aiSolution'
 
@@ -1206,7 +1194,6 @@ const tempSelectedKnowledgeIds = ref([])
 const knowledgeSelectorTarget = ref('full')
 const selectedKnowledgeBaseCache = ref([])
 const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
-const selectedOutlineKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(technicalForm.knowledgeIds)))
 const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
 
 const technicalVersionDialogVisible = ref(false)
@@ -1264,8 +1251,7 @@ const technicalForm = reactive({
   purchaseRequirement: '',
   scoreRequirement: '',
   outlineMode: 'SCORE_ITEM',
-  outlineRequirement: '',
-  knowledgeIds: []
+  outlineRequirement: ''
 })
 const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
 
@@ -1299,8 +1285,7 @@ function resetTechnicalWorkspace() {
     purchaseRequirement: '',
     scoreRequirement: '',
     outlineMode: 'SCORE_ITEM',
-    outlineRequirement: '',
-    knowledgeIds: []
+    outlineRequirement: ''
   })
   resetBidDocumentWorkspace()
 }
@@ -2234,7 +2219,6 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
   technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement
-  technicalForm.knowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
   extractTechnicalRequirement(false, false)
   technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 2 : 1)
 }
@@ -2322,8 +2306,7 @@ async function generateTechnicalOutline() {
       purchaseRequirement: technicalForm.purchaseRequirement,
       scoreRequirement: technicalForm.scoreRequirement,
       outlineMode: technicalForm.outlineMode,
-      outlineRequirement: technicalForm.outlineRequirement,
-      knowledgeIds: stringifyKnowledgeIds(technicalForm.knowledgeIds)
+      outlineRequirement: technicalForm.outlineRequirement
     })
 
     // 如果用户在生成期间切换了项目，不要把返回结果写到别的项目页面。
@@ -2423,17 +2406,15 @@ function collectTechnicalFullGenerateKnowledgeIds() {
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
-  if (target === 'section') return parseKnowledgeIds(sectionForm.knowledgeIds)
-  if (target === 'outline') return parseKnowledgeIds(technicalForm.knowledgeIds)
-  return normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
+  return target === 'section'
+    ? parseKnowledgeIds(sectionForm.knowledgeIds)
+    : normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
   const normalized = normalizeKnowledgeIds(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
-  } else if (target === 'outline') {
-    technicalForm.knowledgeIds = normalized
   } else {
     fullGenerateForm.knowledgeIds = normalized
   }
@@ -2860,6 +2841,58 @@ async function chooseExportFormat() {
   } catch (action) {
     return action === 'cancel' ? 'pdf' : ''
   }
+}
+
+function internalInfoHtml(title, lines = []) {
+  return `<div style="line-height:1.8"><b>${title}</b><br/>${lines.filter(Boolean).map(i => String(i)).join('<br/>')}</div>`
+}
+
+async function showTechnicalWordCountCheck() {
+  if (!selectedProject.value?.id) return
+  const data = await getBidProjectTechnicalWordCountStats(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('技术方案字数检查', [
+    data?.summary,
+    `目标字数：${data?.targetWordCount || 0}`,
+    `生成字数：${data?.actualWordCount || 0}`,
+    `超字数章节：${data?.overSections || 0}`,
+    `偏短章节：${data?.shortSections || 0}`
+  ]), '字数检查', { dangerouslyUseHTMLString: true })
+}
+
+async function showTechnicalQualityCheck() {
+  if (!selectedProject.value?.id) return
+  const data = await getBidProjectTechnicalQualityCheck(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('技术方案质量检查', [
+    `平均分：${data?.averageScore || 0}`,
+    `已检查章节：${data?.checkedSections || 0}/${data?.totalSections || 0}`,
+    `需关注章节：${data?.attentionSections || 0}`,
+    `建议重编章节：${data?.rewriteSections || 0}`
+  ]), '质量检查', { dangerouslyUseHTMLString: true })
+}
+
+async function showTechnicalDuplicateCheck() {
+  if (!selectedProject.value?.id) return
+  const data = await getBidProjectTechnicalDuplicateCheck(selectedProject.value.id)
+  if (!data?.recommendCompress) {
+    ElMessage.success(data?.summary || '未发现明显重复内容')
+    return
+  }
+  await ElMessageBox.confirm(internalInfoHtml('技术方案重复检查', [data?.summary, `预计可压缩：${data?.estimatedRemovableWords || 0} 字`, '是否一键压缩重复内容？']), '重复检查', { dangerouslyUseHTMLString: true, confirmButtonText: '一键压缩', cancelButtonText: '暂不处理' })
+  const updated = await compressBidProjectTechnicalDuplicateSections(selectedProject.value.id)
+  technicalSolution.value = updated
+  ElMessage.success('重复内容已压缩')
+  await loadTechnicalSolution()
+}
+
+async function reviewTechnicalByAi() {
+  if (!selectedProject.value?.id) return
+  const data = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('AI审稿', [
+    data?.summary,
+    `审稿得分：${data?.overallScore || 0}`,
+    `风险等级：${data?.riskLevel || '-'}`,
+    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 6).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
+  ]), 'AI二次审稿', { dangerouslyUseHTMLString: true })
 }
 
 async function exportTechnical() {

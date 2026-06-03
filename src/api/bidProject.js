@@ -470,3 +470,27 @@ function handleSseChunk(chunk, handlers) {
   else handlers.onMessage?.(data)
   return eventName
 }
+
+export function getBidProjectTechnicalQualityCheck(id) {
+  return request.get(`/bid-project/${id}/technical-solution/quality-check`, { timeout: NO_TIMEOUT })
+}
+
+export function getBidProjectTechnicalWordCountStats(id) {
+  return request.get(`/bid-project/${id}/technical-solution/word-count-stats`, { timeout: NO_TIMEOUT })
+}
+
+export function getBidProjectTechnicalConsistencyPackage(id) {
+  return request.get(`/bid-project/${id}/technical-solution/consistency-package`, { timeout: NO_TIMEOUT })
+}
+
+export function getBidProjectTechnicalDuplicateCheck(id) {
+  return request.get(`/bid-project/${id}/technical-solution/duplicate-check`, { timeout: NO_TIMEOUT })
+}
+
+export function compressBidProjectTechnicalDuplicateSections(id) {
+  return request.post(`/bid-project/${id}/technical-solution/duplicate-compress`, null, { timeout: NO_TIMEOUT })
+}
+
+export function reviewBidProjectTechnicalByAi(id) {
+  return request.post(`/bid-project/${id}/technical-solution/ai-review`, null, { timeout: NO_TIMEOUT })
+}
