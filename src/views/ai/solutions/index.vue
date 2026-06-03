@@ -306,6 +306,8 @@
             <div class="detail-actions">
               <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openRequirementExtractDrawer">评分项/需求解析</el-button>
               <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openQualityCheckDrawer">质量检查</el-button>
+              <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openWordCountDrawer">字数检查</el-button>
+              <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id" @click="openReviewDrawer">AI审稿</el-button>
               <el-button class="detail-action-btn" size="large" plain :disabled="!currentSolution?.id || hasRunningTask" @click="openVersionDialog">历史版本</el-button>
               <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteAll" @click="openFullGenerateDialog('REWRITE')" :loading="fullGenerating || hasRunningTask">{{ isRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
               <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerate" @click="openFullGenerateDialog('GENERATE')" :loading="fullGenerating || hasRunningTask">{{ generateActionText }}</el-button>
@@ -433,6 +435,84 @@
             </template>
           </el-table-column>
         </el-table>
+      </div>
+    </el-drawer>
+
+
+    <el-drawer
+      v-model="wordCountVisible"
+      title="字数检查与重复内容"
+      size="58%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="wordCountLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">目标字数与生成字数</div>
+            <div class="quality-check-desc">仅展示用户可理解的字数信息，不展示 Token、费用、模型调用次数等内部数据。</div>
+          </div>
+          <div class="toolbar-actions">
+            <el-button plain :disabled="!currentSolution?.id" @click="loadWordCountStats">刷新</el-button>
+            <el-button type="warning" plain :disabled="!duplicateCheckData?.recommendCompress || hasRunningTask" :loading="duplicateCompressing" @click="onCompressDuplicates">一键压缩重复</el-button>
+          </div>
+        </div>
+        <div class="quality-stat-grid">
+          <div class="quality-stat-card"><span>目标字数</span><strong>{{ wordCountStats.targetWordCount || 0 }}</strong><small>方案目标</small></div>
+          <div class="quality-stat-card"><span>生成字数</span><strong>{{ wordCountStats.actualWordCount || 0 }}</strong><small>当前正文</small></div>
+          <div class="quality-stat-card"><span>完成度</span><strong>{{ wordCountStats.ratioPercent || 0 }}%</strong><small>{{ wordCountStats.summary || '-' }}</small></div>
+          <div class="quality-stat-card"><span>重复段落</span><strong>{{ duplicateCheckData.duplicateParagraphCount || 0 }}</strong><small>{{ duplicateCheckData.summary || '未检查' }}</small></div>
+        </div>
+        <el-alert v-if="wordCountStats.overSections" type="warning" show-icon :closable="false" class="quality-alert" :title="`发现 ${wordCountStats.overSections} 个章节超出目标字数`" description="建议优先压缩重复背景、通用口号和同义反复，保留评分响应、措施、交付物和验收依据。" />
+        <el-table class="ui-table quality-table" :data="wordCountStats.items || []" border stripe size="small" empty-text="暂无字数数据">
+          <el-table-column label="序号" type="index" width="70" align="center" />
+          <el-table-column prop="path" label="章节" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="targetWordCount" label="目标" width="90" align="center" />
+          <el-table-column prop="actualWordCount" label="生成" width="90" align="center" />
+          <el-table-column prop="ratioPercent" label="比例" width="90" align="center"><template #default="{ row }">{{ row.ratioPercent || 0 }}%</template></el-table-column>
+          <el-table-column prop="status" label="状态" width="120" align="center"><template #default="{ row }"><el-tag size="small" :type="wordStatusTagType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
+          <el-table-column prop="suggestion" label="建议" min-width="220" show-overflow-tooltip />
+        </el-table>
+      </div>
+    </el-drawer>
+
+    <el-drawer
+      v-model="reviewVisible"
+      title="AI二次审稿"
+      size="58%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="reviewLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">全文统一口径与审稿建议</div>
+            <div class="quality-check-desc">用于正式导出前检查术语、工期、人员、交付物、服务承诺、重复内容和风险表达。</div>
+          </div>
+          <el-button type="primary" :disabled="!currentSolution?.id || hasRunningTask" :loading="reviewLoading" @click="runAiReviewNow">开始审稿</el-button>
+        </div>
+        <el-descriptions v-if="consistencyPackage" :column="1" border class="extract-summary">
+          <el-descriptions-item label="统一术语">{{ consistencyPackage.unifiedTerms || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一工期">{{ consistencyPackage.unifiedPeriod || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一人员">{{ consistencyPackage.unifiedPersonnel || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一交付物">{{ consistencyPackage.unifiedDeliverables || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="服务承诺">{{ consistencyPackage.unifiedServiceCommitment || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="风险边界">{{ consistencyPackage.unifiedRiskBoundary || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        <template v-if="reviewResult">
+          <div class="quality-stat-grid">
+            <div class="quality-stat-card"><span>审稿得分</span><strong>{{ reviewResult.overallScore ?? '-' }}</strong><small>{{ reviewResult.summary || '-' }}</small></div>
+            <div class="quality-stat-card"><span>风险等级</span><strong>{{ reviewResult.riskLevel || '-' }}</strong><small>LOW / MEDIUM / HIGH</small></div>
+            <div class="quality-stat-card"><span>问题数量</span><strong>{{ (reviewResult.issues || []).length }}</strong><small>建议逐项处理</small></div>
+          </div>
+          <el-table class="ui-table quality-table" :data="reviewResult.issues || []" border stripe size="small" empty-text="暂无审稿问题">
+            <el-table-column prop="severity" label="等级" width="100" align="center" />
+            <el-table-column prop="title" label="问题" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="修改建议" min-width="260" show-overflow-tooltip />
+          </el-table>
+          <el-input v-if="reviewResult.aiReviewText" class="review-textarea" type="textarea" :rows="12" readonly :model-value="reviewResult.aiReviewText" />
+        </template>
       </div>
     </el-drawer>
 
@@ -1079,6 +1159,11 @@ import {
   listSolutionVersions,
   getSolution,
   getSolutionQualityCheck,
+  getSolutionWordCountStats,
+  getSolutionConsistencyPackage,
+  getSolutionDuplicateCheck,
+  compressSolutionDuplicateSections,
+  runSolutionAiReview,
   getRequirementExtract,
   rebuildRequirementExtract,
   moveOutlineNode,
@@ -1164,6 +1249,15 @@ const generateOutlineButtonText = computed(() => {
 const scoreDialogVisible = ref(false)
 const requirementExtractVisible = ref(false)
 const qualityCheckVisible = ref(false)
+const wordCountVisible = ref(false)
+const wordCountLoading = ref(false)
+const wordCountStats = ref({ items: [] })
+const duplicateCheckData = ref({ duplicates: [] })
+const duplicateCompressing = ref(false)
+const reviewVisible = ref(false)
+const reviewLoading = ref(false)
+const consistencyPackage = ref(null)
+const reviewResult = ref(null)
 const qualityCheckLoading = ref(false)
 const qualityCheckData = ref({ items: [], totalSections: 0, checkedSections: 0, averageScore: 0, excellentSections: 0, usableSections: 0, attentionSections: 0, rewriteSections: 0, noQualityLogSections: 0 })
 const requirementExtractLoading = ref(false)
@@ -1714,6 +1808,81 @@ function qualityRowClassName({ row }) {
   if (row.recommendRewrite) return 'quality-row-rewrite'
   if (row.recommendReview) return 'quality-row-review'
   return ''
+}
+
+
+async function openWordCountDrawer() {
+  if (!currentSolution.value?.id) return
+  wordCountVisible.value = true
+  await loadWordCountStats()
+}
+
+async function loadWordCountStats() {
+  if (!wordCountVisible.value || !currentSolution.value?.id) return
+  wordCountLoading.value = true
+  try {
+    const [wordRes, duplicateRes] = await Promise.all([
+      getSolutionWordCountStats(currentSolution.value.id),
+      getSolutionDuplicateCheck(currentSolution.value.id)
+    ])
+    wordCountStats.value = wordRes || { items: [] }
+    duplicateCheckData.value = duplicateRes || { duplicates: [] }
+  } catch (e) {
+    ElMessage.error(e?.message || '加载字数检查失败')
+  } finally {
+    wordCountLoading.value = false
+  }
+}
+
+async function onCompressDuplicates() {
+  if (!currentSolution.value?.id) return
+  await ElMessageBox.confirm('系统将删除跨章节重复段落，保留首次出现内容。该操作不会新增事实内容，是否继续？', '一键压缩重复内容', {
+    type: 'warning', confirmButtonText: '开始压缩', cancelButtonText: '取消'
+  })
+  duplicateCompressing.value = true
+  try {
+    currentSolution.value = await compressSolutionDuplicateSections(currentSolution.value.id)
+    ElMessage.success('重复内容已压缩')
+    await loadWordCountStats()
+  } catch (e) {
+    ElMessage.error(e?.message || '压缩重复内容失败')
+  } finally {
+    duplicateCompressing.value = false
+  }
+}
+
+async function openReviewDrawer() {
+  if (!currentSolution.value?.id) return
+  reviewVisible.value = true
+  reviewResult.value = null
+  reviewLoading.value = true
+  try {
+    consistencyPackage.value = await getSolutionConsistencyPackage(currentSolution.value.id)
+  } catch (e) {
+    ElMessage.error(e?.message || '加载全文统一口径失败')
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
+async function runAiReviewNow() {
+  if (!currentSolution.value?.id) return
+  reviewLoading.value = true
+  try {
+    reviewResult.value = await runSolutionAiReview(currentSolution.value.id)
+    ElMessage.success('AI二次审稿完成')
+  } catch (e) {
+    ElMessage.error(e?.message || 'AI二次审稿失败')
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
+function wordStatusTagType(status) {
+  if (status === '字数正常') return 'success'
+  if (status === '略超字数' || status === '明显偏短') return 'warning'
+  if (status === '明显超字数') return 'danger'
+  return 'info'
 }
 
 async function openRequirementExtractDrawer() {

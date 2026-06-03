@@ -272,3 +272,23 @@ export function updateRequirementItem(id, itemId, data) {
 export function deleteRequirementItem(id, itemId) {
   return request({ url: `/ai-solution/${id}/requirement-extract/requirement-items/${itemId}`, method: 'delete' })
 }
+
+export function getSolutionWordCountStats(id) {
+  return request({ url: `/ai-solution/${id}/word-count-stats`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function getSolutionConsistencyPackage(id) {
+  return request({ url: `/ai-solution/${id}/consistency-package`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function getSolutionDuplicateCheck(id) {
+  return request({ url: `/ai-solution/${id}/duplicate-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
+export function compressSolutionDuplicateSections(id) {
+  return request({ url: `/ai-solution/${id}/duplicate-compress`, method: 'post', timeout: NO_TIMEOUT })
+}
+
+export function runSolutionAiReview(id) {
+  return request({ url: `/ai-solution/${id}/ai-review`, method: 'post', timeout: NO_TIMEOUT })
+}
