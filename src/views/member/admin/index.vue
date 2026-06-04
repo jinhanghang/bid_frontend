@@ -384,6 +384,7 @@ const sceneOptions = [
   { label: '章节正文生成', value: 'SOLUTION_SECTION_GENERATE' },
   { label: '全文生成', value: 'SOLUTION_FULL_GENERATE' },
   { label: '章节/全文重写', value: 'SOLUTION_REWRITE' },
+  { label: 'AI二次审稿', value: 'SOLUTION_AI_REVIEW' },
   { label: '知识库问答', value: 'KNOWLEDGE_RETRIEVAL_SUMMARY' }
 ]
 
@@ -659,7 +660,8 @@ function effectModulesText(row) {
   const type = String(row?.modelType || '').toLowerCase()
   if (type === 'rerank') return '知识库检索排序增强预留'
   if (!row?.sceneCode) return 'AI方案、AI文档、知识库问答通用兜底'
-  if (String(row.sceneCode).startsWith('SOLUTION_')) return 'AI方案、AI文档生成链路'
+  if (row.sceneCode === 'SOLUTION_AI_REVIEW') return 'AI方案、AI文档、AI标书审稿链路'
+  if (String(row.sceneCode).startsWith('SOLUTION_')) return 'AI方案、AI文档、AI标书生成链路'
   if (row.sceneCode === 'KNOWLEDGE_RETRIEVAL_SUMMARY') return '知识库问答总结'
   return '通用AI生成'
 }

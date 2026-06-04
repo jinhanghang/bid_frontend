@@ -15,7 +15,7 @@
         clearable
         placeholder="搜索文档"
         :prefix-icon="Search"
-        :disabled="isOperationLocked"
+        :disabled="false"
         @input="onSearchInput"
         @clear="reloadDocumentsFirstPage"
       />
@@ -26,7 +26,7 @@
             v-for="item in documents"
             :key="item.id"
             class="doc-item"
-            :class="{ active: currentDoc?.id === item.id, locked: isOperationLocked }"
+            :class="{ active: currentDoc?.id === item.id }"
             @click="loadDetail(item.id)"
           >
             <div class="doc-item-title">
@@ -89,6 +89,7 @@
               <el-tag type="success">目标 {{ currentDoc.targetWordCount || 0 }} 字</el-tag>
               <el-tag type="warning">已生成 {{ currentDoc.actualWordCount || 0 }} 字</el-tag>
             </div>
+            <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="章节正文生成" :ai-level="currentDoc.aiLevel || form.aiLevel" />
           </div>
           <div class="header-actions">
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
@@ -161,7 +162,7 @@
                 v-if="!outlineTree.length"
                 :description="isOutlineGenerating ? '大纲正在生成中，生成完成后会自动显示' : '暂无大纲，请点击填写/编辑信息后生成大纲'"
               />
-              <OutlineNodeList v-else :nodes="outlineTree" :active-id="activeNode?.id" :locked="isOperationLocked" @select="selectNode" />
+              <OutlineNodeList v-else :nodes="outlineTree" :active-id="activeNode?.id" :locked="false" @select="selectNode" />
             </div>
           </div>
 
@@ -197,7 +198,7 @@
                 type="textarea"
                 resize="none"
                 placeholder="章节正文生成后会显示在这里，也可以手工编辑后保存"
-                :disabled="isOperationLocked"
+                :readonly="isOperationLocked"
               />
             </template>
             <el-empty v-else description="请选择一个末级章节查看正文" />
@@ -513,47 +514,19 @@
       </div>
     </el-drawer>
 
-    <el-drawer
+    <AiReviewDrawer
       v-model="docReviewVisible"
       title="AI文档二次审稿"
-      size="58%"
-      destroy-on-close
-      class="quality-check-drawer"
-    >
-      <div class="quality-check-wrap" v-loading="docReviewLoading">
-        <div class="quality-check-toolbar">
-          <div>
-            <div class="quality-check-title">全文统一口径与审稿建议</div>
-            <div class="quality-check-desc">用于正式导出前检查术语、周期、交付物、结论、重复内容和风险表达。</div>
-          </div>
-          <el-button type="primary" :disabled="!currentDoc?.id || isOperationLocked" :loading="docReviewLoading" @click="runDocumentAiReviewNow">开始审稿</el-button>
-        </div>
+      biz-type="AI_DOCUMENT"
+      :biz-id="currentDoc?.id || ''"
+      :consistency-package="docConsistencyPackage"
+      :review-result="docReviewResult"
+      :loading="docReviewLoading"
+      :disabled="!currentDoc?.id || isOperationLocked"
+      :ai-level="currentDoc?.aiLevel || form.aiLevel"
+      @run-review="runDocumentAiReviewNow"
+    />
 
-        <el-descriptions v-if="docConsistencyPackage" :column="1" border class="extract-summary">
-          <el-descriptions-item label="统一术语">{{ docConsistencyPackage.unifiedTerms || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一周期">{{ docConsistencyPackage.unifiedPeriod || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一人员">{{ docConsistencyPackage.unifiedPersonnel || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一交付物">{{ docConsistencyPackage.unifiedDeliverables || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="服务承诺">{{ docConsistencyPackage.unifiedServiceCommitment || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="风险边界">{{ docConsistencyPackage.unifiedRiskBoundary || '-' }}</el-descriptions-item>
-        </el-descriptions>
-
-        <template v-if="docReviewResult">
-          <div class="quality-stat-grid">
-            <div class="quality-stat-card"><span>审稿得分</span><strong>{{ docReviewResult.overallScore ?? '-' }}</strong><small>{{ docReviewResult.summary || '-' }}</small></div>
-            <div class="quality-stat-card"><span>风险等级</span><strong>{{ docReviewResult.riskLevel || '-' }}</strong><small>LOW / MEDIUM / HIGH</small></div>
-            <div class="quality-stat-card"><span>问题数量</span><strong>{{ (docReviewResult.issues || []).length }}</strong><small>建议逐项处理</small></div>
-          </div>
-          <el-table class="ui-table quality-table" :data="docReviewResult.issues || []" border stripe size="small" empty-text="暂无审稿问题">
-            <el-table-column prop="severity" label="等级" width="100" align="center" />
-            <el-table-column prop="title" label="问题" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
-            <el-table-column prop="suggestion" label="修改建议" min-width="260" show-overflow-tooltip />
-          </el-table>
-          <el-input v-if="docReviewResult.aiReviewText" class="review-textarea" type="textarea" :rows="12" readonly :model-value="docReviewResult.aiReviewText" />
-        </template>
-      </div>
-    </el-drawer>
   </div>
 </template>
 
@@ -589,6 +562,8 @@ import {
 import { downloadFileResource, getCurrentUserRunningAiTask, streamSection, updateSectionContent } from '@/api/aiSolution'
 import { formatDateTime } from '@/utils/format'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
+import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
+import AiModelTrace from '@/components/ai/AiModelTrace.vue'
 
 const router = useRouter()
 
@@ -873,7 +848,8 @@ async function createNew(type) {
 }
 
 async function loadDetail(id) {
-  if (isOperationLocked.value && String(currentDoc.value?.id || '') !== String(id || '')) return
+  // AI文档全文生成属于后台任务，页面必须允许用户切换文档查看进度或历史内容。
+  // 只锁定新建、编辑、删除、生成、保存等写操作，不锁定左侧文档查看。
   detailLoading.value = true
   try {
     const data = await getDocument(id)
@@ -1039,7 +1015,11 @@ async function runDocumentAiReviewNow() {
   docReviewLoading.value = true
   try {
     docReviewResult.value = await reviewDocumentByAi(currentDoc.value.id)
-    ElMessage.success('AI二次审稿完成')
+    if (docReviewResult.value?.reviewRecordId) {
+      ElMessage.success('AI二次审稿完成，审稿记录已保存')
+    } else {
+      ElMessage.warning('AI二次审稿完成，但审稿记录未保存，请检查增量SQL和后端日志')
+    }
   } catch (e) {
     ElMessage.error(e?.message || 'AI二次审稿失败')
   } finally {
@@ -1080,16 +1060,12 @@ function applyDoc(data, options = {}) {
   const previousNode = leaves.find((node) => String(node?.id || '') === String(previousActiveId || ''))
   const latestGeneratedNode = [...leaves].reverse().find((node) => node?.section?.content)
 
-  // 全文生成中，如果当前选中的章节还没生成，而其他章节已经有正文，自动切到最新已生成章节。
-  // 这样用户不用手动刷新，也能看到 AI 正在持续产出内容。
-  if (options.preferLatestGenerated && previousNode && !previousNode?.section?.content && latestGeneratedNode) {
-    activeNode.value = latestGeneratedNode
-  } else {
-    activeNode.value = previousNode
-      || latestGeneratedNode
-      || leaves[0]
-      || null
-  }
+  // 全文生成轮询刷新时保留用户正在查看的章节，不再因为其他章节新生成而自动切走。
+  // 只有首次进入、当前选中章节不存在时，才默认选中最新已生成章节或第一节。
+  activeNode.value = previousNode
+    || latestGeneratedNode
+    || leaves[0]
+    || null
   sectionDraft.value = activeNode.value?.section?.content || ''
   if (!options.skipTaskPolling) resumeTaskPolling()
   resumeParsePolling()
@@ -1449,20 +1425,26 @@ function pollGenerationTask(taskId) {
   const tick = async () => {
     try {
       const task = await getDocumentGenerationTask(taskId)
-      runningTask.value = task
       const status = String(task.status || '').toUpperCase()
+      const taskDocId = String(task?.solutionId || task?.documentId || task?.bizId || '')
+      const currentDocId = String(currentDoc.value?.id || '')
+      const isTaskForCurrentDoc = !taskDocId || !currentDocId || taskDocId === currentDocId
       globalRunningTask.value = ['WAITING', 'RUNNING'].includes(status) ? task : null
+      runningTask.value = isTaskForCurrentDoc ? task : (currentDoc.value?.runningTask || null)
 
-      // 任务进行中也刷新文档详情：大纲状态、章节字数、右侧正文都会实时更新。
-      // preferLatestGenerated 会在当前选中章节尚未生成时，自动切到最新已生成章节。
-      await refreshCurrentLight({ skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+      // 后台生成任务可以继续轮询，但用户切换到其他文档查看时，不要用该任务刷新/污染当前文档详情。
+      if (isTaskForCurrentDoc) {
+        await refreshCurrentLight({ docId: currentDocId || taskDocId, skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+      }
       await loadDocuments()
 
       if (!['WAITING', 'RUNNING'].includes(status)) {
         clearInterval(taskTimer)
         taskTimer = null
-        runningTask.value = task
-        await refreshCurrentLight({ skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+        runningTask.value = isTaskForCurrentDoc ? task : null
+        if (isTaskForCurrentDoc) {
+          await refreshCurrentLight({ docId: currentDocId || taskDocId, skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+        }
         await loadDocuments()
         if (status === 'SUCCESS') ElMessage.success('全文生成完成')
         else if (status === 'PARTIAL') ElMessage.warning('生成完成，但存在失败章节，请检查后重试')
@@ -1477,7 +1459,7 @@ function pollGenerationTask(taskId) {
 }
 
 function selectNode(node) {
-  if (isOperationLocked.value) return
+  // 生成中也允许查看已生成章节或切换章节；保存/重写等写操作仍由按钮锁定。
   activeNode.value = node
   sectionDraft.value = node?.section?.content || ''
 }

@@ -398,6 +398,7 @@
                         <span>预估页数：<b class="green">{{ technicalActualPageCount }}</b> 页</span>
                       </div>
                       <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
+                      <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="章节正文生成" :ai-level="technicalForm.aiLevel" />
                     </div>
                     <el-button
                       :icon="technicalEditMode ? Close : EditPen"
@@ -1029,6 +1030,19 @@
       </template>
     </el-dialog>
 
+    <AiReviewDrawer
+      v-model="technicalReviewVisible"
+      title="AI标书技术方案二次审稿"
+      biz-type="BID_TECH"
+      :biz-id="selectedProject?.id || ''"
+      :consistency-package="technicalConsistencyPackage"
+      :review-result="technicalReviewResult"
+      :loading="technicalReviewLoading"
+      :disabled="!selectedProject?.id || !technicalSolution?.id || isTechnicalBusy"
+      :ai-level="technicalForm.aiLevel"
+      @run-review="runTechnicalAiReviewNow"
+    />
+
   </div>
 </template>
 
@@ -1083,10 +1097,13 @@ import {
   getBidProjectTechnicalQualityCheck,
   getBidProjectTechnicalWordCountStats,
   getBidProjectTechnicalDuplicateCheck,
+  getBidProjectTechnicalConsistencyPackage,
   compressBidProjectTechnicalDuplicateSections,
   reviewBidProjectTechnicalByAi
 } from '@/api/bidProject'
 import { getCurrentUserRunningAiTask } from '@/api/aiSolution'
+import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
+import AiModelTrace from '@/components/ai/AiModelTrace.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -1178,6 +1195,10 @@ const sectionNode = ref(null)
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
 const sectionOptimizing = ref('')
+const technicalReviewVisible = ref(false)
+const technicalReviewLoading = ref(false)
+const technicalConsistencyPackage = ref(null)
+const technicalReviewResult = ref(null)
 const sectionOptimizingNodeId = ref('')
 const sectionStreamingText = ref('')
 const technicalShortenDialogVisible = ref(false)
@@ -2924,13 +2945,33 @@ async function showTechnicalDuplicateCheck() {
 
 async function reviewTechnicalByAi() {
   if (!selectedProject.value?.id) return
-  const data = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
-  await ElMessageBox.alert(internalInfoHtml('AI审稿', [
-    data?.summary,
-    `审稿得分：${data?.overallScore || 0}`,
-    `风险等级：${data?.riskLevel || '-'}`,
-    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 6).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
-  ]), 'AI二次审稿', { dangerouslyUseHTMLString: true })
+  technicalReviewVisible.value = true
+  technicalReviewResult.value = null
+  technicalReviewLoading.value = true
+  try {
+    technicalConsistencyPackage.value = await getBidProjectTechnicalConsistencyPackage(selectedProject.value.id)
+  } catch (e) {
+    ElMessage.error(e?.message || '加载全文统一口径失败')
+  } finally {
+    technicalReviewLoading.value = false
+  }
+}
+
+async function runTechnicalAiReviewNow() {
+  if (!selectedProject.value?.id) return
+  technicalReviewLoading.value = true
+  try {
+    technicalReviewResult.value = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
+    if (technicalReviewResult.value?.reviewRecordId) {
+      ElMessage.success('AI二次审稿完成，审稿记录已保存')
+    } else {
+      ElMessage.warning('AI二次审稿完成，但审稿记录未保存，请检查增量SQL和后端日志')
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || 'AI二次审稿失败')
+  } finally {
+    technicalReviewLoading.value = false
+  }
 }
 
 async function exportTechnical() {
