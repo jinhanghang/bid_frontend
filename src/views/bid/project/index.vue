@@ -341,29 +341,6 @@
                   <el-input v-model="technicalForm.solutionName" placeholder="请填写方案名称" />
                 </div>
 
-                <div class="tech-form-section">
-                  <div class="tech-label">生成目录编写方向：</div>
-                  <el-input
-                    v-model="technicalForm.outlineWritingDirection"
-                    type="textarea"
-                    :rows="3"
-                    maxlength="10000"
-                    show-word-limit
-                    placeholder="生成技术方案目录时使用，例如：重点突出技术响应、评分项对应关系、实施措施、系统对接、风险防控、验收交付和售后服务等"
-                  />
-                </div>
-
-                <div class="tech-form-section">
-                  <div class="tech-label">目录要求：</div>
-                  <el-input
-                    v-model="technicalForm.outlineRequirement"
-                    type="textarea"
-                    :rows="4"
-                    maxlength="10000"
-                    show-word-limit
-                    placeholder="目录不少于7章，每章不少于3节，每节不少于4个末级小节；目录必须覆盖项目理解、施工部署、进度计划、质量措施、安全文明、资源配置、总包协调、验收交付和服务承诺等内容"
-                  />
-                </div>
 
                 <div class="tech-form-section">
                   <div class="tech-inline-title">
@@ -1253,8 +1230,6 @@ const isCurrentTechnicalOutlineGenerating = computed(() => {
   return technicalGeneratingOutline.value
     && String(technicalOutlinePendingProjectId.value || '') === String(selectedProject.value?.id || '')
 })
-const DEFAULT_TECH_OUTLINE_REQUIREMENT = '目录不少于7章，每章不少于3节，每节不少于4个末级小节；末级章节不少于84个；目录必须覆盖项目理解、总体部署、施工/实施组织、进度计划、质量措施、安全文明、资源配置、总包协调、验收交付、服务承诺和风险控制等内容；每个末级小节必须带明确编写方向，并说明响应的采购需求、技术要求、评分项、实施措施和交付成果。'
-
 const technicalForm = reactive({
   solutionType: 'SERVICE',
   solutionSubType: '不限',
@@ -1264,7 +1239,7 @@ const technicalForm = reactive({
   purchaseRequirement: '',
   scoreRequirement: '',
   outlineMode: 'SCORE_ITEM',
-  outlineRequirement: DEFAULT_TECH_OUTLINE_REQUIREMENT
+  outlineRequirement: ''
 })
 const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
 
@@ -1298,7 +1273,7 @@ function resetTechnicalWorkspace() {
     purchaseRequirement: '',
     scoreRequirement: '',
     outlineMode: 'SCORE_ITEM',
-    outlineRequirement: DEFAULT_TECH_OUTLINE_REQUIREMENT
+    outlineRequirement: ''
   })
   resetBidDocumentWorkspace()
 }
@@ -2231,7 +2206,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
-  technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement || DEFAULT_TECH_OUTLINE_REQUIREMENT
+  technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement || ''
   extractTechnicalRequirement(false, false)
   technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 2 : 1)
 }
