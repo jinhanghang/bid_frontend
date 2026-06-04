@@ -3,6 +3,8 @@
     v-model="visible"
     :title="title"
     :size="size"
+    :modal="false"
+    :lock-scroll="false"
     destroy-on-close
     class="quality-check-drawer ai-review-drawer"
   >
@@ -130,7 +132,7 @@ const props = defineProps({
   reviewResult: { type: Object, default: null },
   loading: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
-  aiLevel: { type: String, default: 'BASIC' }
+  aiLevel: { type: String, default: '' }
 })
 
 const emit = defineEmits(['update:modelValue', 'run-review'])

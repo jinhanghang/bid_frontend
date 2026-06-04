@@ -286,7 +286,7 @@
 
           <div class="form-row-two">
             <el-form-item label="AI等级">
-              <el-select v-model="form.aiLevel" class="full-select">
+              <el-select v-model="form.aiLevel" class="full-select" placeholder="请选择AI等级" clearable>
                 <el-option label="基础版" value="BASIC" />
                 <el-option label="标准版" value="STANDARD" />
                 <el-option label="旗舰版" value="FLAGSHIP" />
@@ -608,7 +608,7 @@ const form = reactive({
   documentType: 'FEASIBILITY',
   documentTitle: '',
   projectName: '',
-  aiLevel: 'STANDARD',
+  aiLevel: '',
   writingStyle: 'PROFESSIONAL',
   mainRequirement: '',
   referenceRequirement: '',
@@ -839,7 +839,7 @@ async function createNew(type) {
   const draft = await createDocument({
     documentType: type.type,
     documentTitle: type.title.replace('生成', ''),
-    aiLevel: 'STANDARD',
+    aiLevel: null,
     writingStyle: 'PROFESSIONAL'
   })
   await loadDocuments()
@@ -1044,7 +1044,7 @@ function applyDoc(data, options = {}) {
   form.documentType = data?.solutionType || 'FEASIBILITY'
   form.documentTitle = data?.solutionName || docTypeLabel(form.documentType)
   form.projectName = ''
-  form.aiLevel = data?.aiLevel || 'STANDARD'
+  form.aiLevel = data?.aiLevel || ''
   form.writingStyle = data?.writingStyle || 'PROFESSIONAL'
   form.mainRequirement = data?.requirement?.purchaseRequirement || ''
   form.referenceRequirement = data?.requirement?.serviceRequirement || ''
@@ -1093,6 +1093,10 @@ function fillFormDataFromSummary(summary) {
 }
 
 function validateForm() {
+  if (!form.aiLevel) {
+    ElMessage.warning('请先选择AI等级')
+    return false
+  }
   if (!form.documentTitle?.trim()) {
     ElMessage.warning('请填写文档标题')
     return false
@@ -1153,6 +1157,10 @@ async function onSaveFormDialog() {
 async function onReferenceChange(uploadFile) {
   if (isOperationLocked.value) return
   if (!uploadFile?.raw || !currentDoc.value?.id) return
+  if (!form.aiLevel) {
+    ElMessage.warning('请先选择AI等级')
+    return
+  }
   parseTask.value = null
   const task = await uploadDocumentReference(currentDoc.value.id, uploadFile.raw, {
     documentType: form.documentType,

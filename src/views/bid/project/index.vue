@@ -288,7 +288,6 @@
                     >
                       <strong>{{ level.label }}</strong>
                       <p>{{ level.desc }}</p>
-                      <span>将消耗字数套餐，无次数限制</span>
                     </div>
                   </div>
                 </div>
@@ -355,6 +354,18 @@
                 </div>
 
                 <div class="tech-form-section">
+                  <div class="tech-label">目录要求：</div>
+                  <el-input
+                    v-model="technicalForm.outlineRequirement"
+                    type="textarea"
+                    :rows="4"
+                    maxlength="10000"
+                    show-word-limit
+                    placeholder="目录不少于7章，每章不少于3节，每节不少于4个末级小节；目录必须覆盖项目理解、施工部署、进度计划、质量措施、安全文明、资源配置、总包协调、验收交付和服务承诺等内容"
+                  />
+                </div>
+
+                <div class="tech-form-section">
                   <div class="tech-inline-title">
                     <span class="required">采购需求：</span>
                     <el-button size="small" :disabled="!isParseSuccess" @click="extractTechnicalRequirement">从解析报告重新提取</el-button>
@@ -398,7 +409,6 @@
                         <span>预估页数：<b class="green">{{ technicalActualPageCount }}</b> 页</span>
                       </div>
                       <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
-                      <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="章节正文生成" :ai-level="technicalForm.aiLevel" />
                     </div>
                     <el-button
                       :icon="technicalEditMode ? Close : EditPen"
@@ -1030,19 +1040,6 @@
       </template>
     </el-dialog>
 
-    <AiReviewDrawer
-      v-model="technicalReviewVisible"
-      title="AI标书技术方案二次审稿"
-      biz-type="BID_TECH"
-      :biz-id="selectedProject?.id || ''"
-      :consistency-package="technicalConsistencyPackage"
-      :review-result="technicalReviewResult"
-      :loading="technicalReviewLoading"
-      :disabled="!selectedProject?.id || !technicalSolution?.id || isTechnicalBusy"
-      :ai-level="technicalForm.aiLevel"
-      @run-review="runTechnicalAiReviewNow"
-    />
-
   </div>
 </template>
 
@@ -1097,40 +1094,13 @@ import {
   getBidProjectTechnicalQualityCheck,
   getBidProjectTechnicalWordCountStats,
   getBidProjectTechnicalDuplicateCheck,
-  getBidProjectTechnicalConsistencyPackage,
   compressBidProjectTechnicalDuplicateSections,
   reviewBidProjectTechnicalByAi
 } from '@/api/bidProject'
 import { getCurrentUserRunningAiTask } from '@/api/aiSolution'
-import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
-import AiModelTrace from '@/components/ai/AiModelTrace.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
-
-const BID_TECH_COMPANY_MATERIAL_MARKER = '【AI标书项目企业资料】'
-
-function cleanBidTechVisibleWritingDirection(value) {
-  const text = String(value || '').trim()
-  if (!text) return ''
-
-  const idx = text.indexOf(BID_TECH_COMPANY_MATERIAL_MARKER)
-  const cleaned = idx >= 0 ? text.slice(0, idx).trim() : text
-  if (!cleaned) return ''
-
-  // 兜底过滤历史脏数据：企业资料档案 JSON 只能作为后端隐藏上下文，不能显示到“生成目录编写方向”。
-  const looksLikeCompanyMaterialContext = [
-    'MATERIAL_ARCHIVE_V1',
-    'COMPANY_PROFILE',
-    '资料正文摘要',
-    '资料所属企业',
-    '引用规则',
-    '已自动引用企业资料档案'
-  ].some((key) => cleaned.includes(key))
-  if (looksLikeCompanyMaterialContext) return ''
-
-  return cleaned
-}
 
 const keyword = ref('')
 const projectLoading = ref(false)
@@ -1195,10 +1165,6 @@ const sectionNode = ref(null)
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
 const sectionOptimizing = ref('')
-const technicalReviewVisible = ref(false)
-const technicalReviewLoading = ref(false)
-const technicalConsistencyPackage = ref(null)
-const technicalReviewResult = ref(null)
 const sectionOptimizingNodeId = ref('')
 const sectionStreamingText = ref('')
 const technicalShortenDialogVisible = ref(false)
@@ -1263,9 +1229,9 @@ const techSteps = [
   { value: 5, label: '生成方案' }
 ]
 const aiLevels = [
-  { value: 'BASIC', label: '基础版', desc: '快速生成基础内容，满足常规投标需求。' },
-  { value: 'STANDARD', label: '标准版', desc: '深度优化逻辑结构，提升方案专业水准。' },
-  { value: 'FLAGSHIP', label: '旗舰版', desc: '精准对标评分项，增强中标表达。' }
+  { value: 'BASIC', label: '基础版', desc: '标准生成质量，适合常规文档与快速出稿。' },
+  { value: 'STANDARD', label: '标准版', desc: '标准生成质量，增加关键质量校验与结构优化。' },
+  { value: 'FLAGSHIP', label: '旗舰版', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
 ]
 
 // AI标书项目复用 AI方案引擎，方案类型不能只在界面上显示。
@@ -1287,6 +1253,8 @@ const isCurrentTechnicalOutlineGenerating = computed(() => {
   return technicalGeneratingOutline.value
     && String(technicalOutlinePendingProjectId.value || '') === String(selectedProject.value?.id || '')
 })
+const DEFAULT_TECH_OUTLINE_REQUIREMENT = '目录不少于7章，每章不少于3节，每节不少于4个末级小节；末级章节不少于84个；目录必须覆盖项目理解、总体部署、施工/实施组织、进度计划、质量措施、安全文明、资源配置、总包协调、验收交付、服务承诺和风险控制等内容；每个末级小节必须带明确编写方向，并说明响应的采购需求、技术要求、评分项、实施措施和交付成果。'
+
 const technicalForm = reactive({
   solutionType: 'SERVICE',
   solutionSubType: '不限',
@@ -1296,7 +1264,7 @@ const technicalForm = reactive({
   purchaseRequirement: '',
   scoreRequirement: '',
   outlineMode: 'SCORE_ITEM',
-  outlineRequirement: ''
+  outlineRequirement: DEFAULT_TECH_OUTLINE_REQUIREMENT
 })
 const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
 
@@ -1330,7 +1298,7 @@ function resetTechnicalWorkspace() {
     purchaseRequirement: '',
     scoreRequirement: '',
     outlineMode: 'SCORE_ITEM',
-    outlineRequirement: ''
+    outlineRequirement: DEFAULT_TECH_OUTLINE_REQUIREMENT
   })
   resetBidDocumentWorkspace()
 }
@@ -2140,13 +2108,6 @@ async function unbindSelectedCompanyMaterial() {
   ElMessage.success('已解除关联')
 }
 
-
-function containsUnsafeBidDocumentRawContent(content) {
-  const text = String(content || '')
-  if (!text.trim()) return false
-  return /MATERIAL_ARCHIVE_V1|AUTO_BIND_BY_T_COMPANY_MATERIAL_ENTERPRISE_ID|TEST_INIT_|"profile"\s*:|"members"\s*:|"certificates"\s*:|"financials"\s*:|"idNumber"\s*:|"accountNo"\s*:/.test(text)
-}
-
 async function smartFillBidDocument() {
   if (!isParseSuccess.value) {
     ElMessage.warning('请先完成招标文件解析')
@@ -2160,9 +2121,6 @@ async function smartFillBidDocument() {
   try {
     bidDocumentDetail.value = await fillBidDocument(selectedProject.value.id)
     bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
-    if (containsUnsafeBidDocumentRawContent(bidDocumentDraft.value)) {
-      ElMessage.warning('智能填空结果仍包含企业资料原始字段，请重新生成或联系管理员检查资料解析规则')
-    }
     await refreshWorkflow()
     ElMessage.success('投标文件智能填空完成')
   } finally {
@@ -2174,10 +2132,6 @@ async function saveBidDocumentDraft() {
   if (!selectedProject.value?.id) return
   if (!bidDocumentDraft.value.trim()) {
     ElMessage.warning('投标文件内容不能为空')
-    return
-  }
-  if (containsUnsafeBidDocumentRawContent(bidDocumentDraft.value)) {
-    ElMessage.error('投标文件内容包含企业资料原始 JSON 或敏感字段，请先重新智能填空或清理后再保存')
     return
   }
   bidDocumentSaving.value = true
@@ -2274,10 +2228,10 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
   technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel || technicalForm.aiLevel)
-  technicalForm.outlineWritingDirection = cleanBidTechVisibleWritingDirection(solution.overallWritingRequirement) || technicalForm.outlineWritingDirection
+  technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
-  technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement
+  technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement || DEFAULT_TECH_OUTLINE_REQUIREMENT
   extractTechnicalRequirement(false, false)
   technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 2 : 1)
 }
@@ -2361,7 +2315,7 @@ async function generateTechnicalOutline() {
       solutionSubType: technicalForm.solutionSubType,
       aiLevel: normalizeAiLevel(technicalForm.aiLevel),
       writingStyle: 'GENERAL',
-      outlineWritingDirection: cleanBidTechVisibleWritingDirection(technicalForm.outlineWritingDirection),
+      outlineWritingDirection: technicalForm.outlineWritingDirection,
       purchaseRequirement: technicalForm.purchaseRequirement,
       scoreRequirement: technicalForm.scoreRequirement,
       outlineMode: technicalForm.outlineMode,
@@ -2945,33 +2899,13 @@ async function showTechnicalDuplicateCheck() {
 
 async function reviewTechnicalByAi() {
   if (!selectedProject.value?.id) return
-  technicalReviewVisible.value = true
-  technicalReviewResult.value = null
-  technicalReviewLoading.value = true
-  try {
-    technicalConsistencyPackage.value = await getBidProjectTechnicalConsistencyPackage(selectedProject.value.id)
-  } catch (e) {
-    ElMessage.error(e?.message || '加载全文统一口径失败')
-  } finally {
-    technicalReviewLoading.value = false
-  }
-}
-
-async function runTechnicalAiReviewNow() {
-  if (!selectedProject.value?.id) return
-  technicalReviewLoading.value = true
-  try {
-    technicalReviewResult.value = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
-    if (technicalReviewResult.value?.reviewRecordId) {
-      ElMessage.success('AI二次审稿完成，审稿记录已保存')
-    } else {
-      ElMessage.warning('AI二次审稿完成，但审稿记录未保存，请检查增量SQL和后端日志')
-    }
-  } catch (e) {
-    ElMessage.error(e?.message || 'AI二次审稿失败')
-  } finally {
-    technicalReviewLoading.value = false
-  }
+  const data = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('AI审稿', [
+    data?.summary,
+    `审稿得分：${data?.overallScore || 0}`,
+    `风险等级：${data?.riskLevel || '-'}`,
+    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 6).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
+  ]), 'AI二次审稿', { dangerouslyUseHTMLString: true })
 }
 
 async function exportTechnical() {
@@ -3181,8 +3115,8 @@ function syncSelectedTechnicalLeaf() {
 }
 
 function syncTechnicalOverallRequirement() {
-  technicalOverallWritingRequirement.value = cleanBidTechVisibleWritingDirection(technicalSolution.value?.overallWritingRequirement)
-    || cleanBidTechVisibleWritingDirection(technicalForm.outlineWritingDirection)
+  technicalOverallWritingRequirement.value = technicalSolution.value?.overallWritingRequirement
+    || technicalForm.outlineWritingDirection
     || ''
 }
 
@@ -3221,10 +3155,8 @@ async function onSaveTechnicalOverallRequirement() {
     ElMessage.warning('当前技术方案缺少方案ID')
     return
   }
-  const visibleRequirement = cleanBidTechVisibleWritingDirection(technicalOverallWritingRequirement.value)
-  await saveBidProjectTechnicalOverallWritingRequirement(selectedProject.value?.id, visibleRequirement)
-  technicalOverallWritingRequirement.value = visibleRequirement
-  technicalForm.outlineWritingDirection = visibleRequirement
+  await saveBidProjectTechnicalOverallWritingRequirement(selectedProject.value?.id, technicalOverallWritingRequirement.value || '')
+  technicalForm.outlineWritingDirection = technicalOverallWritingRequirement.value || ''
   await reloadTechnicalAfterOutlineEdit('整体编写要求已保存')
 }
 
@@ -3264,7 +3196,7 @@ async function onTechnicalAiWriteDirection(node) {
   try {
     await streamBidProjectTechnicalWritingDirection(selectedProject.value?.id, node.id, {
       title: node.title,
-      overallWritingRequirement: cleanBidTechVisibleWritingDirection(technicalOverallWritingRequirement.value || technicalForm.outlineWritingDirection)
+      overallWritingRequirement: technicalOverallWritingRequirement.value || technicalForm.outlineWritingDirection || ''
     }, {
       onMessage(chunk) {
         node.writingDirection = `${node.writingDirection || ''}${chunk}`
@@ -4778,6 +4710,14 @@ const WritingDirectionEditor = defineComponent({
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.tech-strategy-note,
+.tech-form-tip {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .tech-ai-card {

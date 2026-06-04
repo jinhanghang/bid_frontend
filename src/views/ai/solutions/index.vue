@@ -121,7 +121,6 @@
                   >
                     <strong>{{ level.label }}</strong>
                     <span>{{ level.desc }}</span>
-                    <small>将消耗字数套餐，无次数限制</small>
                   </div>
                 </div>
               </div>
@@ -235,7 +234,6 @@
                 <span>预估页数：<b class="green">{{ currentSolution.actualPages || 0 }}</b> 页</span>
               </div>
               <div class="note">注：页数仅供参考，实际请以导出结果为准</div>
-              <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="章节正文生成" :ai-level="currentSolution.aiLevel || createForm.aiLevel" />
             </div>
             <el-button :icon="editMode ? Close : EditPen" :disabled="!canEditOutline" @click="toggleEditMode">{{ editMode ? '退出编辑' : '编辑' }}</el-button>
           </div>
@@ -477,18 +475,45 @@
       </div>
     </el-drawer>
 
-    <AiReviewDrawer
+    <el-drawer
       v-model="reviewVisible"
-      title="AI方案二次审稿"
-      biz-type="AI_SOLUTION"
-      :biz-id="currentSolution?.id || ''"
-      :consistency-package="consistencyPackage"
-      :review-result="reviewResult"
-      :loading="reviewLoading"
-      :disabled="!currentSolution?.id || hasRunningTask"
-      :ai-level="currentSolution?.aiLevel || createForm.aiLevel"
-      @run-review="runAiReviewNow"
-    />
+      title="AI二次审稿"
+      size="58%"
+      destroy-on-close
+      class="quality-check-drawer"
+    >
+      <div class="quality-check-wrap" v-loading="reviewLoading">
+        <div class="quality-check-toolbar">
+          <div>
+            <div class="quality-check-title">全文统一口径与审稿建议</div>
+            <div class="quality-check-desc">用于正式导出前检查术语、工期、人员、交付物、服务承诺、重复内容和风险表达。</div>
+          </div>
+          <el-button type="primary" :disabled="!currentSolution?.id || hasRunningTask" :loading="reviewLoading" @click="runAiReviewNow">开始审稿</el-button>
+        </div>
+        <el-descriptions v-if="consistencyPackage" :column="1" border class="extract-summary">
+          <el-descriptions-item label="统一术语">{{ consistencyPackage.unifiedTerms || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一工期">{{ consistencyPackage.unifiedPeriod || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一人员">{{ consistencyPackage.unifiedPersonnel || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="统一交付物">{{ consistencyPackage.unifiedDeliverables || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="服务承诺">{{ consistencyPackage.unifiedServiceCommitment || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="风险边界">{{ consistencyPackage.unifiedRiskBoundary || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        <template v-if="reviewResult">
+          <div class="quality-stat-grid">
+            <div class="quality-stat-card"><span>审稿得分</span><strong>{{ reviewResult.overallScore ?? '-' }}</strong><small>{{ reviewResult.summary || '-' }}</small></div>
+            <div class="quality-stat-card"><span>风险等级</span><strong>{{ reviewResult.riskLevel || '-' }}</strong><small>LOW / MEDIUM / HIGH</small></div>
+            <div class="quality-stat-card"><span>问题数量</span><strong>{{ (reviewResult.issues || []).length }}</strong><small>建议逐项处理</small></div>
+          </div>
+          <el-table class="ui-table quality-table" :data="reviewResult.issues || []" border stripe size="small" empty-text="暂无审稿问题">
+            <el-table-column prop="severity" label="等级" width="100" align="center" />
+            <el-table-column prop="title" label="问题" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="suggestion" label="修改建议" min-width="260" show-overflow-tooltip />
+          </el-table>
+          <el-input v-if="reviewResult.aiReviewText" class="review-textarea" type="textarea" :rows="12" readonly :model-value="reviewResult.aiReviewText" />
+        </template>
+      </div>
+    </el-drawer>
 
     <el-drawer
       v-model="requirementExtractVisible"
@@ -1160,8 +1185,6 @@ import {
 } from '@/api/aiSolution'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
-import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
-import AiModelTrace from '@/components/ai/AiModelTrace.vue'
 
 const router = useRouter()
 const mode = ref('home')
@@ -1396,9 +1419,9 @@ const sectionForm = reactive({
 })
 
 const aiLevels = [
-  { label: '基础版', value: 'BASIC', desc: '快速生成基础内容，满足常规投标需求。' },
-  { label: '标准版', value: 'STANDARD', desc: '深度优化逻辑结构，提升文案专业水准。' },
-  { label: '旗舰版', value: 'FLAGSHIP', desc: '精准对标评分项，增强中标表达。' }
+  { label: '基础版', value: 'BASIC', desc: '标准生成质量，适合常规文档与快速出稿。' },
+  { label: '标准版', value: 'STANDARD', desc: '标准生成质量，增加关键质量校验与结构优化。' },
+  { label: '旗舰版', value: 'FLAGSHIP', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
 ]
 
 const wordOptions = [300, 600, 900, 1200, 1800, 2700, 3600, 4500, 5400, 6300, 7200, 8100, 9000, 9900]
@@ -1846,11 +1869,7 @@ async function runAiReviewNow() {
   reviewLoading.value = true
   try {
     reviewResult.value = await runSolutionAiReview(currentSolution.value.id)
-    if (reviewResult.value?.reviewRecordId) {
-      ElMessage.success('AI二次审稿完成，审稿记录已保存')
-    } else {
-      ElMessage.warning('AI二次审稿完成，但审稿记录未保存，请检查增量SQL和后端日志')
-    }
+    ElMessage.success('AI二次审稿完成')
   } catch (e) {
     ElMessage.error(e?.message || 'AI二次审稿失败')
   } finally {
@@ -4192,6 +4211,7 @@ const WritingDirectionEditor = defineComponent({
 .type-grid { display: flex; gap: 12px; }
 .type-select { flex: 1; }
 .ai-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ai-level-note { margin-top: 8px; color: #64748b; font-size: 12px; line-height: 1.6; }
 .ai-level-card { border: 1px solid #dbe3ef; border-radius: 8px; padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; color: #475569; }
 .ai-level-card.active { border-color: #2f6bff; background: #edf4ff; }
 .ai-level-card small { margin: 8px -14px -14px; padding: 8px; background: rgba(47, 107, 255, .12); text-align: center; }
