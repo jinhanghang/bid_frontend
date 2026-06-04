@@ -494,10 +494,10 @@
 
                     <div class="tech-preview-actions detail-actions-like-solution">
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalVersionDialog">历史版本</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalWordCountDrawer">字数检查</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalQualityCheckDrawer">质量检查</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalWordCountDrawer">重复检查</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="openTechnicalReviewDrawer">AI审稿</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalWordCountCheck">字数检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalQualityCheck">质量检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="showTechnicalDuplicateCheck">重复检查</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalBusy" @click="reviewTechnicalByAi">AI审稿</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
@@ -1029,200 +1029,6 @@
       </template>
     </el-dialog>
 
-    <el-drawer
-      v-model="technicalQualityCheckVisible"
-      title="技术方案质量检查"
-      size="60%"
-      destroy-on-close
-      class="quality-check-drawer"
-    >
-      <div class="quality-check-wrap" v-loading="technicalQualityCheckLoading">
-        <div class="quality-check-toolbar">
-          <div>
-            <div class="quality-check-title">章节质量评分与风险复核</div>
-            <div class="quality-check-desc">数据来自最近一次章节生成/重编时写入的质量事件日志；重新生成章节后可刷新查看。</div>
-          </div>
-          <el-button type="primary" plain :disabled="!selectedProject?.id" :loading="technicalQualityCheckLoading" @click="loadTechnicalQualityCheck">刷新</el-button>
-        </div>
-
-        <div class="quality-stat-grid">
-          <div v-for="item in technicalQualityStatCards" :key="item.label" class="quality-stat-card">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-            <small>{{ item.desc }}</small>
-          </div>
-        </div>
-
-        <el-alert
-          v-if="technicalQualityCheckData.noQualityLogSections"
-          class="quality-alert"
-          type="warning"
-          :closable="false"
-          show-icon
-          title="部分章节暂无质量检查记录"
-          :description="`还有 ${technicalQualityCheckData.noQualityLogSections || 0} 个章节没有质量日志。通常是尚未生成，或生成时未开启质量检查。`"
-        />
-
-        <el-table
-          class="ui-table quality-table"
-          :data="technicalQualityItems"
-          border
-          stripe
-          size="small"
-          empty-text="暂无质量检查数据"
-          :row-class-name="qualityRowClassName"
-        >
-          <el-table-column label="序号" type="index" width="70" align="center" />
-          <el-table-column prop="title" label="章节" min-width="180" show-overflow-tooltip />
-          <el-table-column label="质量评分" width="130" align="center">
-            <template #default="{ row }">
-              <div v-if="row.hasQualityLog" class="quality-score-cell">
-                <el-progress :percentage="safePercent(row.score)" :stroke-width="8" :show-text="false" :status="qualityProgressStatus(row.score)" />
-                <strong>{{ row.score ?? '-' }}</strong>
-              </div>
-              <span v-else class="muted-text">未检查</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="等级" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="qualityLevelTagType(row.qualityLevel, row.score)" effect="light">{{ row.qualityLevel || '未检查' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="问题等级" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag size="small" :type="issueSeverityTagType(row.issueSeverity)" effect="light">{{ row.issueSeverity || '-' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="证据覆盖" width="100" align="center">
-            <template #default="{ row }">{{ row.hasQualityLog ? `${row.evidenceCoveragePercent || 0}%` : '-' }}</template>
-          </el-table-column>
-          <el-table-column label="动作/交付/验收" width="130" align="center">
-            <template #default="{ row }">
-              {{ row.hasQualityLog ? `${row.actionVerbHits || 0}/${row.deliverableHits || 0}/${row.verificationHits || 0}` : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="风险" width="150" align="center">
-            <template #default="{ row }">
-              <div class="quality-risk-tags">
-                <el-tag v-if="row.factRiskHits" size="small" type="danger" effect="light">强事实 {{ row.factRiskHits }}</el-tag>
-                <el-tag v-if="row.internalTraceLeakHits" size="small" type="danger" effect="light">内部痕迹 {{ row.internalTraceLeakHits }}</el-tag>
-                <el-tag v-if="row.formatRiskHits" size="small" type="warning" effect="light">格式 {{ row.formatRiskHits }}</el-tag>
-                <span v-if="!row.factRiskHits && !row.internalTraceLeakHits && !row.formatRiskHits" class="muted-text">-</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="主要问题 / 建议" min-width="280" show-overflow-tooltip>
-            <template #default="{ row }">
-              <div class="quality-problem-text">
-                <strong>{{ row.problem || '无明显问题' }}</strong>
-                <span>{{ row.suggestion || row.structureAdvice || row.typeAdvice || row.executionChecklist || '' }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="处理建议" width="110" align="center" fixed="right">
-            <template #default="{ row }">
-              <el-tag v-if="row.recommendRewrite" size="small" type="danger">建议重编</el-tag>
-              <el-tag v-else-if="row.recommendReview" size="small" type="warning">人工复核</el-tag>
-              <el-tag v-else-if="row.hasQualityLog" size="small" type="success">可用</el-tag>
-              <el-tag v-else size="small" type="info">待生成</el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </el-drawer>
-
-    <el-drawer
-      v-model="technicalWordCountVisible"
-      title="字数检查与重复内容"
-      size="58%"
-      destroy-on-close
-      class="quality-check-drawer"
-    >
-      <div class="quality-check-wrap" v-loading="technicalWordCountLoading">
-        <div class="quality-check-toolbar">
-          <div>
-            <div class="quality-check-title">目标字数、生成字数与重复内容</div>
-            <div class="quality-check-desc">仅展示用户可理解的字数和重复段落信息，不展示 Token、费用、模型调用次数等内部数据。</div>
-          </div>
-          <div class="toolbar-actions">
-            <el-button plain :disabled="!selectedProject?.id" @click="loadTechnicalWordCountStats">刷新</el-button>
-            <el-button type="warning" plain :disabled="!technicalDuplicateCheckData?.recommendCompress || isTechnicalBusy" :loading="technicalDuplicateCompressing" @click="onCompressTechnicalDuplicates">一键压缩重复</el-button>
-          </div>
-        </div>
-
-        <div class="quality-stat-grid">
-          <div class="quality-stat-card"><span>目标字数</span><strong>{{ technicalWordCountStats.targetWordCount || 0 }}</strong><small>方案目标</small></div>
-          <div class="quality-stat-card"><span>生成字数</span><strong>{{ technicalWordCountStats.actualWordCount || 0 }}</strong><small>当前正文</small></div>
-          <div class="quality-stat-card"><span>完成度</span><strong>{{ technicalWordCountStats.ratioPercent || 0 }}%</strong><small>{{ technicalWordCountStats.summary || '-' }}</small></div>
-          <div class="quality-stat-card"><span>重复段落</span><strong>{{ technicalDuplicateCheckData.duplicateParagraphCount || 0 }}</strong><small>{{ technicalDuplicateCheckData.summary || '未检查' }}</small></div>
-        </div>
-
-        <el-alert v-if="technicalWordCountStats.overSections" type="warning" show-icon :closable="false" class="quality-alert" :title="`发现 ${technicalWordCountStats.overSections} 个章节超出目标字数`" description="建议优先压缩重复背景、通用口号和同义反复，保留评分响应、施工措施、交付物和验收依据。" />
-
-        <el-table class="ui-table quality-table" :data="technicalWordCountStats.items || []" border stripe size="small" empty-text="暂无字数数据">
-          <el-table-column label="序号" type="index" width="70" align="center" />
-          <el-table-column prop="path" label="章节" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="targetWordCount" label="目标" width="90" align="center" />
-          <el-table-column prop="actualWordCount" label="生成" width="90" align="center" />
-          <el-table-column prop="ratioPercent" label="比例" width="90" align="center"><template #default="{ row }">{{ row.ratioPercent || 0 }}%</template></el-table-column>
-          <el-table-column prop="status" label="状态" width="120" align="center"><template #default="{ row }"><el-tag size="small" :type="wordStatusTagType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
-          <el-table-column prop="suggestion" label="建议" min-width="220" show-overflow-tooltip />
-        </el-table>
-
-        <el-divider content-position="left">重复段落明细</el-divider>
-        <el-alert v-if="!technicalDuplicateCheckData?.recommendCompress" type="success" show-icon :closable="false" class="quality-alert" :title="technicalDuplicateCheckData?.summary || '未发现明显重复内容'" />
-        <el-table v-else class="ui-table quality-table" :data="technicalDuplicateItems" border stripe size="small" empty-text="暂无重复段落明细">
-          <el-table-column prop="preview" label="重复内容预览" min-width="260" show-overflow-tooltip />
-          <el-table-column prop="repeatCount" label="重复次数" width="100" align="center" />
-          <el-table-column label="涉及章节" min-width="260" show-overflow-tooltip>
-            <template #default="{ row }">{{ duplicateSectionsText(row.sections) }}</template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </el-drawer>
-
-    <el-drawer
-      v-model="technicalReviewVisible"
-      title="技术方案AI二次审稿"
-      size="58%"
-      destroy-on-close
-      class="quality-check-drawer"
-    >
-      <div class="quality-check-wrap" v-loading="technicalReviewLoading">
-        <div class="quality-check-toolbar">
-          <div>
-            <div class="quality-check-title">全文统一口径与审稿建议</div>
-            <div class="quality-check-desc">用于正式导出前检查术语、工期、人员、交付物、服务承诺、重复内容和风险表达。</div>
-          </div>
-          <el-button type="primary" :disabled="!selectedProject?.id || isTechnicalBusy" :loading="technicalReviewLoading" @click="runTechnicalAiReviewNow">开始审稿</el-button>
-        </div>
-
-        <el-descriptions v-if="technicalConsistencyPackage" :column="1" border class="extract-summary">
-          <el-descriptions-item label="统一术语">{{ technicalConsistencyPackage.unifiedTerms || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一工期">{{ technicalConsistencyPackage.unifiedPeriod || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一人员">{{ technicalConsistencyPackage.unifiedPersonnel || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="统一交付物">{{ technicalConsistencyPackage.unifiedDeliverables || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="服务承诺">{{ technicalConsistencyPackage.unifiedServiceCommitment || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="风险边界">{{ technicalConsistencyPackage.unifiedRiskBoundary || '-' }}</el-descriptions-item>
-        </el-descriptions>
-
-        <template v-if="technicalReviewResult">
-          <div class="quality-stat-grid">
-            <div class="quality-stat-card"><span>审稿得分</span><strong>{{ technicalReviewResult.overallScore ?? '-' }}</strong><small>{{ technicalReviewResult.summary || '-' }}</small></div>
-            <div class="quality-stat-card"><span>风险等级</span><strong>{{ technicalReviewResult.riskLevel || '-' }}</strong><small>LOW / MEDIUM / HIGH</small></div>
-            <div class="quality-stat-card"><span>问题数量</span><strong>{{ (technicalReviewResult.issues || []).length }}</strong><small>建议逐项处理</small></div>
-          </div>
-          <el-table class="ui-table quality-table" :data="technicalReviewResult.issues || []" border stripe size="small" empty-text="暂无审稿问题">
-            <el-table-column prop="severity" label="等级" width="100" align="center" />
-            <el-table-column prop="title" label="问题" min-width="160" show-overflow-tooltip />
-            <el-table-column prop="description" label="说明" min-width="220" show-overflow-tooltip />
-            <el-table-column prop="suggestion" label="修改建议" min-width="260" show-overflow-tooltip />
-          </el-table>
-          <el-input v-if="technicalReviewResult.aiReviewText" class="review-textarea" type="textarea" :rows="12" readonly :model-value="technicalReviewResult.aiReviewText" />
-        </template>
-      </div>
-    </el-drawer>
-
   </div>
 </template>
 
@@ -1276,7 +1082,6 @@ import {
   updateBidProjectTechnicalSectionContent,
   getBidProjectTechnicalQualityCheck,
   getBidProjectTechnicalWordCountStats,
-  getBidProjectTechnicalConsistencyPackage,
   getBidProjectTechnicalDuplicateCheck,
   compressBidProjectTechnicalDuplicateSections,
   reviewBidProjectTechnicalByAi
@@ -1456,32 +1261,7 @@ const technicalStep = ref(1)
 const technicalMode = ref('PRECISE')
 const technicalGeneratingOutline = ref(false)
 const technicalSolution = ref(null)
-const technicalQualityCheckVisible = ref(false)
-const technicalQualityCheckLoading = ref(false)
-const technicalQualityCheckData = ref({ items: [] })
-const technicalWordCountVisible = ref(false)
-const technicalWordCountLoading = ref(false)
-const technicalWordCountStats = ref({ items: [] })
-const technicalDuplicateCheckData = ref({ duplicates: [] })
-const technicalDuplicateCompressing = ref(false)
-const technicalReviewVisible = ref(false)
-const technicalReviewLoading = ref(false)
-const technicalReviewResult = ref(null)
-const technicalConsistencyPackage = ref(null)
 const technicalOutlines = ref([])
-const technicalQualityItems = computed(() => technicalQualityCheckData.value?.items || [])
-const technicalQualityStatCards = computed(() => {
-  const data = technicalQualityCheckData.value || {}
-  return [
-    { label: '章节总数', value: data.totalSections || 0, desc: '当前目录末级章节' },
-    { label: '已检查', value: data.checkedSections || 0, desc: '已有质量日志章节' },
-    { label: '平均分', value: data.averageScore || 0, desc: '仅统计已检查章节' },
-    { label: '需重编', value: data.rewriteSections || 0, desc: '低于最低质量线' },
-    { label: '需关注', value: data.attentionSections || 0, desc: '建议人工复核' },
-    { label: '优秀/可用', value: `${data.excellentSections || 0}/${data.usableSections || 0}`, desc: '优秀 / 可用章节' }
-  ]
-})
-const technicalDuplicateItems = computed(() => technicalDuplicateCheckData.value?.duplicates || [])
 const isCurrentTechnicalOutlineGenerating = computed(() => {
   return technicalGeneratingOutline.value
     && String(technicalOutlinePendingProjectId.value || '') === String(selectedProject.value?.id || '')
@@ -2339,6 +2119,13 @@ async function unbindSelectedCompanyMaterial() {
   ElMessage.success('已解除关联')
 }
 
+
+function containsUnsafeBidDocumentRawContent(content) {
+  const text = String(content || '')
+  if (!text.trim()) return false
+  return /MATERIAL_ARCHIVE_V1|AUTO_BIND_BY_T_COMPANY_MATERIAL_ENTERPRISE_ID|TEST_INIT_|"profile"\s*:|"members"\s*:|"certificates"\s*:|"financials"\s*:|"idNumber"\s*:|"accountNo"\s*:/.test(text)
+}
+
 async function smartFillBidDocument() {
   if (!isParseSuccess.value) {
     ElMessage.warning('请先完成招标文件解析')
@@ -2352,6 +2139,9 @@ async function smartFillBidDocument() {
   try {
     bidDocumentDetail.value = await fillBidDocument(selectedProject.value.id)
     bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
+    if (containsUnsafeBidDocumentRawContent(bidDocumentDraft.value)) {
+      ElMessage.warning('智能填空结果仍包含企业资料原始字段，请重新生成或联系管理员检查资料解析规则')
+    }
     await refreshWorkflow()
     ElMessage.success('投标文件智能填空完成')
   } finally {
@@ -2363,6 +2153,10 @@ async function saveBidDocumentDraft() {
   if (!selectedProject.value?.id) return
   if (!bidDocumentDraft.value.trim()) {
     ElMessage.warning('投标文件内容不能为空')
+    return
+  }
+  if (containsUnsafeBidDocumentRawContent(bidDocumentDraft.value)) {
+    ElMessage.error('投标文件内容包含企业资料原始 JSON 或敏感字段，请先重新智能填空或清理后再保存')
     return
   }
   bidDocumentSaving.value = true
@@ -2549,7 +2343,7 @@ async function generateTechnicalOutline() {
       outlineWritingDirection: cleanBidTechVisibleWritingDirection(technicalForm.outlineWritingDirection),
       purchaseRequirement: technicalForm.purchaseRequirement,
       scoreRequirement: technicalForm.scoreRequirement,
-      outlineMode: technicalMode.value === 'RICH' ? 'RICH' : 'PRECISE',
+      outlineMode: technicalForm.outlineMode,
       outlineRequirement: technicalForm.outlineRequirement
     })
 
@@ -2588,36 +2382,6 @@ function normalizeId(id) {
   const text = String(id ?? '').trim()
   if (!text || text === 'null' || text === 'undefined' || text === 'NaN') return ''
   return text
-}
-
-function isProjectNotFoundError(error) {
-  const message = String(error?.message || error?.response?.data?.message || '')
-  const code = Number(error?.response?.data?.code || 0)
-  return code === 500001 || message.includes('项目不存在')
-}
-
-function isProjectInCurrentList(projectId) {
-  const id = normalizeId(projectId)
-  if (!id) return false
-  return projects.value.some((item) => String(item?.id || '') === id)
-}
-
-function clearStaleTechnicalPolling(projectId, taskId = '') {
-  const id = normalizeId(projectId)
-  if (!id) return
-
-  if (String(technicalOutlinePendingProjectId.value || '') === id) {
-    clearTechnicalOutlinePending(id)
-    technicalGeneratingOutline.value = false
-  }
-
-  const pendingProjectId = String(technicalTaskPending.projectId || '')
-  const pendingTaskId = String(technicalTaskPending.taskId || '')
-  if (pendingProjectId === id && (!taskId || pendingTaskId === String(taskId))) {
-    clearTechnicalTaskPending(id, pendingTaskId)
-    fullGenerating.value = false
-    globalAiRunningTask.value = null
-  }
 }
 
 function uniqueIds(ids = []) {
@@ -2929,12 +2693,6 @@ function restoreTechnicalTaskPending() {
   try {
     const data = JSON.parse(raw)
     if (data?.projectId && data?.taskId) {
-      // 用户手工删除项目后，本地仍可能保留旧的生成任务轮询 key。
-      // 如果当前列表已经没有这个项目，直接清理本地 key，避免反复弹“项目不存在”。
-      if (!isProjectInCurrentList(data.projectId)) {
-        localStorage.removeItem(TECH_TASK_PENDING_KEY)
-        return
-      }
       technicalTaskPending.projectId = String(data.projectId)
       technicalTaskPending.taskId = String(data.taskId)
       technicalTaskPollErrorCount.value = 0
@@ -2960,7 +2718,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   if (document.hidden) return
   technicalTaskPollingBusy.value = true
   try {
-    const task = await getBidProjectTechnicalTask(projectId, taskId, { silentError: true })
+    const task = await getBidProjectTechnicalTask(projectId, taskId)
     globalAiRunningTask.value = ['WAITING', 'RUNNING'].includes(String(task?.status || '').toUpperCase()) ? task : null
     technicalTaskPollErrorCount.value = 0
     const status = String(task?.status || '').toUpperCase()
@@ -2985,13 +2743,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
       await loadTechnicalSolution()
       await refreshWorkflow()
       technicalStep.value = 5
-      // 生成完成时也要保留用户当前正在查看的章节；只有没有选中或选中节点不存在时才自动选中第一段。
-      if (selectedTechnicalLeaf.value?.id) {
-        syncSelectedTechnicalLeaf()
-      }
-      if (!selectedTechnicalLeaf.value?.id) {
-        selectFirstGeneratedTechnicalLeaf()
-      }
+      selectFirstGeneratedTechnicalLeaf()
     }
 
     if (!silent) {
@@ -3006,8 +2758,8 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
     const status = e?.response?.status
     technicalTaskPollErrorCount.value += 1
     fullGenerating.value = true
-    if (status === 404 || isProjectNotFoundError(e)) {
-      clearStaleTechnicalPolling(projectId, taskId)
+    if (status === 404) {
+      clearTechnicalTaskPending(projectId, taskId)
       fullGenerating.value = false
       return
     }
@@ -3133,141 +2885,52 @@ function internalInfoHtml(title, lines = []) {
   return `<div style="line-height:1.8"><b>${title}</b><br/>${lines.filter(Boolean).map(i => String(i)).join('<br/>')}</div>`
 }
 
-function normalizeQualityCheckPayload(data) {
-  return data || { items: [], totalSections: 0, checkedSections: 0, averageScore: 0, excellentSections: 0, usableSections: 0, attentionSections: 0, rewriteSections: 0, noQualityLogSections: 0 }
-}
-
-function safePercent(value) {
-  const n = Number(value || 0)
-  return Math.min(100, Math.max(0, Number.isFinite(n) ? n : 0))
-}
-
-function qualityLevelTagType(level, score) {
-  const n = Number(score || 0)
-  if (String(level || '').includes('重写') || n < 72) return 'danger'
-  if (String(level || '').includes('关注') || n < 82) return 'warning'
-  if (String(level || '').includes('优秀') || n >= 92) return 'success'
-  return 'primary'
-}
-
-function qualityProgressStatus(score) {
-  const n = Number(score || 0)
-  if (n < 72) return 'exception'
-  if (n < 82) return 'warning'
-  if (n >= 92) return 'success'
-  return ''
-}
-
-function issueSeverityTagType(value) {
-  const v = String(value || '').toUpperCase()
-  if (v === 'HIGH') return 'danger'
-  if (v === 'MEDIUM') return 'warning'
-  if (v === 'LOW') return 'info'
-  return 'success'
-}
-
-function qualityRowClassName({ row }) {
-  if (!row?.hasQualityLog) return 'quality-row-missing'
-  if (row.recommendRewrite) return 'quality-row-rewrite'
-  if (row.recommendReview) return 'quality-row-review'
-  return ''
-}
-
-function wordStatusTagType(status) {
-  if (status === '字数正常') return 'success'
-  if (status === '略超字数' || status === '明显偏短') return 'warning'
-  if (status === '明显超字数') return 'danger'
-  return 'info'
-}
-
-function duplicateSectionsText(sections = []) {
-  return (sections || []).map((item) => item.path || item.title || item.outlineId).filter(Boolean).join('；') || '-'
-}
-
-async function openTechnicalQualityCheckDrawer() {
+async function showTechnicalWordCountCheck() {
   if (!selectedProject.value?.id) return
-  technicalQualityCheckVisible.value = true
-  await loadTechnicalQualityCheck()
+  const data = await getBidProjectTechnicalWordCountStats(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('技术方案字数检查', [
+    data?.summary,
+    `目标字数：${data?.targetWordCount || 0}`,
+    `生成字数：${data?.actualWordCount || 0}`,
+    `超字数章节：${data?.overSections || 0}`,
+    `偏短章节：${data?.shortSections || 0}`
+  ]), '字数检查', { dangerouslyUseHTMLString: true })
 }
 
-async function loadTechnicalQualityCheck() {
-  if (!technicalQualityCheckVisible.value || !selectedProject.value?.id) return
-  technicalQualityCheckLoading.value = true
-  try {
-    technicalQualityCheckData.value = normalizeQualityCheckPayload(await getBidProjectTechnicalQualityCheck(selectedProject.value.id))
-  } catch (e) {
-    ElMessage.error(e?.message || '加载质量检查失败')
-  } finally {
-    technicalQualityCheckLoading.value = false
-  }
-}
-
-async function openTechnicalWordCountDrawer() {
+async function showTechnicalQualityCheck() {
   if (!selectedProject.value?.id) return
-  technicalWordCountVisible.value = true
-  await loadTechnicalWordCountStats()
+  const data = await getBidProjectTechnicalQualityCheck(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('技术方案质量检查', [
+    `平均分：${data?.averageScore || 0}`,
+    `已检查章节：${data?.checkedSections || 0}/${data?.totalSections || 0}`,
+    `需关注章节：${data?.attentionSections || 0}`,
+    `建议重编章节：${data?.rewriteSections || 0}`
+  ]), '质量检查', { dangerouslyUseHTMLString: true })
 }
 
-async function loadTechnicalWordCountStats() {
-  if (!technicalWordCountVisible.value || !selectedProject.value?.id) return
-  technicalWordCountLoading.value = true
-  try {
-    const [wordRes, duplicateRes] = await Promise.all([
-      getBidProjectTechnicalWordCountStats(selectedProject.value.id),
-      getBidProjectTechnicalDuplicateCheck(selectedProject.value.id)
-    ])
-    technicalWordCountStats.value = wordRes || { items: [] }
-    technicalDuplicateCheckData.value = duplicateRes || { duplicates: [] }
-  } catch (e) {
-    ElMessage.error(e?.message || '加载字数检查失败')
-  } finally {
-    technicalWordCountLoading.value = false
-  }
-}
-
-async function onCompressTechnicalDuplicates() {
+async function showTechnicalDuplicateCheck() {
   if (!selectedProject.value?.id) return
-  await ElMessageBox.confirm('系统将删除跨章节重复段落，保留首次出现内容。该操作不会新增事实内容，是否继续？', '一键压缩重复内容', {
-    type: 'warning', confirmButtonText: '开始压缩', cancelButtonText: '取消'
-  })
-  technicalDuplicateCompressing.value = true
-  try {
-    technicalSolution.value = await compressBidProjectTechnicalDuplicateSections(selectedProject.value.id)
-    hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
-    ElMessage.success('重复内容已压缩')
-    await loadTechnicalWordCountStats()
-  } catch (e) {
-    ElMessage.error(e?.message || '压缩重复内容失败')
-  } finally {
-    technicalDuplicateCompressing.value = false
+  const data = await getBidProjectTechnicalDuplicateCheck(selectedProject.value.id)
+  if (!data?.recommendCompress) {
+    ElMessage.success(data?.summary || '未发现明显重复内容')
+    return
   }
+  await ElMessageBox.confirm(internalInfoHtml('技术方案重复检查', [data?.summary, `预计可压缩：${data?.estimatedRemovableWords || 0} 字`, '是否一键压缩重复内容？']), '重复检查', { dangerouslyUseHTMLString: true, confirmButtonText: '一键压缩', cancelButtonText: '暂不处理' })
+  const updated = await compressBidProjectTechnicalDuplicateSections(selectedProject.value.id)
+  technicalSolution.value = updated
+  ElMessage.success('重复内容已压缩')
+  await loadTechnicalSolution()
 }
 
-async function openTechnicalReviewDrawer() {
+async function reviewTechnicalByAi() {
   if (!selectedProject.value?.id) return
-  technicalReviewVisible.value = true
-  technicalReviewResult.value = null
-  technicalReviewLoading.value = true
-  try {
-    technicalConsistencyPackage.value = await getBidProjectTechnicalConsistencyPackage(selectedProject.value.id)
-  } catch (e) {
-    ElMessage.error(e?.message || '加载全文统一口径失败')
-  } finally {
-    technicalReviewLoading.value = false
-  }
-}
-
-async function runTechnicalAiReviewNow() {
-  if (!selectedProject.value?.id) return
-  technicalReviewLoading.value = true
-  try {
-    technicalReviewResult.value = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
-    ElMessage.success('AI二次审稿完成')
-  } catch (e) {
-    ElMessage.error(e?.message || 'AI二次审稿失败')
-  } finally {
-    technicalReviewLoading.value = false
-  }
+  const data = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
+  await ElMessageBox.alert(internalInfoHtml('AI审稿', [
+    data?.summary,
+    `审稿得分：${data?.overallScore || 0}`,
+    `风险等级：${data?.riskLevel || '-'}`,
+    ...(Array.isArray(data?.issues) ? data.issues.slice(0, 6).map(i => `${i.title || ''}：${i.suggestion || ''}`) : [])
+  ]), 'AI二次审稿', { dangerouslyUseHTMLString: true })
 }
 
 async function exportTechnical() {
@@ -3342,12 +3005,6 @@ function clearTechnicalOutlinePending(projectId) {
 function restoreTechnicalOutlinePending() {
   const id = localStorage.getItem(TECH_OUTLINE_PENDING_KEY)
   if (!id) return
-  // 用户删除旧项目后，本地 pending key 可能还在。
-  // 启动轮询前先确认当前列表里仍然存在该项目，避免反复提示“项目不存在”。
-  if (!isProjectInCurrentList(id)) {
-    localStorage.removeItem(TECH_OUTLINE_PENDING_KEY)
-    return
-  }
   technicalOutlinePendingProjectId.value = id
   technicalGeneratingOutline.value = true
   startTechnicalOutlinePolling(id)
@@ -3356,7 +3013,6 @@ function restoreTechnicalOutlinePending() {
 function startTechnicalOutlinePolling(projectId) {
   if (!projectId) return
   clearInterval(technicalOutlinePoller.value)
-  checkTechnicalOutlineReady(projectId, true)
   technicalOutlinePoller.value = setInterval(() => {
     checkTechnicalOutlineReady(projectId, true)
   }, 5000)
@@ -3365,7 +3021,7 @@ function startTechnicalOutlinePolling(projectId) {
 async function checkTechnicalOutlineReady(projectId, silent = true) {
   if (!projectId || document.hidden) return false
   try {
-    const solution = await getBidProjectTechnicalSolution(projectId, { silentError: true })
+    const solution = await getBidProjectTechnicalSolution(projectId)
     const outlines = getTechnicalOutlinesFromSolution(solution)
     if (!outlines.length) return false
 
@@ -3385,10 +3041,6 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
     }
     return true
   } catch (e) {
-    if (isProjectNotFoundError(e)) {
-      clearStaleTechnicalPolling(projectId)
-      return false
-    }
     return false
   }
 }
@@ -3984,23 +3636,12 @@ function selectLatestTechnicalPreviewLeaf() {
   const leaves = technicalLeafNodes.value || []
   if (!leaves.length) return
 
-  // 全文生成时会定时刷新目录。用户正在查看某个已生成章节时，不能因为其他章节生成完成
-  // 就自动切走右侧预览；否则会出现“正在看的章节被取消选中”。
-  // 因此：只要当前选中的章节仍存在，就只同步它的最新数据，不自动跳到新生成章节。
-  const currentId = normalizeId(selectedTechnicalLeaf.value?.id)
-  if (currentId) {
-    const latestCurrent = findTechnicalOutlineNodeById(technicalOutlines.value, currentId)
-    if (latestCurrent) {
-      selectedTechnicalLeaf.value = latestCurrent
-      return
-    }
-  }
-
-  // 没有任何选中章节，或选中章节已被删除时，才自动选择一个可预览章节。
+  // 全文生成时每秒刷新一次目录。优先让右侧预览自动跟随“正在生成”的章节；
+  // 如果当前没有正在生成的章节，则选中最后一个已有正文的章节，让用户不用一直盯着空白页。
   const generating = leaves.find((node) => ['GENERATING', 'LOCKED'].includes(String(node?.contentStatus || '').toUpperCase()))
   const generated = [...leaves].reverse().find(isTechnicalLeafDone)
   const target = generating || generated || leaves[0]
-  if (target?.id) {
+  if (target?.id && String(selectedTechnicalLeaf.value?.id || '') !== String(target.id || '')) {
     selectedTechnicalLeaf.value = target
   }
 }
@@ -7127,139 +6768,5 @@ const WritingDirectionEditor = defineComponent({
 }
 .hidden-file-input {
   display: none !important;
-}
-</style>
-
-
-<style scoped>
-.quality-check-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.quality-check-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #edf2f7;
-}
-
-.toolbar-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.quality-check-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: #1f2937;
-}
-
-.quality-check-desc {
-  margin-top: 4px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: #64748b;
-}
-
-.quality-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.quality-stat-card {
-  min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid #e6eef8;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-}
-
-.quality-stat-card span {
-  display: block;
-  font-size: 12px;
-  color: #64748b;
-}
-
-.quality-stat-card strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 24px;
-  line-height: 1.2;
-  color: #1d4ed8;
-}
-
-.quality-stat-card small {
-  display: block;
-  margin-top: 4px;
-  color: #94a3b8;
-  line-height: 1.4;
-}
-
-.quality-alert {
-  margin: 0;
-}
-
-.quality-score-cell {
-  display: grid;
-  grid-template-columns: 1fr 36px;
-  align-items: center;
-  gap: 8px;
-}
-
-.quality-score-cell strong {
-  font-size: 13px;
-  color: #1f2937;
-}
-
-.quality-risk-tags {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-}
-
-.quality-problem-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  line-height: 1.5;
-}
-
-.quality-problem-text strong {
-  color: #1f2937;
-}
-
-.quality-problem-text span,
-.muted-text {
-  color: #94a3b8;
-}
-
-.review-textarea {
-  margin-top: 12px;
-}
-
-.quality-table :deep(.quality-row-rewrite td) {
-  background: #fff1f2 !important;
-}
-
-.quality-table :deep(.quality-row-review td) {
-  background: #fffbeb !important;
-}
-
-.quality-table :deep(.quality-row-missing td) {
-  background: #f8fafc !important;
-}
-
-@media (max-width: 1200px) {
-  .quality-stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 </style>
