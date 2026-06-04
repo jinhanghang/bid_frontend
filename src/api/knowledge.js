@@ -43,9 +43,9 @@ export function rebuildKnowledgeFile(id, async = true) {
 }
 
 export function searchKnowledge(data) {
-  return request.post('/knowledge-vector/search', data)
+  return request.post('/knowledge-vector/search', data, { timeout: 0 })
 }
 
 export function askKnowledge(data) {
-  return request.post('/knowledge-vector/ask', data)
+  return request.post('/knowledge-vector/ask', data, { timeout: 0 })
 }

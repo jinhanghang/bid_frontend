@@ -324,7 +324,10 @@
         </div>
       </div>
 
-      <el-empty v-else description="暂无检索结果" />
+      <el-empty
+        v-else
+        :description="searchDialog.searched ? '未检索到相关片段，请确认文件已解析入库，或换一个关键词再试' : '输入检索问题后点击开始检索'"
+      />
     </el-dialog>
 
     <!-- 知识库问答 -->
@@ -351,6 +354,11 @@
         <div class="answer-title">AI回答</div>
         <div class="answer-content">{{ askAnswer }}</div>
       </div>
+
+      <el-empty
+        v-if="askDialog.asked && !askDialog.loading && !askAnswer && !askReferences.length"
+        description="暂未生成回答，请确认知识库文件已解析入库，或换一个问题再试"
+      />
 
       <div v-if="askReferences.length" class="hit-list">
         <div class="answer-title">引用片段</div>
@@ -438,12 +446,14 @@ const uploadDialog = reactive({
 
 const searchDialog = reactive({
   visible: false,
-  loading: false
+  loading: false,
+  searched: false
 })
 
 const askDialog = reactive({
   visible: false,
-  loading: false
+  loading: false,
+  asked: false
 })
 
 const searchForm = reactive({
@@ -900,6 +910,7 @@ function openSearchDialog() {
     return
   }
   searchDialog.visible = true
+  searchDialog.searched = false
   searchResult.value = []
 }
 
@@ -909,6 +920,7 @@ function openAskDialog() {
     return
   }
   askDialog.visible = true
+  askDialog.asked = false
   askAnswer.value = ''
   askReferences.value = []
 }
@@ -927,6 +939,12 @@ async function submitSearch() {
       topK: searchForm.topK
     })
     searchResult.value = res?.hits || []
+    searchDialog.searched = true
+    if (searchResult.value.length) {
+      ElMessage.success(`检索完成，命中 ${searchResult.value.length} 个片段`)
+    } else {
+      ElMessage.warning('未检索到相关片段，请确认文件已解析入库，或换一个关键词再试')
+    }
   } finally {
     searchDialog.loading = false
   }
@@ -947,6 +965,12 @@ async function submitAsk() {
     })
     askAnswer.value = res?.answer || ''
     askReferences.value = res?.references || []
+    askDialog.asked = true
+    if (askAnswer.value) {
+      ElMessage.success('知识问答已生成')
+    } else {
+      ElMessage.warning('暂未生成回答，请确认知识库文件已解析入库，或换一个问题再试')
+    }
   } finally {
     askDialog.loading = false
   }
