@@ -2,6 +2,31 @@
   <div class="page">
     <div class="page-body">
       <template v-if="isAuditPage">
+        <div class="card audit-guide-card">
+          <div class="audit-guide-main">
+            <div>
+              <div class="audit-guide-title">公司审批怎么用</div>
+              <div class="audit-guide-desc">
+                这里处理用户提交的“注册新企业”和“加入已有企业”申请。没有数据通常表示当前没有申请，或被上方筛选条件过滤。
+              </div>
+            </div>
+            <div class="audit-guide-actions">
+              <el-button plain @click="setAuditStatus(0)">只看待审核</el-button>
+              <el-button plain @click="resetAuditFilters">查看全部</el-button>
+              <el-button type="primary" plain :loading="auditLoading" @click="loadAuditList">刷新</el-button>
+            </div>
+          </div>
+          <div class="audit-guide-steps">
+            <span>用户无企业时提交申请</span>
+            <em>→</em>
+            <span>管理员在本页查看详情</span>
+            <em>→</em>
+            <span>通过后创建企业或加入企业</span>
+            <em>→</em>
+            <span>驳回时填写原因</span>
+          </div>
+        </div>
+
         <div class="card card--table apply-card">
           <div class="list-head">
             <div class="list-head__left">
@@ -13,15 +38,16 @@
               />
             </div>
             <div class="list-head__right">
-              <el-select v-model="auditQuery.applyType" clearable placeholder="申请类型" style="width: 150px" @change="loadAuditList">
+              <el-select v-model="auditQuery.applyType" clearable placeholder="申请类型" style="width: 150px" @change="handleAuditFilterChange">
                 <el-option label="加入已有企业" value="JOIN" />
                 <el-option label="注册新企业" value="REGISTER" />
               </el-select>
-              <el-select v-model="auditQuery.status" clearable placeholder="审核状态" style="width: 130px" @change="loadAuditList">
+              <el-select v-model="auditQuery.status" clearable placeholder="审核状态" style="width: 130px" @change="handleAuditFilterChange">
                 <el-option label="待审核" :value="0" />
                 <el-option label="已通过" :value="1" />
                 <el-option label="已驳回" :value="2" />
               </el-select>
+              <el-button plain @click="resetAuditFilters">全部</el-button>
             </div>
           </div>
 
@@ -69,6 +95,16 @@
                 </div>
               </template>
             </el-table-column>
+            <template #empty>
+              <div class="audit-empty">
+                <div class="audit-empty-title">{{ auditEmptyTitle }}</div>
+                <div class="audit-empty-desc">{{ auditEmptyDesc }}</div>
+                <div class="audit-empty-actions">
+                  <el-button size="small" plain @click="resetAuditFilters">查看全部申请</el-button>
+                  <el-button size="small" type="primary" plain @click="loadAuditList">重新查询</el-button>
+                </div>
+              </div>
+            </template>
           </el-table>
 
           <PageFooterPager
@@ -324,7 +360,7 @@ const myQuery = reactive({
 const auditQuery = reactive({
   keyword: '',
   applyType: '',
-  status: 0,
+  status: '',
   pageNum: 1,
   pageSize: 10
 })
@@ -332,6 +368,17 @@ const auditQuery = reactive({
 const auditForm = reactive({
   status: 1,
   auditRemark: ''
+})
+
+const auditEmptyTitle = computed(() => {
+  if (auditQuery.keyword || auditQuery.applyType || auditQuery.status !== '') return '没有找到符合条件的企业申请'
+  return '暂无企业申请记录'
+})
+
+const auditEmptyDesc = computed(() => {
+  if (auditQuery.status === 0) return '当前没有待审核申请。可以点击“查看全部申请”查看已通过或已驳回记录。'
+  if (auditQuery.keyword || auditQuery.applyType || auditQuery.status !== '') return '请调整企业名称、申请类型或审核状态后重新查询。'
+  return '用户需要先在“首页 / 企业申请”提交注册企业或加入企业申请，本页才会出现待审核记录。'
 })
 
 const registerRules = {
@@ -387,6 +434,25 @@ async function loadMyList() {
   } finally {
     myLoading.value = false
   }
+}
+
+function handleAuditFilterChange() {
+  auditQuery.pageNum = 1
+  loadAuditList()
+}
+
+function setAuditStatus(status) {
+  auditQuery.status = status
+  auditQuery.pageNum = 1
+  loadAuditList()
+}
+
+function resetAuditFilters() {
+  auditQuery.keyword = ''
+  auditQuery.applyType = ''
+  auditQuery.status = ''
+  auditQuery.pageNum = 1
+  loadAuditList()
 }
 
 async function loadAuditList() {
@@ -542,4 +608,21 @@ function statusTagType(status) {
     grid-template-columns: 1fr;
   }
 }
+.audit-guide-card { margin-bottom: 14px; padding: 16px 18px; border: 1px solid #dbeafe; background: linear-gradient(135deg, #f8fbff, #ffffff); }
+.audit-guide-main { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.audit-guide-title { color: #0f172a; font-size: 17px; font-weight: 800; }
+.audit-guide-desc { margin-top: 6px; color: #64748b; line-height: 1.7; }
+.audit-guide-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.audit-guide-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; color: #334155; font-size: 13px; }
+.audit-guide-steps span { padding: 5px 9px; border-radius: 999px; background: #eef4ff; border: 1px solid #dbeafe; }
+.audit-guide-steps em { color: #94a3b8; font-style: normal; }
+.audit-empty { padding: 56px 0; color: #64748b; text-align: center; }
+.audit-empty-title { color: #334155; font-size: 15px; font-weight: 800; }
+.audit-empty-desc { margin-top: 8px; line-height: 1.8; }
+.audit-empty-actions { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+@media (max-width: 900px) {
+  .audit-guide-main { flex-direction: column; }
+  .audit-guide-actions { width: 100%; flex-wrap: wrap; }
+}
+
 </style>

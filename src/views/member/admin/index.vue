@@ -95,6 +95,9 @@
           <el-input v-model="logQuery.keyword" placeholder="搜索场景 / 业务 / 备注" clearable @keyup.enter="loadLogs" />
           <el-button type="primary" @click="searchLogs">搜索</el-button>
           <el-button plain @click="openQuotaAudit">额度核对</el-button>
+          <el-tooltip content="只读检查，不会修改任何额度；用于排查余额、流水链路、预占未结算等异常" placement="top">
+            <el-button link type="primary">怎么用</el-button>
+          </el-tooltip>
         </div>
         <el-table :data="logs" class="ui-table" height="520">
           <el-table-column prop="userId" label="用户ID" width="90" show-overflow-tooltip />
@@ -280,8 +283,20 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="auditDialog.visible" title="额度消耗流水核对" width="980px" destroy-on-close>
+    <el-dialog v-model="auditDialog.visible" title="额度消耗流水核对" width="1080px" destroy-on-close>
       <div v-loading="auditDialog.loading" class="quota-audit-box">
+        <div class="quota-audit-guide">
+          <div>
+            <strong>这个功能怎么用</strong>
+            <p>这是管理员排查额度异常的只读工具，不会自动修改用户额度。正常情况下打开后显示“核对通过”；出现异常时按下面明细处理。</p>
+          </div>
+          <ul>
+            <li><b>余额异常</b>：用户权益表余额与最后一条额度流水余额不一致。</li>
+            <li><b>链路异常</b>：同一用户流水 before/after 没有首尾衔接，通常和并发扣减或手工改数有关。</li>
+            <li><b>负数权益</b>：会员权益剩余额度小于 0，需要检查扣减逻辑。</li>
+            <li><b>未结算预占</b>：AI 任务预占额度超过 120 分钟仍未结算或释放。</li>
+          </ul>
+        </div>
         <template v-if="auditDialog.result">
           <el-alert
             :title="auditDialog.result.conclusion || '核对完成'"
@@ -298,9 +313,15 @@
             <div><span>未结算预占</span><strong>{{ formatNumber(auditDialog.result.openReservationIssueCount) }}</strong></div>
           </div>
 
+          <div v-if="totalAuditIssueCount === 0" class="audit-ok-tip">
+            当前无需处理。后续如果出现“用户说额度不对、AI生成失败但额度被占用、重复扣减”等情况，再打开本工具重新核对。
+          </div>
+
           <div class="audit-section-title">用户额度异常</div>
           <el-table :data="auditDialog.result.userIssues || []" class="ui-table" height="240" empty-text="暂无用户额度异常">
-            <el-table-column prop="issueType" label="类型" width="170" />
+            <el-table-column label="类型" width="170">
+              <template #default="{ row }">{{ quotaIssueTypeText(row.issueType) }}</template>
+            </el-table-column>
             <el-table-column prop="fullName" label="姓名" width="120" show-overflow-tooltip />
             <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
             <el-table-column prop="actualAvailableWords" label="权益余额" width="110" />
@@ -310,7 +331,9 @@
 
           <div class="audit-section-title">预占额度异常</div>
           <el-table :data="auditDialog.result.reservationIssues || []" class="ui-table" height="220" empty-text="暂无未结算预占异常">
-            <el-table-column prop="bizType" label="业务类型" width="130" />
+            <el-table-column label="业务类型" width="130">
+              <template #default="{ row }">{{ bizTypeText(row.bizType) }}</template>
+            </el-table-column>
             <el-table-column prop="bizId" label="业务ID" width="190" show-overflow-tooltip />
             <el-table-column prop="reserveWords" label="预占字数" width="110" />
             <el-table-column prop="reserveTime" label="预占时间" width="170" />
@@ -599,6 +622,15 @@ async function previewModel(row) {
   ElMessageBox.alert(text, '模型命中预览', { confirmButtonText: '知道了' })
 }
 
+function quotaIssueTypeText(value) {
+  const map = {
+    BALANCE_MISMATCH: '余额不一致',
+    LOG_CHAIN_BREAK: '流水链路断裂',
+    NEGATIVE_MEMBER_BALANCE: '权益余额为负'
+  }
+  return map[value] || value || '-'
+}
+
 function quotaSceneText(value) {
   const map = {
     ai_solution: 'AI方案',
@@ -751,5 +783,11 @@ p { margin-top: 8px; color: #64748b; }
 .audit-summary-grid span { display: block; color: #64748b; font-size: 12px; }
 .audit-summary-grid strong { display: block; margin-top: 6px; color: #0f172a; font-size: 18px; }
 .audit-section-title { margin: 14px 0 8px; font-weight: 700; color: #1e293b; }
+
+.quota-audit-guide { margin-bottom: 12px; padding: 14px 16px; border: 1px solid #dbeafe; border-radius: 14px; background: linear-gradient(135deg, #f8fbff, #ffffff); color: #334155; }
+.quota-audit-guide strong { display: block; color: #0f172a; font-size: 15px; margin-bottom: 6px; }
+.quota-audit-guide p { margin: 0; color: #64748b; line-height: 1.7; }
+.quota-audit-guide ul { margin: 10px 0 0; padding-left: 18px; color: #475569; line-height: 1.8; }
+.audit-ok-tip { margin: 10px 0 2px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; color: #166534; font-size: 13px; line-height: 1.7; }
 
 </style>
