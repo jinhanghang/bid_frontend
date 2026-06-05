@@ -362,6 +362,28 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="wordPresetDialogVisible" title="设置文档篇幅" width="620px" append-to-body class="word-preset-dialog">
+      <div class="word-preset-panel">
+        <div class="preset-tip">
+          <strong>大纲已生成完成</strong>
+          <span>请选择每个末级章节的目标字数，确认后再开始生成正文。</span>
+        </div>
+        <div class="dialog-word-row dialog-word-row--standalone">
+          <el-radio-group v-model="wordPreset.mode">
+            <el-radio-button label="FIXED">统一字数</el-radio-button>
+            <el-radio-button label="AUTO">自动分配</el-radio-button>
+          </el-radio-group>
+          <el-select v-model="wordPreset.wordCount" class="word-select">
+            <el-option v-for="n in wordOptions" :key="n" :label="`${n} 字/节`" :value="n" />
+          </el-select>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="wordPresetDialogVisible = false">稍后设置</el-button>
+        <el-button type="primary" :loading="wordSaving" @click="confirmDocumentWordPreset">确认设置</el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer
       v-model="docQualityCheckVisible"
       title="AI文档质量检查"
@@ -576,6 +598,7 @@ const detailLoading = ref(false)
 const saving = ref(false)
 const outlineLoading = ref(false)
 const wordSaving = ref(false)
+const wordPresetDialogVisible = ref(false)
 const fullGenerating = ref(false)
 const exportLoading = ref(false)
 const sectionGenerating = ref(false)
@@ -638,7 +661,7 @@ const isGlobalAiTaskForCurrentDoc = computed(() => {
   return !!currentId && String(globalRunningTask.value?.solutionId || '') === currentId
 })
 const hasOtherAiTaskRunning = computed(() => isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentDoc.value)
-const isOperationLocked = computed(() => Boolean(hasRunningTask.value || hasOtherAiTaskRunning.value || fullGenerating.value || sectionGenerating.value || isDocumentGeneratingStatus(currentDoc.value?.status)))
+const isOperationLocked = computed(() => Boolean(isOutlineGenerating.value || hasRunningTask.value || hasOtherAiTaskRunning.value || fullGenerating.value || sectionGenerating.value || isDocumentGeneratingStatus(currentDoc.value?.status)))
 const canExport = computed(() => currentDoc.value?.canExport === true || (leafNodes.value.length > 0 && leafNodes.value.every((node) => node?.section?.content)))
 const progressStatus = computed(() => {
   const status = String(runningTask.value?.status || '').toUpperCase()
@@ -1374,17 +1397,21 @@ async function onGenerateOutline() {
       writingDirection: form.overallWritingRequirement
     })
     applyDoc(data)
-    await applyDocumentWordCountPreset(docId, wordPreset)
     await refreshCurrent()
     await loadDocuments()
     formDialogVisible.value = false
-    ElMessage.success('大纲已生成，请确认篇幅后生成正文')
+    wordPresetDialogVisible.value = true
+    ElMessage.success('大纲已生成，请设置篇幅')
   } finally {
     outlineLoading.value = false
   }
 }
 
-async function onApplyWordPreset() {
+async function confirmDocumentWordPreset() {
+  await onApplyWordPreset({ fromDialog: true })
+}
+
+async function onApplyWordPreset(options = {}) {
   if (isOperationLocked.value) return
   if (!currentDoc.value?.id) return
   wordSaving.value = true
@@ -1392,6 +1419,7 @@ async function onApplyWordPreset() {
     const data = await applyDocumentWordCountPreset(currentDoc.value.id, wordPreset)
     applyDoc(data)
     await loadDocuments()
+    if (options?.fromDialog) wordPresetDialogVisible.value = false
     ElMessage.success('篇幅已应用')
   } finally {
     wordSaving.value = false
@@ -2770,6 +2798,36 @@ function fallbackTypes() {
 .section-editor :deep(.el-textarea__inner:focus) {
   border-color: #93c5fd;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .08);
+}
+
+.word-preset-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preset-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.preset-tip strong {
+  font-size: 15px;
+}
+
+.preset-tip span {
+  color: #475569;
+  line-height: 1.6;
+}
+
+.dialog-word-row--standalone {
+  justify-content: space-between;
 }
 
 @media (max-width: 1200px) {
@@ -4223,6 +4281,36 @@ function fallbackTypes() {
 
 .quality-table :deep(.quality-row-missing td) {
   background: #f8fafc !important;
+}
+
+.word-preset-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preset-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.preset-tip strong {
+  font-size: 15px;
+}
+
+.preset-tip span {
+  color: #475569;
+  line-height: 1.6;
+}
+
+.dialog-word-row--standalone {
+  justify-content: space-between;
 }
 
 @media (max-width: 1200px) {

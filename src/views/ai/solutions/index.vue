@@ -171,14 +171,14 @@
                 <div class="form-label">目录知识库：</div>
                 <div class="knowledge-setting">
                   <div class="knowledge-actions">
-                    <el-button @click="goKnowledgeBasePage">上传</el-button>
-                    <el-button @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
+                    <el-button :disabled="outlineGenerating || isOutlineGeneratingByBackend" @click="goKnowledgeBasePage">上传</el-button>
+                    <el-button :disabled="outlineGenerating || isOutlineGeneratingByBackend" @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
                   </div>
                   <div v-if="selectedOutlineKnowledgeBases.length" class="selected-kb-list">
                     <el-tag
                       v-for="kb in selectedOutlineKnowledgeBases"
                       :key="kb.id"
-                      closable
+                      :closable="!outlineGenerating && !isOutlineGeneratingByBackend"
                       @close="removeSelectedKnowledgeBase(kb.id, 'outline')"
                     >
                       {{ kb.kbName }}
@@ -1569,7 +1569,9 @@ const isRewriteRunning = computed(() => {
   return !!task && task.taskType === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(task.status)
 })
 const isSolutionBusy = computed(() => {
-  return fullGenerating.value
+  return outlineGenerating.value
+    || isOutlineGeneratingByBackend.value
+    || fullGenerating.value
     || hasRunningTask.value
     || sectionGenerating.value
     || !!sectionOptimizing.value
@@ -2526,15 +2528,19 @@ async function onGenerateOutline() {
     if (writingDirection) {
       await saveOverallWritingRequirement(solutionId, writingDirection)
     }
+    const selectedOutlineKbIds = parseKnowledgeIds(outlineForm.knowledgeIds)
     const data = await generateOutline(solutionId, {
       outlineMode: outlineForm.outlineMode,
       writingStyle: createForm.writingStyle,
       extraRequirement: requirementForm.outlineRequirement,
       outlineRequirement: requirementForm.outlineRequirement,
       writingDirection,
-      knowledgeIds: stringifyKnowledgeIds(outlineForm.knowledgeIds)
+      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKbIds)
     })
 
+    if (selectedOutlineKbIds.length && Array.isArray(data?.outlines)) {
+      data.outlines = applyKnowledgeIdsToOutlineTree(data.outlines, selectedOutlineKbIds)
+    }
     applySolutionDetail(data)
     previewOutlinesLocal.value = data?.outlines || []
     createStep.value = 3
@@ -2747,6 +2753,9 @@ function buildSelectedKnowledgeBases(ids = []) {
 
 function collectSolutionKnowledgeIds(solution = currentSolution.value) {
   const ids = []
+  ids.push(...parseKnowledgeIds(solution?.knowledgeIds || solution?.knowledgeIdList || ''))
+  ids.push(...parseKnowledgeIds(outlineForm.knowledgeIds))
+  ids.push(...parseKnowledgeIds(fullGenerateForm.knowledgeIds))
   const walk = (nodes = []) => {
     nodes.forEach((node) => {
       ids.push(...parseKnowledgeIds(node.knowledgeIds))
@@ -2755,6 +2764,18 @@ function collectSolutionKnowledgeIds(solution = currentSolution.value) {
   }
   walk(solution?.outlines || [])
   return uniqueIds(ids)
+}
+
+function applyKnowledgeIdsToOutlineTree(nodes = [], ids = []) {
+  const text = stringifyKnowledgeIds(ids)
+  if (!text) return nodes
+  const walk = (items = []) => items.map((node) => {
+    const next = { ...node }
+    if (!next.knowledgeIds) next.knowledgeIds = text
+    if (Array.isArray(next.children) && next.children.length) next.children = walk(next.children)
+    return next
+  })
+  return walk(nodes)
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {

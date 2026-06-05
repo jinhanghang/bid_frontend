@@ -372,6 +372,30 @@
                   />
                 </div>
 
+                <div class="tech-form-section">
+                  <div class="tech-inline-title">
+                    <span>生成目录参考知识库：</span>
+                    <el-tag v-if="selectedKnowledgeBases.length" size="small" type="primary">已选 {{ selectedKnowledgeBases.length }} 个</el-tag>
+                  </div>
+                  <div class="knowledge-setting">
+                    <div class="knowledge-actions">
+                      <el-button :disabled="isCurrentTechnicalOutlineGenerating" @click="goKnowledgeBasePage">上传</el-button>
+                      <el-button :disabled="isCurrentTechnicalOutlineGenerating" @click="openKnowledgeSelector('full')">从知识库选择</el-button>
+                    </div>
+                    <div v-if="selectedKnowledgeBases.length" class="selected-kb-list">
+                      <el-tag
+                        v-for="kb in selectedKnowledgeBases"
+                        :key="kb.id"
+                        :closable="!isCurrentTechnicalOutlineGenerating"
+                        @close="removeSelectedKnowledgeBase(kb.id, 'full')"
+                      >
+                        {{ kb.kbName }}
+                      </el-tag>
+                    </div>
+                    <div v-else class="selected-kb-empty">未选择知识库，生成目录时不会额外引用知识库资料</div>
+                  </div>
+                </div>
+
               </template>
 
               <template v-else>
@@ -848,7 +872,7 @@
               <el-tag
                 v-for="kb in selectedKnowledgeBases"
                 :key="kb.id"
-                closable
+                :closable="!isCurrentTechnicalOutlineGenerating"
                 @close="removeSelectedKnowledgeBase(kb.id, 'full')"
               >
                 {{ kb.kbName }}
@@ -1238,6 +1262,7 @@ const technicalForm = reactive({
   outlineWritingDirection: '',
   purchaseRequirement: '',
   scoreRequirement: '',
+  knowledgeIds: [],
   outlineMode: 'SCORE_ITEM',
   outlineRequirement: ''
 })
@@ -1272,6 +1297,7 @@ function resetTechnicalWorkspace() {
     outlineWritingDirection: '',
     purchaseRequirement: '',
     scoreRequirement: '',
+    knowledgeIds: [],
     outlineMode: 'SCORE_ITEM',
     outlineRequirement: ''
   })
@@ -1450,7 +1476,9 @@ const isTechnicalRewriteRunning = computed(() => {
   return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
 })
 const isTechnicalBusy = computed(() => {
-  return fullGenerating.value
+  return technicalGeneratingOutline.value
+    || isCurrentTechnicalOutlineGenerating.value
+    || fullGenerating.value
     || isTechnicalRunningByBackend.value
     || hasOtherAiTaskRunning.value
     || sectionGenerating.value
@@ -2293,6 +2321,8 @@ async function generateTechnicalOutline() {
   technicalStep.value = Math.max(technicalStep.value, 3)
 
   try {
+    const selectedOutlineKnowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
+    technicalForm.knowledgeIds = selectedOutlineKnowledgeIds
     const res = await generateBidProjectTechnicalOutline(projectId, {
       solutionName: technicalForm.solutionName,
       solutionType: technicalForm.solutionType,
@@ -2303,7 +2333,8 @@ async function generateTechnicalOutline() {
       purchaseRequirement: technicalForm.purchaseRequirement,
       scoreRequirement: technicalForm.scoreRequirement,
       outlineMode: technicalForm.outlineMode,
-      outlineRequirement: technicalForm.outlineRequirement
+      outlineRequirement: technicalForm.outlineRequirement,
+      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKnowledgeIds)
     })
 
     // 如果用户在生成期间切换了项目，不要把返回结果写到别的项目页面。
@@ -2383,6 +2414,8 @@ function collectTechnicalFullGenerateKnowledgeIds() {
   const ids = []
 
   // AI标书项目本身可以绑定知识库，重编全文时要默认带出来。
+  ids.push(...normalizeKnowledgeIds(technicalForm.knowledgeIds || []))
+  ids.push(...normalizeKnowledgeIds(fullGenerateForm.knowledgeIds || []))
   ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIdList || []))
   ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIds || ''))
   ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIds || ''))
