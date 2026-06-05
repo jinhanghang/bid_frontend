@@ -2350,7 +2350,7 @@ async function handleTenderFileChange(uploadFile) {
       solutionMode: createForm.solutionMode,
       solutionType: createForm.solutionType,
       solutionSubType: createForm.solutionSubType,
-      aiLevel: createForm.aiLevel,
+      aiLevel: createForm.aiLevel || currentSolution.value?.aiLevel || null,
       writingStyle: createForm.writingStyle
     })
 
@@ -2448,7 +2448,7 @@ function buildRequirementPayload() {
     solutionName: createForm.solutionName,
     solutionType: createForm.solutionType,
     solutionSubType: createForm.solutionSubType,
-    aiLevel: createForm.aiLevel,
+    aiLevel: createForm.aiLevel || currentSolution.value?.aiLevel || null,
     writingStyle: createForm.writingStyle
   }
 }
@@ -2467,7 +2467,7 @@ async function onGenerateOutline() {
   const selectedFormBeforeRefresh = {
     solutionType: createForm.solutionType,
     solutionSubType: createForm.solutionSubType,
-    aiLevel: createForm.aiLevel,
+    aiLevel: createForm.aiLevel || currentSolution.value?.aiLevel || null,
     writingStyle: createForm.writingStyle
   }
 
@@ -3979,7 +3979,7 @@ function formatDateTime(value) {
 }
 
 function levelLabel(value) {
-  return { BASIC: '基础', STANDARD: '标准', FLAGSHIP: '旗舰' }[value] || '基础'
+  return { BASIC: '基础', STANDARD: '标准', FLAGSHIP: '旗舰' }[value] || '未选择'
 }
 
 function statusLabel(value) {

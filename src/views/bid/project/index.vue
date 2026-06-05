@@ -2297,7 +2297,7 @@ async function generateTechnicalOutline() {
       solutionName: technicalForm.solutionName,
       solutionType: technicalForm.solutionType,
       solutionSubType: technicalForm.solutionSubType,
-      aiLevel: normalizeAiLevel(technicalForm.aiLevel),
+      aiLevel: normalizeAiLevel(technicalForm.aiLevel) || normalizeAiLevel(technicalSolution.value?.aiLevel),
       writingStyle: 'GENERAL',
       outlineWritingDirection: technicalForm.outlineWritingDirection,
       purchaseRequirement: technicalForm.purchaseRequirement,
