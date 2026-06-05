@@ -106,6 +106,7 @@
             <div class="kb-detail-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
+              <el-button v-if="canManageKnowledge" type="warning" plain :icon="Refresh" :loading="rebuildingBase" @click="rebuildCurrentBase">重建索引</el-button>
               <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </section>
@@ -156,6 +157,16 @@
                   </span>
                   <el-tooltip v-if="row.errorMsg" :content="row.errorMsg" placement="top">
                     <el-tag class="error-tag" type="danger" effect="light" size="small">错误</el-tag>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="解析质量" width="170">
+                <template #default="{ row }">
+                  <el-tooltip :content="parseQualityTip(row)" placement="top">
+                    <el-tag :type="parseQualityType(row)" effect="light" size="small">
+                      {{ parseQualityLabel(row) }}
+                    </el-tag>
                   </el-tooltip>
                 </template>
               </el-table-column>
@@ -283,7 +294,7 @@
         module-type="knowledge_base"
         :biz-id="selectedBase.id"
         :private-flag="true"
-        accept=".doc,.docx,.pdf,.xls,.xlsx,.txt"
+        accept=".doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.txt"
         :max-size-mb="50"
         :max-count="5"
         @success="onKnowledgeFileUploaded"
@@ -417,6 +428,7 @@ import {
   deleteKnowledgeFile,
   pageKnowledgeBases,
   pageKnowledgeFiles,
+  rebuildKnowledgeBase,
   rebuildKnowledgeFile,
   searchKnowledge,
   updateKnowledgeBase,
@@ -444,6 +456,7 @@ const timer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const pollingTimer = ref(null)
 const rebuildingIds = ref(new Set())
+const rebuildingBase = ref(false)
 
 const basePager = reactive({
   page: 1,
@@ -861,6 +874,32 @@ async function onKnowledgeFileUploaded(file) {
   startFilePolling()
 }
 
+async function rebuildCurrentBase() {
+  if (!canManageKnowledge.value) {
+    ElMessage.warning('普通用户只能查看、检索知识库，不能重建索引')
+    return
+  }
+  if (!selectedBase.value?.id) {
+    ElMessage.warning('请先选择知识库')
+    return
+  }
+
+  await ElMessageBox.confirm(`确定重建知识库「${selectedBase.value.kbName || selectedBase.value.id}」下全部文件索引吗？旧切片会被重新解析生成。`, '重建知识库索引', {
+    type: 'warning'
+  })
+
+  rebuildingBase.value = true
+  try {
+    await rebuildKnowledgeBase(selectedBase.value.id, true)
+    ElMessage.success('已提交知识库重建任务，系统会自动刷新文件状态')
+    await loadFiles()
+    await loadBases(selectedBase.value.id)
+    startFilePolling()
+  } finally {
+    rebuildingBase.value = false
+  }
+}
+
 async function rebuildFile(row) {
   if (!canManageKnowledge.value) {
     ElMessage.warning('普通用户只能查看、检索知识库，不能重新入库')
@@ -1035,6 +1074,32 @@ function fileStatusClass(row = {}) {
   if (label === '解析中' || label === '待向量化') return 'processing'
   if (label === '入库失败') return 'danger'
   return 'waiting'
+}
+
+function parseQualityLabel(row = {}) {
+  if (!row.parseQualityLevel && row.parseQualityScore === undefined) return '未评估'
+  const score = row.parseQualityScore === undefined || row.parseQualityScore === null ? '-' : row.parseQualityScore
+  const map = { HIGH: '高', MEDIUM: '中', LOW: '低' }
+  return `质量${map[row.parseQualityLevel] || row.parseQualityLevel || '-'} · ${score}分`
+}
+
+function parseQualityType(row = {}) {
+  if (row.parseQualityLevel === 'HIGH') return 'success'
+  if (row.parseQualityLevel === 'MEDIUM') return 'warning'
+  if (row.parseQualityLevel === 'LOW') return 'danger'
+  return 'info'
+}
+
+function parseQualityTip(row = {}) {
+  if (!row.parseQualityJson) return '解析完成后会自动生成质量评分，用于判断是否疑似扫描件、乱码或结构识别不足'
+  try {
+    const report = typeof row.parseQualityJson === 'string' ? JSON.parse(row.parseQualityJson) : row.parseQualityJson
+    const warnings = Array.isArray(report?.warnings) ? report.warnings.join('；') : ''
+    const suggestions = Array.isArray(report?.suggestions) ? report.suggestions.join('；') : ''
+    return [warnings, suggestions].filter(Boolean).join('；') || '解析质量正常'
+  } catch (e) {
+    return '解析质量报告读取失败'
+  }
 }
 
 function formatFileSize(size) {

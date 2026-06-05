@@ -42,6 +42,12 @@ export function rebuildKnowledgeFile(id, async = true) {
   })
 }
 
+export function rebuildKnowledgeBase(id, async = true) {
+  return request.post(`/knowledge-vector/bases/${id}/rebuild`, null, {
+    params: { async }
+  })
+}
+
 export function searchKnowledge(data) {
   return request.post('/knowledge-vector/search', data, { timeout: 0 })
 }

@@ -56,6 +56,10 @@ export function autoFillDocumentFromReference(id, data = {}, options = {}) {
   })
 }
 
+export function getDocumentGenerateCheck(id) {
+  return request({ url: `/ai-document/${id}/generate-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
 export function generateDocumentOutline(id, data) {
   return request({ url: `/ai-document/${id}/outline/generate`, method: 'post', data, timeout: NO_TIMEOUT })
 }

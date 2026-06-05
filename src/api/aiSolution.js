@@ -228,6 +228,10 @@ function handleSseChunk(chunk, handlers) {
   return eventName
 }
 
+export function getSolutionGenerateCheck(id) {
+  return request({ url: `/ai-solution/${id}/generate-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
 export function getSolutionQualityCheck(id) {
   return request({ url: `/ai-solution/${id}/quality-check`, method: 'get', timeout: NO_TIMEOUT })
 }

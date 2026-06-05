@@ -566,6 +566,7 @@ import {
   generateDocumentFull,
   generateDocumentOutline,
   getDocument,
+  getDocumentGenerateCheck,
   getDocumentGenerationTask,
   getDocumentParseTask,
   getDocumentQualityCheck,
@@ -1368,6 +1369,19 @@ function resumeOutlinePolling(forceDocId) {
   outlineTimer = setInterval(tick, 3000)
 }
 
+function formatDocumentGenerateCheckIssues(data = {}) {
+  const failed = Array.isArray(data.items) ? data.items.filter((item) => !item.passed) : []
+  const lines = failed.map((item) => `【${item.name || item.key}】${item.message || '未通过'}`)
+  const warnings = Array.isArray(data.warnings) ? data.warnings : []
+  const suggestions = Array.isArray(data.suggestions) ? data.suggestions : []
+  return [
+    `准备度：${data.percent || 0}%`,
+    ...lines,
+    ...warnings.map((item) => `提醒：${item}`),
+    ...suggestions.map((item) => `建议：${item}`)
+  ].filter(Boolean).join('\n') || '当前资料未达到生成条件，请先补充必填信息。'
+}
+
 async function onGenerateOutline() {
   await loadGlobalRunningTask()
   if (hasOtherAiTaskRunning.value) {
@@ -1388,6 +1402,11 @@ async function onGenerateOutline() {
   try {
     await saveDocumentForm(currentDoc.value.id, buildFormPayload())
     const docId = currentDoc.value.id
+    const generateCheck = await getDocumentGenerateCheck(docId)
+    if (generateCheck && generateCheck.canGenerateOutline === false) {
+      await ElMessageBox.alert(formatDocumentGenerateCheckIssues(generateCheck), '生成前检查未通过', { type: 'warning' })
+      return
+    }
     resumeOutlinePolling(docId)
     const data = await generateDocumentOutline(docId, {
       outlineMode: 'DOCUMENT',
@@ -1435,6 +1454,11 @@ async function onGenerateFull(rewrite) {
   if (isOperationLocked.value) return
   if (!currentDoc.value?.id) return
   await saveDocumentForm(currentDoc.value.id, buildFormPayload())
+  const generateCheck = await getDocumentGenerateCheck(currentDoc.value.id)
+  if (generateCheck && generateCheck.canGenerateFull === false) {
+    await ElMessageBox.alert(formatDocumentGenerateCheckIssues(generateCheck), '生成前检查未通过', { type: 'warning' })
+    return
+  }
   fullGenerating.value = true
   try {
     const task = rewrite

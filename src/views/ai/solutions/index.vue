@@ -1157,6 +1157,7 @@ import {
   getSolutionVersion,
   listSolutionVersions,
   getSolution,
+  getSolutionGenerateCheck,
   getSolutionQualityCheck,
   getSolutionWordCountStats,
   getSolutionConsistencyPackage,
@@ -2524,6 +2525,11 @@ async function onGenerateOutline() {
     const solutionId = currentSolution.value.id
 
     await saveRequirement(solutionId, buildRequirementPayload())
+    const generateCheck = await getSolutionGenerateCheck(solutionId)
+    if (generateCheck && generateCheck.canGenerateOutline === false) {
+      await ElMessageBox.alert(formatGenerateCheckIssues(generateCheck), '生成前检查未通过', { type: 'warning' })
+      return
+    }
     const writingDirection = (outlineForm.writingDirection || '').trim()
     if (writingDirection) {
       await saveOverallWritingRequirement(solutionId, writingDirection)
@@ -2555,6 +2561,19 @@ async function onGenerateOutline() {
   } finally {
     outlineGenerating.value = false
   }
+}
+
+function formatGenerateCheckIssues(data = {}) {
+  const failed = Array.isArray(data.items) ? data.items.filter((item) => !item.passed) : []
+  const lines = failed.map((item) => `【${item.name || item.key}】${item.message || '未通过'}`)
+  const warnings = Array.isArray(data.warnings) ? data.warnings : []
+  const suggestions = Array.isArray(data.suggestions) ? data.suggestions : []
+  return [
+    `准备度：${data.percent || 0}%`,
+    ...lines,
+    ...warnings.map((item) => `提醒：${item}`),
+    ...suggestions.map((item) => `建议：${item}`)
+  ].filter(Boolean).join('\n') || '当前资料未达到生成条件，请先补充必填信息。'
 }
 
 function setPreset(modeValue, wordCount) {
@@ -3006,6 +3025,12 @@ async function startFullGenerate(rewrite = false, targetSolutionId = currentSolu
   const solutionId = normalizeId(targetSolutionId)
   if (!solutionId) {
     ElMessage.warning('未找到要生成的方案，请重新选择方案后再生成')
+    return
+  }
+
+  const generateCheck = await getSolutionGenerateCheck(solutionId)
+  if (generateCheck && generateCheck.canGenerateFull === false) {
+    await ElMessageBox.alert(formatGenerateCheckIssues(generateCheck), '生成前检查未通过', { type: 'warning' })
     return
   }
 
