@@ -55,3 +55,12 @@ export function searchKnowledge(data) {
 export function askKnowledge(data) {
   return request.post('/knowledge-vector/ask', data, { timeout: 0 })
 }
+
+
+export function submitKnowledgeAskFeedback(data) {
+  return request.post('/knowledge-vector/ask-feedback', data)
+}
+
+export function getKnowledgeAskFeedbackStats(params) {
+  return request.get('/knowledge-vector/ask-feedback/stats', { params })
+}

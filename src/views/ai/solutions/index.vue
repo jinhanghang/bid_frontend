@@ -1162,6 +1162,7 @@ import {
   getSolutionWordCountStats,
   getSolutionConsistencyPackage,
   getSolutionDuplicateCheck,
+  getSolutionExportCheck,
   compressSolutionDuplicateSections,
   runSolutionAiReview,
   getRequirementExtract,
@@ -3896,13 +3897,37 @@ function buildSolutionExportWarnings() {
 
 async function confirmSolutionExportBeforeDownload() {
   const warnings = buildSolutionExportWarnings()
-  if (!warnings.length) return true
+  let serverCheck = null
+  if (currentSolution.value?.id) {
+    try {
+      serverCheck = await getSolutionExportCheck(currentSolution.value.id)
+    } catch (e) {
+      warnings.push('服务端导出前检查暂不可用，建议稍后重试或确认正文完整后再导出。')
+    }
+  }
+  const errors = serverCheck?.errors || []
+  const serverWarnings = serverCheck?.warnings || []
+  const suggestions = serverCheck?.suggestions || []
+  const allWarnings = [...new Set([...warnings, ...serverWarnings])]
+  if (serverCheck && serverCheck.canExport === false) {
+    await ElMessageBox.alert(
+      h('div', { class: 'solution-export-check-message' }, [
+        h('p', { class: 'solution-export-check-title' }, `导出前检查未通过（完成度 ${serverCheck.percent || 0}%）`),
+        h('ul', { class: 'solution-export-check-list' }, (errors.length ? errors : allWarnings).map((item, index) => h('li', { key: index }, item))),
+        suggestions.length ? h('p', { class: 'solution-export-check-tip' }, suggestions.join('；')) : null
+      ]),
+      '导出前检查',
+      { type: 'warning', confirmButtonText: '返回处理' }
+    )
+    return false
+  }
+  if (!allWarnings.length) return true
   try {
     await ElMessageBox.confirm(
       h('div', { class: 'solution-export-check-message' }, [
-        h('p', { class: 'solution-export-check-title' }, '导出前检查发现以下问题：'),
-        h('ul', { class: 'solution-export-check-list' }, warnings.map((item, index) => h('li', { key: index }, item))),
-        h('p', { class: 'solution-export-check-tip' }, '可以返回处理后再导出，也可以继续导出当前版本。')
+        h('p', { class: 'solution-export-check-title' }, serverCheck ? `导出前检查发现以下问题（完成度 ${serverCheck.percent || 0}%）` : '导出前检查发现以下问题：'),
+        h('ul', { class: 'solution-export-check-list' }, allWarnings.map((item, index) => h('li', { key: index }, item))),
+        h('p', { class: 'solution-export-check-tip' }, suggestions.length ? suggestions.join('；') : '可以返回处理后再导出，也可以继续导出当前版本。')
       ]),
       '导出前检查',
       {

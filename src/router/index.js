@@ -11,6 +11,7 @@ const TemplateVariableManage = () => import('@/views/bid/templateVariables/index
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiDocument = () => import('@/views/ai/documents/index.vue')
+const AiTaskCenter = () => import('@/views/ai/tasks/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
@@ -47,6 +48,7 @@ const routes = [
 
       { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
       { path: 'ai/documents', component: AiDocument, meta: { title: 'AI文档生成', requiresBusiness: true } },
+      { path: 'ai/tasks', component: AiTaskCenter, meta: { title: 'AI任务中心', requiresBusiness: true } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/exports', redirect: '/download-center' },
 

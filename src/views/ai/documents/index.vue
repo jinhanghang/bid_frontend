@@ -563,6 +563,7 @@ import {
   deleteDocument,
   startDocumentExportTask,
   getDocumentExportTask,
+  getDocumentExportCheck,
   generateDocumentFull,
   generateDocumentOutline,
   getDocument,
@@ -1584,6 +1585,8 @@ async function chooseExportOptions() {
 async function onExport() {
   if (isOperationLocked.value) return
   if (!currentDoc.value?.id) return
+  const confirmed = await confirmDocumentExportBeforeDownload()
+  if (!confirmed) return
   const exportOptions = await chooseExportOptions()
   if (!exportOptions) return
   const format = exportOptions.format
@@ -1616,6 +1619,56 @@ async function onExport() {
     ElMessage.success(`${format === 'pdf' ? 'PDF' : 'Word'}已导出，并写入下载中心`)
   } finally {
     exportLoading.value = false
+  }
+}
+
+
+async function confirmDocumentExportBeforeDownload() {
+  if (!currentDoc.value?.id) return false
+  let check = null
+  try {
+    check = await getDocumentExportCheck(currentDoc.value.id)
+  } catch (e) {
+    try {
+      await ElMessageBox.confirm('服务端导出前检查暂不可用。请确认文档正文完整后再导出。', '导出前检查', {
+        type: 'warning',
+        confirmButtonText: '继续导出',
+        cancelButtonText: '返回处理'
+      })
+      return true
+    } catch (ignored) {
+      return false
+    }
+  }
+  const errors = check?.errors || []
+  const warnings = check?.warnings || []
+  const suggestions = check?.suggestions || []
+  if (check?.canExport === false) {
+    await ElMessageBox.alert(
+      h('div', { class: 'doc-export-check-message' }, [
+        h('p', { class: 'doc-export-check-title' }, `导出前检查未通过（完成度 ${check.percent || 0}%）`),
+        h('ul', { class: 'doc-export-check-list' }, (errors.length ? errors : warnings).map((item, index) => h('li', { key: index }, item))),
+        suggestions.length ? h('p', { class: 'doc-export-check-tip' }, suggestions.join('；')) : null
+      ]),
+      '导出前检查',
+      { type: 'warning', confirmButtonText: '返回处理' }
+    )
+    return false
+  }
+  if (!warnings.length) return true
+  try {
+    await ElMessageBox.confirm(
+      h('div', { class: 'doc-export-check-message' }, [
+        h('p', { class: 'doc-export-check-title' }, `导出前检查发现以下问题（完成度 ${check.percent || 0}%）`),
+        h('ul', { class: 'doc-export-check-list' }, warnings.map((item, index) => h('li', { key: index }, item))),
+        h('p', { class: 'doc-export-check-tip' }, suggestions.length ? suggestions.join('；') : '可以返回处理后再导出，也可以继续导出当前版本。')
+      ]),
+      '导出前检查',
+      { type: 'warning', confirmButtonText: '继续导出', cancelButtonText: '返回处理' }
+    )
+    return true
+  } catch (e) {
+    return false
   }
 }
 
@@ -4342,4 +4395,11 @@ function fallbackTypes() {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+</style>
+
+<style scoped>
+.doc-export-check-message { line-height: 1.7; }
+.doc-export-check-title { margin: 0 0 8px; font-weight: 700; }
+.doc-export-check-list { margin: 0; padding-left: 18px; }
+.doc-export-check-tip { margin: 8px 0 0; color: #64748b; }
 </style>

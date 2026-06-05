@@ -80,6 +80,11 @@ export function getDocumentGenerationTask(taskId) {
   return request({ url: `/ai-document/task/${taskId}`, method: 'get' })
 }
 
+
+export function getDocumentExportCheck(id) {
+  return request({ url: `/ai-document/${id}/export-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
 export function exportDocumentWord(id, data = {}) {
   return request({ url: `/ai-document/${id}/export-word`, method: 'post', data, timeout: NO_TIMEOUT })
 }

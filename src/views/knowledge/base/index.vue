@@ -377,6 +377,14 @@
           <el-tag v-else-if="askEvidenceCount" type="success" size="small">引用 {{ askEvidenceCount }} 条资料</el-tag>
         </div>
         <div class="answer-content">{{ askAnswer }}</div>
+        <div class="ask-feedback-actions">
+          <span>这个回答对你有帮助吗？</span>
+          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('USEFUL')">有用</el-button>
+          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('USELESS')">无用</el-button>
+          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('CITATION_WRONG')">引用不准</el-button>
+          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('INCOMPLETE')">答案不完整</el-button>
+          <el-tag v-if="askFeedback.submitted" size="small" type="success">已反馈</el-tag>
+        </div>
       </div>
 
       <el-empty
@@ -422,6 +430,7 @@ import FileUploadBox from '@/components/FileUploadBox.vue'
 import { createRequestId } from '@/utils/requestId'
 import {
   askKnowledge,
+  submitKnowledgeAskFeedback,
   createKnowledgeBase,
   createKnowledgeFile,
   deleteKnowledgeBase,
@@ -501,6 +510,8 @@ const askAnswer = ref('')
 const askReferences = ref([])
 const askLowConfidence = ref(false)
 const askEvidenceCount = ref(0)
+const askRequestId = ref('')
+const askFeedback = reactive({ submitted: false, loading: false })
 
 const baseForm = reactive({
   enterpriseId: '',
@@ -983,6 +994,9 @@ function openAskDialog() {
   askReferences.value = []
   askLowConfidence.value = false
   askEvidenceCount.value = 0
+  askRequestId.value = ''
+  askFeedback.submitted = false
+  askFeedback.loading = false
 }
 
 async function submitSearch() {
@@ -1018,11 +1032,14 @@ async function submitAsk() {
 
   askDialog.loading = true
   try {
+    const requestId = createRequestId('kb_ask')
+    askRequestId.value = requestId
+    askFeedback.submitted = false
     const res = await askKnowledge({
       knowledgeBaseIds: [selectedBase.value.id],
       question: askForm.question,
       topK: askForm.topK,
-      requestId: createRequestId('kb_ask')
+      requestId
     })
     askAnswer.value = res?.answer || ''
     askReferences.value = res?.references || []
@@ -1038,6 +1055,44 @@ async function submitAsk() {
     }
   } finally {
     askDialog.loading = false
+  }
+}
+
+
+async function submitAskFeedback(type) {
+  if (!askAnswer.value || askFeedback.submitted || askFeedback.loading) return
+  askFeedback.loading = true
+  try {
+    let reason = ''
+    if (type !== 'USEFUL') {
+      const result = await ElMessageBox.prompt('请简单说明问题，便于后续优化知识库和切片策略。', '问答反馈', {
+        confirmButtonText: '提交反馈',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例如：引用不对、答案太泛、没有回答关键问题'
+      }).catch(() => null)
+      if (!result) return
+      reason = result.value || ''
+    }
+    await submitKnowledgeAskFeedback({
+      requestId: askRequestId.value,
+      knowledgeBaseIds: selectedBase.value?.id ? [selectedBase.value.id] : [],
+      question: askForm.question,
+      answer: askAnswer.value,
+      feedbackType: type,
+      reason,
+      lowConfidence: askLowConfidence.value,
+      evidenceCount: askEvidenceCount.value,
+      referenceJson: JSON.stringify((askReferences.value || []).map((item) => ({
+        chunkId: item.chunkId,
+        fileName: item.fileName,
+        sourceRef: item.sourceRef,
+        score: item.score
+      })))
+    })
+    askFeedback.submitted = true
+    ElMessage.success('反馈已提交')
+  } finally {
+    askFeedback.loading = false
   }
 }
 
@@ -1761,4 +1816,8 @@ function formatTime(value) {
     display: none;
   }
 }
+</style>
+
+<style scoped>
+.ask-feedback-actions { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #64748b; }
 </style>

@@ -124,6 +124,11 @@ export function updateSectionContent(outlineId, content) {
   })
 }
 
+
+export function getSolutionExportCheck(id) {
+  return request({ url: `/ai-solution/${id}/export-check`, method: 'get', timeout: NO_TIMEOUT })
+}
+
 export function exportWord(id, data = {}) {
   return request({ url: `/ai-solution/${id}/export-word`, method: 'post', data, timeout: NO_TIMEOUT })
 }
