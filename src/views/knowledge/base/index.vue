@@ -350,8 +350,21 @@
         <el-button type="primary" :loading="askDialog.loading" @click="submitAsk">生成回答</el-button>
       </div>
 
-      <div v-if="askAnswer" class="answer-box">
-        <div class="answer-title">AI回答</div>
+      <el-alert
+        v-if="askDialog.asked && askLowConfidence"
+        class="ask-alert"
+        type="warning"
+        show-icon
+        :closable="false"
+        title="当前知识库未检索到相关资料，系统已停止无依据生成"
+      />
+
+      <div v-if="askAnswer" class="answer-box" :class="{ 'answer-box--warning': askLowConfidence }">
+        <div class="answer-title">
+          <span>AI回答</span>
+          <el-tag v-if="askLowConfidence" type="warning" size="small">低置信度</el-tag>
+          <el-tag v-else-if="askEvidenceCount" type="success" size="small">引用 {{ askEvidenceCount }} 条资料</el-tag>
+        </div>
         <div class="answer-content">{{ askAnswer }}</div>
       </div>
 
@@ -361,13 +374,16 @@
       />
 
       <div v-if="askReferences.length" class="hit-list">
-        <div class="answer-title">引用片段</div>
-        <div v-for="item in askReferences" :key="item.chunkId" class="hit-card">
-          <div class="hit-head">
-            <span>相似度：{{ formatScore(item.score) }}</span>
-            <span>{{ item.fileName || `文件#${item.knowledgeFileId}` }}</span>
+        <div class="answer-title">引用来源</div>
+        <div v-for="(item, index) in askReferences" :key="item.chunkId || index" class="hit-card">
+          <div class="hit-head hit-head--stack">
+            <div class="hit-source-title">[资料{{ index + 1 }}] {{ formatReferenceTitle(item) }}</div>
+            <div class="hit-source-meta">
+              <span>相似度：{{ formatScore(item.score) }}</span>
+              <span v-if="formatReferenceMeta(item)">{{ formatReferenceMeta(item) }}</span>
+            </div>
           </div>
-          <div class="hit-content">{{ item.content }}</div>
+          <div class="hit-content">{{ referencePreview(item) }}</div>
         </div>
       </div>
     </el-dialog>
@@ -392,6 +408,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
+import { createRequestId } from '@/utils/requestId'
 import {
   askKnowledge,
   createKnowledgeBase,
@@ -469,6 +486,8 @@ const askForm = reactive({
 const searchResult = ref([])
 const askAnswer = ref('')
 const askReferences = ref([])
+const askLowConfidence = ref(false)
+const askEvidenceCount = ref(0)
 
 const baseForm = reactive({
   enterpriseId: '',
@@ -923,6 +942,8 @@ function openAskDialog() {
   askDialog.asked = false
   askAnswer.value = ''
   askReferences.value = []
+  askLowConfidence.value = false
+  askEvidenceCount.value = 0
 }
 
 async function submitSearch() {
@@ -961,13 +982,18 @@ async function submitAsk() {
     const res = await askKnowledge({
       knowledgeBaseIds: [selectedBase.value.id],
       question: askForm.question,
-      topK: askForm.topK
+      topK: askForm.topK,
+      requestId: createRequestId('kb_ask')
     })
     askAnswer.value = res?.answer || ''
     askReferences.value = res?.references || []
+    askLowConfidence.value = Boolean(res?.lowConfidence)
+    askEvidenceCount.value = Number(res?.evidenceCount || 0)
     askDialog.asked = true
-    if (askAnswer.value) {
-      ElMessage.success('知识问答已生成')
+    if (askLowConfidence.value) {
+      ElMessage.warning('当前知识库未检索到相关资料，已停止无依据生成')
+    } else if (askAnswer.value) {
+      ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
     } else {
       ElMessage.warning('暂未生成回答，请确认知识库文件已解析入库，或换一个问题再试')
     }
@@ -1017,6 +1043,34 @@ function formatFileSize(size) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(2)} KB`
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(2)} MB`
   return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`
+}
+
+function formatReferenceTitle(item = {}) {
+  return item.citation || buildReferenceParts(item).join(' · ') || item.fileName || `文件#${item.knowledgeFileId}`
+}
+
+function buildReferenceParts(item = {}) {
+  const parts = []
+  if (item.fileName) parts.push(item.fileName)
+  if (item.sourceRef) parts.push(item.sourceRef)
+  else if (item.pageNo && item.pageEndNo && String(item.pageNo) !== String(item.pageEndNo)) parts.push(`第 ${item.pageNo}-${item.pageEndNo} 页`)
+  else if (item.pageNo) parts.push(`第 ${item.pageNo} 页`)
+  else if (item.slideNo) parts.push(`幻灯片 ${item.slideNo}`)
+  else if (item.sheetName) parts.push(`工作表：${item.sheetName}`)
+  if (item.sectionTitle && !parts.some((part) => String(part).includes(item.sectionTitle))) parts.push(item.sectionTitle)
+  return parts.filter(Boolean)
+}
+
+function formatReferenceMeta(item = {}) {
+  const meta = []
+  if (item.chunkIndex !== undefined && item.chunkIndex !== null) meta.push(`切片 ${item.chunkIndex}`)
+  if (item.retrievalSource) meta.push(item.retrievalSource)
+  if (item.blockType) meta.push(item.blockType)
+  return meta.join(' · ')
+}
+
+function referencePreview(item = {}) {
+  return item.contentPreview || item.content || ''
 }
 
 function formatScore(score) {
@@ -1554,10 +1608,32 @@ function formatTime(value) {
   font-size: 13px;
 }
 
+.hit-head--stack {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hit-source-title {
+  color: var(--text-main);
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.hit-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-sub);
+}
+
 .hit-content {
   color: var(--text-main);
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.ask-alert {
+  margin-bottom: 12px;
 }
 
 .answer-box {
@@ -1568,7 +1644,15 @@ function formatTime(value) {
   background: #eff6ff;
 }
 
+.answer-box--warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
 .answer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
   font-weight: 800;
 }
