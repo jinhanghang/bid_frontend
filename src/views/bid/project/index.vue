@@ -1233,7 +1233,7 @@ const isCurrentTechnicalOutlineGenerating = computed(() => {
 const technicalForm = reactive({
   solutionType: 'SERVICE',
   solutionSubType: '不限',
-  aiLevel: 'BASIC',
+  aiLevel: '',
   solutionName: '',
   outlineWritingDirection: '',
   purchaseRequirement: '',
@@ -1267,7 +1267,7 @@ function resetTechnicalWorkspace() {
   Object.assign(technicalForm, {
     solutionType: 'SERVICE',
     solutionSubType: '不限',
-    aiLevel: 'BASIC',
+    aiLevel: '',
     solutionName: '',
     outlineWritingDirection: '',
     purchaseRequirement: '',
@@ -2192,7 +2192,15 @@ function normalizeAiLevel(value) {
   const text = String(value || '').trim().toUpperCase()
   if (text === 'PREMIUM') return 'FLAGSHIP'
   if (['BASIC', 'STANDARD', 'FLAGSHIP'].includes(text)) return text
-  return 'BASIC'
+  return ''
+}
+
+function requireSelectedTechnicalAiLevel() {
+  if (!technicalForm.aiLevel && !technicalSolution.value?.aiLevel) {
+    ElMessage.warning('请先选择AI等级')
+    return false
+  }
+  return true
 }
 
 function hydrateTechnicalSolutionForm() {
@@ -2202,7 +2210,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionName = solution.solutionName || (projectName.includes('技术方案') ? projectName : `${projectName}技术方案`)
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
-  technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel || technicalForm.aiLevel)
+  technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel) || technicalForm.aiLevel || ''
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
@@ -2259,6 +2267,7 @@ function autoFillTechnicalRequirementAfterParse(showMessage = true) {
 }
 
 async function generateTechnicalOutline() {
+  if (!requireSelectedTechnicalAiLevel()) return
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
     ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
@@ -2506,6 +2515,7 @@ function resetFullGenerateBlindSetting() {
 }
 
 function openTechnicalFullGenerateDialog(action = 'GENERATE') {
+  if (!requireSelectedTechnicalAiLevel()) return
   const isRewrite = String(action || '').toUpperCase() === 'REWRITE'
   const allowed = isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value
   if (!allowed) {
@@ -2568,6 +2578,7 @@ async function applyTechnicalFullGeneratePreferences() {
 }
 
 async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) {
+  if (!requireSelectedTechnicalAiLevel()) return
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
     ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')

@@ -1383,7 +1383,7 @@ const createForm = reactive({
   solutionMode: 'QUICK',
   solutionType: 'SERVICE',
   solutionSubType: '不限',
-  aiLevel: 'BASIC',
+  aiLevel: '',
   writingStyle: 'GENERAL',
   solutionName: ''
 })
@@ -1423,6 +1423,15 @@ const aiLevels = [
   { label: '标准版', value: 'STANDARD', desc: '标准生成质量，增加关键质量校验与结构优化。' },
   { label: '旗舰版', value: 'FLAGSHIP', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
 ]
+
+function requireSelectedAiLevel() {
+  if (!createForm.aiLevel) {
+    ElMessage.warning('请先选择AI等级')
+    return false
+  }
+  return true
+}
+
 
 const wordOptions = [300, 600, 900, 1200, 1800, 2700, 3600, 4500, 5400, 6300, 7200, 8100, 9000, 9900]
 const subTypeMap = {
@@ -2153,7 +2162,7 @@ function applySolutionDetail(data) {
     createForm.solutionMode = data.solutionMode || createForm.solutionMode || 'QUICK'
     createForm.solutionType = data.solutionType || createForm.solutionType || 'SERVICE'
     createForm.solutionSubType = data.solutionSubType || createForm.solutionSubType || '不限'
-    createForm.aiLevel = data.aiLevel || createForm.aiLevel || 'BASIC'
+    createForm.aiLevel = data.aiLevel || createForm.aiLevel || ''
     createForm.writingStyle = data.writingStyle || createForm.writingStyle || 'GENERAL'
     createForm.solutionName = data.solutionName || ''
     outlineForm.writingDirection = data.overallWritingRequirement || outlineForm.writingDirection || ''
@@ -2270,7 +2279,7 @@ async function startCreate(solutionMode = 'QUICK') {
   createForm.solutionMode = solutionMode
   createForm.solutionType = 'SERVICE'
   createForm.solutionSubType = '不限'
-  createForm.aiLevel = 'BASIC'
+  createForm.aiLevel = ''
   createForm.writingStyle = 'GENERAL'
   createForm.solutionName = '新建AI方案'
   outlineForm.outlineMode = 'SCORE_ITEM'
@@ -2294,7 +2303,7 @@ async function startCreate(solutionMode = 'QUICK') {
       solutionMode: createForm.solutionMode,
       solutionType: createForm.solutionType,
       solutionSubType: createForm.solutionSubType,
-      aiLevel: createForm.aiLevel,
+      aiLevel: createForm.aiLevel || null,
       writingStyle: createForm.writingStyle
     })
     applySolutionDetail(draft)
@@ -2309,6 +2318,7 @@ async function startCreate(solutionMode = 'QUICK') {
 
 async function handleTenderFileChange(uploadFile) {
   if (!uploadFile?.raw) return
+  if (!requireSelectedAiLevel()) return
 
   if (!currentSolution.value?.id) {
     ElMessage.warning('草稿方案尚未创建完成，请稍后再上传')
@@ -2444,6 +2454,8 @@ function buildRequirementPayload() {
 }
 
 async function onGenerateOutline() {
+  if (!requireSelectedAiLevel()) return
+
   if (!currentSolution.value?.id) {
     ElMessage.warning('草稿方案尚未创建完成，请稍后再试')
     return
@@ -2915,6 +2927,10 @@ async function applySolutionFullGeneratePreferences(solutionSnapshot = currentSo
 
 
 async function openFullGenerateDialog(action = 'GENERATE') {
+  if (!createForm.aiLevel && !currentSolution.value?.aiLevel) {
+    ElMessage.warning('请先选择AI等级')
+    return
+  }
   await loadGlobalRunningTask()
   if (hasOtherSolutionRunningTask.value) {
     ElMessage.warning(otherSolutionRunningMessage.value)
