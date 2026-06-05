@@ -3913,7 +3913,7 @@ async function confirmSolutionExportBeforeDownload() {
     await ElMessageBox.alert(
       h('div', { class: 'solution-export-check-message' }, [
         h('p', { class: 'solution-export-check-title' }, `导出前检查未通过（完成度 ${serverCheck.percent || 0}%）`),
-        h('ul', { class: 'solution-export-check-list' }, (errors.length ? errors : allWarnings).map((item, index) => h('li', { key: index }, item))),
+        h('ul', { class: 'solution-export-check-list' }, (errors.length ? errors : (serverWarnings.length ? serverWarnings : allWarnings)).map((item, index) => h('li', { key: index }, item))),
         suggestions.length ? h('p', { class: 'solution-export-check-tip' }, suggestions.join('；')) : null
       ]),
       '导出前检查',
