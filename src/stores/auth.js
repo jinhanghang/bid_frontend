@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { completeEnterprise as completeEnterpriseApi, getMe, login as loginApi, logout as logoutApi, smsLogin as smsLoginApi } from '@/api/auth'
+import { getMe, login as loginApi, logout as logoutApi, smsLogin as smsLoginApi } from '@/api/auth'
 import {
   clearAuthStorage,
   getStoredMenus,
@@ -87,11 +87,6 @@ export const useAuthStore = defineStore('auth', {
 
     async smsLogin(payload) {
       const res = await smsLoginApi(payload)
-      return this.saveLoginState(res)
-    },
-
-    async completeEnterprise(payload) {
-      const res = await completeEnterpriseApi(payload)
       return this.saveLoginState(res)
     },
 

@@ -11,7 +11,6 @@ const TemplateVariableManage = () => import('@/views/bid/templateVariables/index
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiDocument = () => import('@/views/ai/documents/index.vue')
-const AiTaskCenter = () => import('@/views/ai/tasks/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')
 const UserManage = () => import('@/views/system/user/index.vue')
@@ -48,7 +47,6 @@ const routes = [
 
       { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
       { path: 'ai/documents', component: AiDocument, meta: { title: 'AI文档生成', requiresBusiness: true } },
-      { path: 'ai/tasks', component: AiTaskCenter, meta: { title: 'AI任务中心', requiresBusiness: true } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },
       { path: 'ai/exports', redirect: '/download-center' },
 
@@ -101,8 +99,6 @@ router.beforeEach(async (to) => {
   const roleCodes = normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || [])
   const isSuperAdmin = roleCodes.includes(ROLE_SUPER_ADMIN)
   const isPlatformAdmin = roleCodes.includes(ROLE_PLATFORM_ADMIN)
-  const hasPlatformBusinessScope = isSuperAdmin || isPlatformAdmin
-  const hasEnterprise = Boolean(auth.user?.enterpriseId)
 
   if (Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
     const allowRoles = to.meta.roles.map(normalizeRoleCode)
@@ -111,9 +107,7 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (to.meta.requiresBusiness && !hasPlatformBusinessScope && !hasEnterprise) {
-    return '/dashboard'
-  }
+  // 未绑定企业不再阻断业务页面。企业级数据权限由后端按企业/个人空间继续控制。
 
   return true
 })

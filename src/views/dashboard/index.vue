@@ -6,7 +6,7 @@
           <div class="welcome-title">恒鼎·智慧AI工作台</div>
           <div class="welcome-sub">
             <template v-if="needEnterpriseApply">
-              当前账号还没有绑定企业。请先提交企业申请，审核通过后即可使用标书项目、知识库、AI生成等业务功能。
+              当前账号还没有绑定企业，可先使用 AI方案、AI文档、AI标书、个人知识库等个人空间功能；企业资料、团队协作和企业级共享资料需要提交企业申请并审核通过后使用。
             </template>
             <template v-else>
               从项目创建、资料准备、AI生成到正式 Word/PDF 导出，集中查看当前企业的标书业务进展。
@@ -15,25 +15,25 @@
         </div>
         <div class="welcome-actions">
           <el-button v-if="needEnterpriseApply" type="primary" @click="$router.push('/system/enterprise-apply')">提交企业申请</el-button>
-          <el-button v-else @click="loadStats" :icon="Refresh">刷新</el-button>
+          <el-button @click="loadStats" :icon="Refresh">刷新</el-button>
         </div>
       </div>
 
       <div v-if="needEnterpriseApply" class="enterprise-guide card">
-        <div class="guide-title">请选择一种方式继续</div>
+        <div class="guide-title">未绑定企业时的使用范围</div>
         <div class="enterprise-options">
           <div class="enterprise-option">
-            <div class="option-title">注册新企业</div>
-            <div class="option-desc">提交企业入驻申请后，由平台管理员审核；审核通过后系统会创建企业，并把你设置为企业管理员。</div>
+            <div class="option-title">可以先用个人空间</div>
+            <div class="option-desc">AI方案、AI文档、AI标书、个人知识库、下载中心等数据会按当前账号隔离保存，不会进入任何企业。</div>
           </div>
           <div class="enterprise-option">
-            <div class="option-title">加入已有企业</div>
-            <div class="option-desc">提交加入申请后，由平台管理员或企业管理员审核；审核通过后你会加入该企业。</div>
+            <div class="option-title">需要企业后再申请</div>
+            <div class="option-desc">企业资料库、企业共享知识库、团队成员和企业协作能力，需要注册新企业或加入已有企业并通过审批。</div>
           </div>
         </div>
       </div>
 
-      <template v-else>
+      <template>
         <div class="stat-grid dashboard-stats" v-loading="loading">
           <div v-for="item in stats" :key="item.title" class="stat-card" @click="$router.push(item.path)">
             <div class="stat-title">{{ item.title }}</div>

@@ -106,7 +106,6 @@
             <div class="kb-detail-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
-              <el-button v-if="canManageKnowledge" type="warning" plain :icon="Refresh" :loading="rebuildingBase" @click="rebuildCurrentBase">重建索引</el-button>
               <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </section>
@@ -157,16 +156,6 @@
                   </span>
                   <el-tooltip v-if="row.errorMsg" :content="row.errorMsg" placement="top">
                     <el-tag class="error-tag" type="danger" effect="light" size="small">错误</el-tag>
-                  </el-tooltip>
-                </template>
-              </el-table-column>
-
-              <el-table-column label="解析质量" width="170">
-                <template #default="{ row }">
-                  <el-tooltip :content="parseQualityTip(row)" placement="top">
-                    <el-tag :type="parseQualityType(row)" effect="light" size="small">
-                      {{ parseQualityLabel(row) }}
-                    </el-tag>
                   </el-tooltip>
                 </template>
               </el-table-column>
@@ -294,7 +283,7 @@
         module-type="knowledge_base"
         :biz-id="selectedBase.id"
         :private-flag="true"
-        accept=".doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.txt"
+        accept=".doc,.docx,.pdf,.xls,.xlsx,.txt"
         :max-size-mb="50"
         :max-count="5"
         @success="onKnowledgeFileUploaded"
@@ -377,14 +366,6 @@
           <el-tag v-else-if="askEvidenceCount" type="success" size="small">引用 {{ askEvidenceCount }} 条资料</el-tag>
         </div>
         <div class="answer-content">{{ askAnswer }}</div>
-        <div class="ask-feedback-actions">
-          <span>这个回答对你有帮助吗？</span>
-          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('USEFUL')">有用</el-button>
-          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('USELESS')">无用</el-button>
-          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('CITATION_WRONG')">引用不准</el-button>
-          <el-button size="small" plain :loading="askFeedback.loading" :disabled="askFeedback.submitted" @click="submitAskFeedback('INCOMPLETE')">答案不完整</el-button>
-          <el-tag v-if="askFeedback.submitted" size="small" type="success">已反馈</el-tag>
-        </div>
       </div>
 
       <el-empty
@@ -430,14 +411,12 @@ import FileUploadBox from '@/components/FileUploadBox.vue'
 import { createRequestId } from '@/utils/requestId'
 import {
   askKnowledge,
-  submitKnowledgeAskFeedback,
   createKnowledgeBase,
   createKnowledgeFile,
   deleteKnowledgeBase,
   deleteKnowledgeFile,
   pageKnowledgeBases,
   pageKnowledgeFiles,
-  rebuildKnowledgeBase,
   rebuildKnowledgeFile,
   searchKnowledge,
   updateKnowledgeBase,
@@ -465,7 +444,6 @@ const timer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const pollingTimer = ref(null)
 const rebuildingIds = ref(new Set())
-const rebuildingBase = ref(false)
 
 const basePager = reactive({
   page: 1,
@@ -510,8 +488,6 @@ const askAnswer = ref('')
 const askReferences = ref([])
 const askLowConfidence = ref(false)
 const askEvidenceCount = ref(0)
-const askRequestId = ref('')
-const askFeedback = reactive({ submitted: false, loading: false })
 
 const baseForm = reactive({
   enterpriseId: '',
@@ -526,9 +502,7 @@ const canManagePlatform = computed(() => {
   return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
 })
 
-const canManageKnowledge = computed(() => {
-  return canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN)
-})
+const canManageKnowledge = computed(() => true)
 
 const hasProcessingFiles = computed(() => files.value.some(isFileProcessing))
 const baseNoMore = computed(() => basePager.total > 0 && bases.value.length >= basePager.total)
@@ -751,7 +725,7 @@ function openCreateBase() {
 
 function openEditBase(row) {
   if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能编辑知识库')
+    ElMessage.warning('当前知识库不可编辑')
     return
   }
 
@@ -763,7 +737,7 @@ function openEditBase(row) {
 
 async function submitBase() {
   if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能保存知识库')
+    ElMessage.warning('当前知识库不可保存')
     return
   }
 
@@ -793,7 +767,7 @@ async function submitBase() {
 
 async function toggleBaseStatus(row) {
   if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能修改状态')
+    ElMessage.warning('当前知识库不可修改状态')
     return
   }
 
@@ -811,7 +785,7 @@ async function toggleBaseStatus(row) {
 
 async function deleteBase(row) {
   if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能删除知识库')
+    ElMessage.warning('当前知识库不可删除')
     return
   }
 
@@ -883,32 +857,6 @@ async function onKnowledgeFileUploaded(file) {
   await loadFiles()
   await loadBases(selectedBase.value.id)
   startFilePolling()
-}
-
-async function rebuildCurrentBase() {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能重建索引')
-    return
-  }
-  if (!selectedBase.value?.id) {
-    ElMessage.warning('请先选择知识库')
-    return
-  }
-
-  await ElMessageBox.confirm(`确定重建知识库「${selectedBase.value.kbName || selectedBase.value.id}」下全部文件索引吗？旧切片会被重新解析生成。`, '重建知识库索引', {
-    type: 'warning'
-  })
-
-  rebuildingBase.value = true
-  try {
-    await rebuildKnowledgeBase(selectedBase.value.id, true)
-    ElMessage.success('已提交知识库重建任务，系统会自动刷新文件状态')
-    await loadFiles()
-    await loadBases(selectedBase.value.id)
-    startFilePolling()
-  } finally {
-    rebuildingBase.value = false
-  }
 }
 
 async function rebuildFile(row) {
@@ -994,9 +942,6 @@ function openAskDialog() {
   askReferences.value = []
   askLowConfidence.value = false
   askEvidenceCount.value = 0
-  askRequestId.value = ''
-  askFeedback.submitted = false
-  askFeedback.loading = false
 }
 
 async function submitSearch() {
@@ -1032,14 +977,11 @@ async function submitAsk() {
 
   askDialog.loading = true
   try {
-    const requestId = createRequestId('kb_ask')
-    askRequestId.value = requestId
-    askFeedback.submitted = false
     const res = await askKnowledge({
       knowledgeBaseIds: [selectedBase.value.id],
       question: askForm.question,
       topK: askForm.topK,
-      requestId
+      requestId: createRequestId('kb_ask')
     })
     askAnswer.value = res?.answer || ''
     askReferences.value = res?.references || []
@@ -1055,44 +997,6 @@ async function submitAsk() {
     }
   } finally {
     askDialog.loading = false
-  }
-}
-
-
-async function submitAskFeedback(type) {
-  if (!askAnswer.value || askFeedback.submitted || askFeedback.loading) return
-  askFeedback.loading = true
-  try {
-    let reason = ''
-    if (type !== 'USEFUL') {
-      const result = await ElMessageBox.prompt('请简单说明问题，便于后续优化知识库和切片策略。', '问答反馈', {
-        confirmButtonText: '提交反馈',
-        cancelButtonText: '取消',
-        inputPlaceholder: '例如：引用不对、答案太泛、没有回答关键问题'
-      }).catch(() => null)
-      if (!result) return
-      reason = result.value || ''
-    }
-    await submitKnowledgeAskFeedback({
-      requestId: askRequestId.value,
-      knowledgeBaseIds: selectedBase.value?.id ? [selectedBase.value.id] : [],
-      question: askForm.question,
-      answer: askAnswer.value,
-      feedbackType: type,
-      reason,
-      lowConfidence: askLowConfidence.value,
-      evidenceCount: askEvidenceCount.value,
-      referenceJson: JSON.stringify((askReferences.value || []).map((item) => ({
-        chunkId: item.chunkId,
-        fileName: item.fileName,
-        sourceRef: item.sourceRef,
-        score: item.score
-      })))
-    })
-    askFeedback.submitted = true
-    ElMessage.success('反馈已提交')
-  } finally {
-    askFeedback.loading = false
   }
 }
 
@@ -1129,32 +1033,6 @@ function fileStatusClass(row = {}) {
   if (label === '解析中' || label === '待向量化') return 'processing'
   if (label === '入库失败') return 'danger'
   return 'waiting'
-}
-
-function parseQualityLabel(row = {}) {
-  if (!row.parseQualityLevel && row.parseQualityScore === undefined) return '未评估'
-  const score = row.parseQualityScore === undefined || row.parseQualityScore === null ? '-' : row.parseQualityScore
-  const map = { HIGH: '高', MEDIUM: '中', LOW: '低' }
-  return `质量${map[row.parseQualityLevel] || row.parseQualityLevel || '-'} · ${score}分`
-}
-
-function parseQualityType(row = {}) {
-  if (row.parseQualityLevel === 'HIGH') return 'success'
-  if (row.parseQualityLevel === 'MEDIUM') return 'warning'
-  if (row.parseQualityLevel === 'LOW') return 'danger'
-  return 'info'
-}
-
-function parseQualityTip(row = {}) {
-  if (!row.parseQualityJson) return '解析完成后会自动生成质量评分，用于判断是否疑似扫描件、乱码或结构识别不足'
-  try {
-    const report = typeof row.parseQualityJson === 'string' ? JSON.parse(row.parseQualityJson) : row.parseQualityJson
-    const warnings = Array.isArray(report?.warnings) ? report.warnings.join('；') : ''
-    const suggestions = Array.isArray(report?.suggestions) ? report.suggestions.join('；') : ''
-    return [warnings, suggestions].filter(Boolean).join('；') || '解析质量正常'
-  } catch (e) {
-    return '解析质量报告读取失败'
-  }
 }
 
 function formatFileSize(size) {
@@ -1816,8 +1694,4 @@ function formatTime(value) {
     display: none;
   }
 }
-</style>
-
-<style scoped>
-.ask-feedback-actions { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e5e7eb; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: #64748b; }
 </style>

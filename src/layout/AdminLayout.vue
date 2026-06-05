@@ -71,45 +71,7 @@
       </main>
     </section>
 
-    <el-dialog
-      v-model="enterpriseDialogVisible"
-      title="完善企业信息"
-      width="460px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="false"
-      append-to-body
-    >
-      <div class="enterprise-complete-tip">
-        登录成功。首次使用需要填写企业名称，系统会根据该名称自动创建企业资料，其余资料可以后续在资料库中补充。
-      </div>
-      <el-form
-        ref="enterpriseFormRef"
-        :model="enterpriseForm"
-        :rules="enterpriseRules"
-        label-position="top"
-        @submit.prevent
-      >
-        <el-form-item label="企业名称" prop="enterpriseName">
-          <el-input
-            v-model.trim="enterpriseForm.enterpriseName"
-            maxlength="200"
-            show-word-limit
-            placeholder="请输入企业名称"
-            @keyup.enter="submitEnterpriseComplete"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button
-          type="primary"
-          :loading="enterpriseSubmitting"
-          @click="submitEnterpriseComplete"
-        >
-          保存并进入系统
-        </el-button>
-      </template>
-    </el-dialog>
+
   </div>
 </template>
 
@@ -152,23 +114,8 @@ const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_EN
 const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 const showMemberAdminEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const showCompanyApprovalEntry = computed(() => showManagerEntry.value)
-// 是否需要补全企业信息以后只以后端返回的 needCompleteEnterprise 为准。
-// 超级管理员、平台管理员等无企业归属账号由后端统一返回 false，避免前端仅根据 enterpriseId 为空误弹。
-const shouldCompleteEnterprise = computed(() => auth.isLogin && Boolean(auth.needCompleteEnterprise))
+// 企业绑定统一走“企业申请 / 公司审批”流程，不再弹出首次登录自动创建企业窗口。
 const approvalPendingCount = ref(0)
-const enterpriseDialogVisible = ref(false)
-const enterpriseSubmitting = ref(false)
-const enterpriseFormRef = ref()
-const enterpriseForm = reactive({
-  enterpriseName: ''
-})
-const enterpriseRules = {
-  enterpriseName: [
-    { required: true, message: '请输入企业名称', trigger: 'blur' },
-    { min: 2, max: 200, message: '企业名称长度必须在 2 到 200 个字符之间', trigger: 'blur' }
-  ]
-}
-
 const quota = reactive({
   availableWords: 0,
   freeRemainWords: 0,
@@ -260,22 +207,6 @@ function goCompanyApproval() {
   router.push('/system/enterprise-apply-audit')
 }
 
-async function submitEnterpriseComplete() {
-  await enterpriseFormRef.value?.validate()
-  enterpriseSubmitting.value = true
-  try {
-    await auth.completeEnterprise({
-      enterpriseName: enterpriseForm.enterpriseName
-    })
-    enterpriseDialogVisible.value = false
-    enterpriseForm.enterpriseName = ''
-    await Promise.all([loadQuota(), loadApprovalPendingCount()])
-    ElMessage.success('企业资料已创建')
-  } finally {
-    enterpriseSubmitting.value = false
-  }
-}
-
 onMounted(() => {
   loadQuota()
   loadApprovalPendingCount()
@@ -290,9 +221,6 @@ watch(() => auth.user?.id, () => {
   loadApprovalPendingCount()
 })
 
-watch(shouldCompleteEnterprise, (value) => {
-  enterpriseDialogVisible.value = Boolean(value)
-}, { immediate: true })
 
 function goManager() {
   router.push('/system/users')
@@ -305,12 +233,6 @@ async function logout() {
 </script>
 
 <style scoped>
-.enterprise-complete-tip {
-  margin-bottom: 16px;
-  color: #5f6b7a;
-  line-height: 1.7;
-}
-
 .dropdown-row {
   display: inline-flex;
   align-items: center;
