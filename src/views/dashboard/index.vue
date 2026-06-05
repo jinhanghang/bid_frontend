@@ -5,7 +5,7 @@
         <div>
           <div class="welcome-title">恒鼎·智慧AI工作台</div>
           <div class="welcome-sub">
-            <template v-if="needEnterpriseApply">
+            <template v-if="isPersonalWorkspace">
               当前账号还没有绑定企业，可先使用 AI方案、AI文档、AI标书、个人知识库等个人空间功能；企业资料、团队协作和企业级共享资料需要提交企业申请并审核通过后使用。
             </template>
             <template v-else>
@@ -14,12 +14,12 @@
           </div>
         </div>
         <div class="welcome-actions">
-          <el-button v-if="needEnterpriseApply" type="primary" @click="$router.push('/system/enterprise-apply')">提交企业申请</el-button>
+          <el-button v-if="isPersonalWorkspace" type="primary" @click="$router.push('/system/enterprise-apply')">提交企业申请</el-button>
           <el-button @click="loadStats" :icon="Refresh">刷新</el-button>
         </div>
       </div>
 
-      <div v-if="needEnterpriseApply" class="enterprise-guide card">
+      <div v-if="isPersonalWorkspace" class="enterprise-guide card">
         <div class="guide-title">未绑定企业时的使用范围</div>
         <div class="enterprise-options">
           <div class="enterprise-option">
@@ -33,52 +33,52 @@
         </div>
       </div>
 
-      <template>
-        <div class="stat-grid dashboard-stats" v-loading="loading">
-          <div v-for="item in stats" :key="item.title" class="stat-card" @click="$router.push(item.path)">
-            <div class="stat-title">{{ item.title }}</div>
-            <div class="stat-value">{{ item.value }}</div>
-            <div class="stat-desc">{{ item.desc }}</div>
-          </div>
+      <div class="stat-grid dashboard-stats" v-loading="loading">
+        <div v-for="item in stats" :key="item.title" class="stat-card" @click="handleStatClick(item)">
+          <div class="stat-title">{{ item.title }}</div>
+          <div class="stat-value">{{ item.value }}</div>
+          <div class="stat-desc">{{ item.desc }}</div>
         </div>
+      </div>
 
-        <div class="dashboard-main-grid">
-          <div class="card list-card">
-            <div class="card-head">
-              <div>
-                <div class="guide-title">最近标书项目</div>
-                <div class="guide-desc">最近更新的项目，方便继续处理。</div>
-              </div>
-              <el-button link type="primary" @click="$router.push('/ai-bid')">全部项目</el-button>
+      <div class="dashboard-main-grid">
+        <div class="card list-card">
+          <div class="card-head">
+            <div>
+              <div class="guide-title">最近标书项目</div>
+              <div class="guide-desc">最近更新的项目，方便继续处理。</div>
             </div>
+            <el-button link type="primary" @click="$router.push('/ai-bid')">全部项目</el-button>
+          </div>
 
-            <div v-if="summary.recentProjects?.length" class="recent-list">
-              <div v-for="item in summary.recentProjects" :key="item.id" class="recent-item" @click="$router.push(item.path)">
-                <div class="recent-main">
-                  <strong>{{ item.title }}</strong>
-                  <span>{{ item.subTitle || '-' }} · {{ item.typeLabel || '标书项目' }}</span>
-                </div>
-                <div class="recent-right">
-                  <el-tag :type="projectStatusTag(item.status)" effect="light">{{ item.statusLabel }}</el-tag>
-                  <span>{{ item.timeText }}</span>
-                </div>
+          <div v-if="summary.recentProjects?.length" class="recent-list">
+            <div v-for="item in summary.recentProjects" :key="item.id" class="recent-item" @click="$router.push(item.path)">
+              <div class="recent-main">
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.subTitle || '-' }} · {{ item.typeLabel || '标书项目' }}</span>
+              </div>
+              <div class="recent-right">
+                <el-tag :type="projectStatusTag(item.status)" effect="light">{{ item.statusLabel }}</el-tag>
+                <span>{{ item.timeText }}</span>
               </div>
             </div>
-            <el-empty v-else description="暂无标书项目" />
           </div>
+          <el-empty v-else description="暂无标书项目" />
         </div>
-      </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { Refresh } from '@element-plus/icons-vue'
 import { getDashboardSummary } from '@/api/dashboard'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const router = useRouter()
 const loading = ref(false)
 
 const summary = reactive({
@@ -91,14 +91,27 @@ const summary = reactive({
 
 const roleCodes = computed(() => normalizeRoleList(auth.user?.roleCodes || auth.user?.roles || []))
 const isPlatformUser = computed(() => roleCodes.value.includes('SUPERADMIN') || roleCodes.value.includes('PLATFORMADMIN'))
-const needEnterpriseApply = computed(() => !isPlatformUser.value && !auth.user?.enterpriseId)
+const isPersonalWorkspace = computed(() => !isPlatformUser.value && !auth.user?.enterpriseId)
 
-const stats = computed(() => [
-  { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/ai-bid' },
-  { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/materials' },
-  { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word/PDF导出', path: '/download-center' },
-  { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
-])
+const stats = computed(() => {
+  if (isPersonalWorkspace.value) {
+    return [
+      { title: '个人标书项目', value: summary.bidProjectCount || 0, desc: '仅当前账号可见', path: '/ai-bid' },
+      { title: '个人知识库', value: summary.knowledgeBaseCount || 0, desc: '个人资料检索准备', path: '/knowledge/bases' },
+      { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word/PDF导出', path: '/download-center' },
+      { title: '企业申请', value: '-', desc: '注册新企业或加入已有企业', path: '/system/enterprise-apply' }
+    ]
+  }
+
+  // 已绑定企业用户、企业管理员、平台管理员、超级管理员保持原来的首页统计口径和入口，
+  // 个人空间改造只影响“未绑定企业的普通用户”。
+  return [
+    { title: '标书项目', value: summary.bidProjectCount || 0, desc: '项目全流程管理', path: '/ai-bid' },
+    { title: '企业资料', value: summary.companyMaterialCount || 0, desc: '公司简介 / 资质 / 业绩', path: '/materials' },
+    { title: '导出文件', value: summary.documentExportCount || 0, desc: 'Word/PDF导出', path: '/download-center' },
+    { title: '知识库', value: summary.knowledgeBaseCount || 0, desc: '资料检索准备', path: '/knowledge/bases' }
+  ]
+})
 
 onMounted(loadStats)
 
@@ -123,8 +136,18 @@ async function loadStats() {
   }
 }
 
+function handleStatClick(item) {
+  if (!item?.path) return
+  router.push(item.path)
+}
+
 function normalizeRoleCode(value = '') {
-  return String(value).trim().toUpperCase().replace(/^ROLE[_-]?/, '').replace(/[^A-Z0-9]/g, '')
+  const raw = String(value || '').trim()
+  if (raw.includes('超级管理员')) return 'SUPERADMIN'
+  if (raw.includes('平台管理员')) return 'PLATFORMADMIN'
+  if (raw.includes('企业管理员')) return 'ENTERPRISEADMIN'
+  if (raw.includes('普通用户')) return 'NORMALUSER'
+  return raw.toUpperCase().replace(/^ROLE[_-]?/, '').replace(/[^A-Z0-9]/g, '')
 }
 
 function normalizeRoleList(values = []) {
