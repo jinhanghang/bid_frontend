@@ -94,10 +94,9 @@
           <div class="header-actions">
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
             <el-button :icon="Refresh" :loading="detailLoading" @click="refreshCurrent">刷新</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">字数检查</el-button>
+            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">字数/重复检查</el-button>
             <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentQualityCheckDrawer">质量检查</el-button>
             <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentReviewDrawer">AI审稿</el-button>
-            <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">重复检查</el-button>
             <el-button type="success" :loading="exportLoading" :disabled="!canExport || isOperationLocked" @click="onExport">导出</el-button>
           </div>
         </section>

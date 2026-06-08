@@ -35,7 +35,7 @@
                 </div>
 
                 <el-dropdown
-                  v-if="canManageKnowledge"
+                  v-if="canManageKnowledgeBase(item)"
                   trigger="click"
                   @command="(command) => handleBaseCommand(command, item)"
                 >
@@ -78,7 +78,7 @@
 
         <div class="kb-sidebar-footer">
           <el-button
-            v-if="canManageKnowledge"
+            v-if="canCreateKnowledge"
             class="new-base-btn"
             type="primary"
             :icon="Plus"
@@ -107,7 +107,7 @@
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
               <el-button @click="openRagTestDialog">RAG测试</el-button>
-              <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
+              <el-button v-if="canManageSelectedBase" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </section>
 
@@ -173,14 +173,14 @@
                 <template #default="{ row }">
                   <div class="table-actions compact-actions">
                     <el-button
-                      v-if="canManageKnowledge"
+                      v-if="canManageSelectedBase"
                       link
                       type="primary"
                       :loading="isRebuilding(row)"
                       :disabled="isFileProcessing(row)"
                       @click.stop="rebuildFile(row)"
                     >重新入库</el-button>
-                    <el-button v-if="canManageKnowledge" link type="danger" @click.stop="deleteFile(row)">删除</el-button>
+                    <el-button v-if="canManageSelectedBase" link type="danger" @click.stop="deleteFile(row)">删除</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -215,7 +215,7 @@
             </div>
           </div>
 
-          <el-button v-if="canManageKnowledge" class="empty-new-btn" type="primary" :icon="Plus" @click="openCreateBase">
+          <el-button v-if="canCreateKnowledge" class="empty-new-btn" type="primary" :icon="Plus" @click="openCreateBase">
             新建知识库
           </el-button>
         </section>
@@ -669,8 +669,22 @@ const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || au
 const canManagePlatform = computed(() => {
   return currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN)
 })
+const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const currentEnterpriseId = computed(() => auth.user?.enterpriseId || '')
+const currentUserId = computed(() => auth.user?.id || '')
 
-const canManageKnowledge = computed(() => true)
+// 普通用户可以创建和维护自己的个人知识库；企业知识库由企业管理员维护。
+const canCreateKnowledge = computed(() => true)
+const canManageSelectedBase = computed(() => canManageKnowledgeBase(selectedBase.value))
+
+function canManageKnowledgeBase(base) {
+  if (canManagePlatform.value) return true
+  if (!base?.id) return false
+  if (base.enterpriseId) {
+    return isEnterpriseAdmin.value && String(base.enterpriseId) === String(currentEnterpriseId.value)
+  }
+  return String(base.userId || '') === String(currentUserId.value)
+}
 
 const hasProcessingFiles = computed(() => files.value.some(isFileProcessing))
 const baseNoMore = computed(() => basePager.total > 0 && bases.value.length >= basePager.total)
@@ -881,8 +895,8 @@ function resetBaseForm(row = {}) {
 }
 
 function openCreateBase() {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能新建知识库')
+  if (!canCreateKnowledge.value) {
+    ElMessage.warning('当前账号不能新建知识库')
     return
   }
 
@@ -893,7 +907,7 @@ function openCreateBase() {
 }
 
 function openEditBase(row) {
-  if (!canManageKnowledge.value) {
+  if (!canManageKnowledgeBase(row)) {
     ElMessage.warning('当前知识库不可编辑')
     return
   }
@@ -905,8 +919,13 @@ function openEditBase(row) {
 }
 
 async function submitBase() {
-  if (!canManageKnowledge.value) {
+  const editingBase = bases.value.find((item) => String(item.id || '') === String(baseDialog.id || '')) || selectedBase.value
+  if (baseDialog.isEdit && !canManageKnowledgeBase(editingBase)) {
     ElMessage.warning('当前知识库不可保存')
+    return
+  }
+  if (!baseDialog.isEdit && !canCreateKnowledge.value) {
+    ElMessage.warning('当前账号不能新建知识库')
     return
   }
 
@@ -935,7 +954,7 @@ async function submitBase() {
 }
 
 async function toggleBaseStatus(row) {
-  if (!canManageKnowledge.value) {
+  if (!canManageKnowledgeBase(row)) {
     ElMessage.warning('当前知识库不可修改状态')
     return
   }
@@ -953,7 +972,7 @@ async function toggleBaseStatus(row) {
 }
 
 async function deleteBase(row) {
-  if (!canManageKnowledge.value) {
+  if (!canManageKnowledgeBase(row)) {
     ElMessage.warning('当前知识库不可删除')
     return
   }
@@ -988,8 +1007,8 @@ async function handleBaseCommand(command, row) {
 }
 
 function openUploadDialog() {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能添加文件')
+  if (!canManageSelectedBase.value) {
+    ElMessage.warning('当前知识库不能添加文件')
     return
   }
 
@@ -1002,8 +1021,8 @@ function openUploadDialog() {
 }
 
 async function onKnowledgeFileUploaded(file) {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能添加文件')
+  if (!canManageSelectedBase.value) {
+    ElMessage.warning('当前知识库不能添加文件')
     return
   }
 
@@ -1029,8 +1048,8 @@ async function onKnowledgeFileUploaded(file) {
 }
 
 async function rebuildFile(row) {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能重新入库')
+  if (!canManageSelectedBase.value) {
+    ElMessage.warning('当前知识库不能重新入库')
     return
   }
 
@@ -1292,8 +1311,8 @@ async function saveAskReview() {
 }
 
 async function deleteFile(row) {
-  if (!canManageKnowledge.value) {
-    ElMessage.warning('普通用户只能查看、检索知识库，不能删除文件')
+  if (!canManageSelectedBase.value) {
+    ElMessage.warning('当前知识库不能删除文件')
     return
   }
 

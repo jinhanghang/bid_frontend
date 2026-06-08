@@ -15,3 +15,10 @@ export function uploadFile({ file, moduleType = 'other', bizId, privateFlag = tr
     }
   })
 }
+
+export function downloadFileBlob(id) {
+  return request.get(`/files/download/${id}`, {
+    responseType: 'blob',
+    timeout: 0
+  })
+}

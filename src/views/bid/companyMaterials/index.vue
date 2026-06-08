@@ -1,6 +1,17 @@
 <template>
   <div class="page material-archive-page">
-    <div class="archive-shell">
+    <div v-if="showEnterpriseRequiredGuide" class="enterprise-required-card card">
+      <div class="enterprise-required-icon">
+        <el-icon><FolderOpened /></el-icon>
+      </div>
+      <h2>企业资料库需要先加入企业</h2>
+      <p>普通用户可以查看本企业资料，但不能维护或下载企业资料附件。当前账号尚未绑定企业，请先提交加入企业或注册企业申请。</p>
+      <div class="enterprise-required-actions">
+        <el-button type="primary" :icon="Plus" @click="goEnterpriseApply">申请加入 / 注册企业</el-button>
+        <el-button @click="loadCurrentUser">刷新用户状态</el-button>
+      </div>
+    </div>
+    <div v-else class="archive-shell">
       <aside class="archive-sidebar card">
         <div class="sidebar-head">
           <div>
@@ -114,7 +125,7 @@
             <el-tag v-if="formDirty" type="warning" effect="light">有未保存修改</el-tag>
             <div class="top-spacer"></div>
             <div class="top-actions">
-              <el-button :icon="View" :disabled="!canOpenFile(selectedArchive)" @click="openFile(selectedArchive)">查看附件</el-button>
+              <el-button :icon="View" :disabled="!canDownloadArchiveFile(selectedArchive)" @click="openFile(selectedArchive)">下载/查看附件</el-button>
               <el-button v-if="canEditCurrentArchive" plain :disabled="!selectedArchive?.fileId" @click="openKnowledgeLinkDialog">加入知识库</el-button>
               <el-button v-if="canEditCurrentArchive" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
               <el-button v-if="canEditCurrentArchive" type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
@@ -151,7 +162,7 @@
                   <div class="file-ext">{{ fileExtLabel(selectedArchive.fileExt) }}</div>
                   <div class="file-mini-info">
                     <strong>{{ selectedArchive.originalName || selectedArchive.fileName || '附件' }}</strong>
-                    <span>{{ formatFileSize(selectedArchive.fileSize) }} · 可下载</span>
+                    <span>{{ formatFileSize(selectedArchive.fileSize) }} · {{ canDownloadArchiveFile(selectedArchive) ? '管理员可下载' : '普通用户不可下载' }}</span>
                   </div>
                 </div>
               </template>
@@ -507,6 +518,7 @@ import {
   User,
   View
 } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import { listKnowledgeBases } from '@/api/knowledge'
@@ -521,7 +533,9 @@ import {
   updateCompanyMaterial
 } from '@/api/companyMaterial'
 import FileUploadBox from '@/components/FileUploadBox.vue'
+import { downloadFileBlob } from '@/api/file'
 
+const router = useRouter()
 const auth = useAuthStore()
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -686,11 +700,13 @@ const recordDialog = reactive({
 })
 
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
-// 资料库里的企业筛选和企业切换只给超级管理员使用。
+// 资料库里的企业筛选和企业切换只给超级管理员、平台管理员使用。
 // 企业管理员、普通用户都固定在当前企业范围内，不展示跨企业筛选。
-const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
+const canManagePlatform = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN) || currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const canManageCompanyMaterial = computed(() => canManagePlatform.value || currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
-const canEditCurrentArchive = computed(() => canManageCompanyMaterial.value || Boolean(selectedArchive.value?.canEdit))
+const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
+const showEnterpriseRequiredGuide = computed(() => !canManagePlatform.value && !hasEnterprise.value)
+const canEditCurrentArchive = computed(() => canManageCompanyMaterial.value && (!selectedArchive.value?.id || Boolean(selectedArchive.value?.canEdit)))
 const currentTitle = computed(() => profile.license.companyName || selectedArchive.value?.title || '未命名资料档案')
 const currentEnterpriseName = computed(() => enterprises.value.find((item) => String(item.id) === String(profile.enterpriseId))?.enterpriseName || '')
 const formDirty = computed(() => editMode.value && profileSnapshot.value && profileSnapshot.value !== snapshotProfile())
@@ -700,10 +716,11 @@ const recordDialogTitle = computed(() => `${recordDialog.index >= 0 ? '编辑' :
 const noMore = computed(() => pager.total > 0 && archiveList.value.length >= pager.total)
 
 function canEditArchive(item) {
-  return canManageCompanyMaterial.value || Boolean(item?.canEdit)
+  return canManageCompanyMaterial.value && Boolean(item?.canEdit)
 }
 
 onMounted(async () => {
+  if (showEnterpriseRequiredGuide.value) return
   await loadEnterprises()
   await loadArchives()
   await loadMaterialSummary()
@@ -838,6 +855,11 @@ function onArchiveListScroll(event) {
 }
 
 async function loadArchives(selectId, options = {}) {
+  if (showEnterpriseRequiredGuide.value) {
+    archiveList.value = []
+    pager.total = 0
+    return
+  }
   const append = Boolean(options.append)
   if ((append && noMore.value) || loading.value || appendLoading.value) return
 
@@ -894,6 +916,10 @@ async function loadArchives(selectId, options = {}) {
 
 
 async function loadMaterialSummary() {
+  if (showEnterpriseRequiredGuide.value) {
+    materialSummary.value = {}
+    return
+  }
   try {
     materialSummary.value = await getCompanyMaterialSummary({
       keyword: filters.keyword || undefined,
@@ -924,6 +950,10 @@ function availabilityTagType(status) {
 }
 
 async function openKnowledgeLinkDialog() {
+  if (!canEditCurrentArchive.value) {
+    ElMessage.warning('当前账号无权将企业资料加入知识库')
+    return
+  }
   if (!selectedArchive.value?.id) return
   if (!selectedArchive.value?.fileId) {
     ElMessage.warning('请先上传资料附件')
@@ -986,6 +1016,19 @@ async function openCreate() {
   activeTab.value = 'license'
   showUpload.value = false
   await nextTick()
+}
+
+async function loadCurrentUser() {
+  await auth.loadMe()
+  if (!showEnterpriseRequiredGuide.value) {
+    await loadEnterprises()
+    await loadArchives()
+    await loadMaterialSummary()
+  }
+}
+
+function goEnterpriseApply() {
+  router.push('/system/enterprise-apply')
 }
 
 function closeDetail() {
@@ -1237,16 +1280,23 @@ function materialTypeLabel(value) {
   return map[value] || value || '企业档案'
 }
 
-function openFile(row) {
-  if (!canOpenFile(row)) {
+async function openFile(row) {
+  if (!row?.fileId || Number(row.fileExists) !== 1) {
     ElMessage.warning('附件已丢失或未上传')
     return
   }
-  window.open(row.fileUrl, '_blank')
+  if (!canDownloadArchiveFile(row)) {
+    ElMessage.warning('普通用户不能下载企业资料附件')
+    return
+  }
+  const blob = await downloadFileBlob(row.fileId)
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank')
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
 
-function canOpenFile(row) {
-  return Boolean(row?.fileUrl && row?.fileId && Number(row.fileExists) === 1)
+function canDownloadArchiveFile(row) {
+  return canManageCompanyMaterial.value && Boolean(row?.fileId && Number(row.fileExists) === 1)
 }
 
 function fileExtLabel(ext) {
@@ -1297,6 +1347,50 @@ function normalizeRoleList(values = []) {
   min-height: 0;
   padding: 18px 0 0 18px;
   overflow: hidden;
+}
+
+.enterprise-required-card {
+  min-height: 420px;
+  margin-right: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.enterprise-required-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef4ff;
+  color: #2563eb;
+  font-size: 34px;
+  margin-bottom: 18px;
+}
+
+.enterprise-required-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  color: #1f2937;
+}
+
+.enterprise-required-card p {
+  max-width: 620px;
+  margin: 0;
+  color: #64748b;
+  line-height: 1.8;
+}
+
+.enterprise-required-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
 }
 
 .archive-shell {
