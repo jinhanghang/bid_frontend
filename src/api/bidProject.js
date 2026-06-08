@@ -510,3 +510,29 @@ export function analyzeBidProjectTender(id, data = {}) {
     timeout: NO_TIMEOUT
   })
 }
+
+/**
+ * AI标书：客户确认 / 修改投标文件结果。
+ */
+export function reviewBidDocument(id, data = {}) {
+  return request.put(`/bid-project/${id}/bid-document/review`, data || {})
+}
+
+/**
+ * AI标书：导出投标文件 Word。
+ */
+export function exportBidDocumentWord(id, data = {}) {
+  return request.post(`/bid-project/${id}/bid-document/export-word`, data || {}, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
+ * AI标书：导出投标文件 Markdown 备份。
+ */
+export function exportBidDocumentMarkdown(id) {
+  return request.post(`/bid-project/${id}/bid-document/export-markdown`, null, {
+    timeout: NO_TIMEOUT
+  })
+}
+

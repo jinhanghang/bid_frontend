@@ -73,7 +73,7 @@
         <el-table :data="accounts" class="ui-table" height="520">
           <el-table-column prop="fullName" label="姓名" min-width="120" />
           <el-table-column prop="phone" label="手机号" min-width="130" />
-          <el-table-column prop="enterpriseName" label="企业" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="groupKey" label="企业" min-width="160" show-overflow-tooltip />
           <el-table-column label="剩余总字数" width="130"><template #default="{ row }">{{ formatNumber(row.availableWords) }}</template></el-table-column>
           <el-table-column label="免费剩余" width="120"><template #default="{ row }">{{ formatNumber(row.freeRemainWords) }}</template></el-table-column>
           <el-table-column label="付费剩余" width="120"><template #default="{ row }">{{ formatNumber(row.paidRemainWords) }}</template></el-table-column>
@@ -119,6 +119,78 @@
           v-model:size="logPager.size"
           @change="loadLogs"
         />
+      </el-tab-pane>
+
+      <el-tab-pane label="消耗统计" name="stats">
+        <div class="toolbar stats-toolbar">
+          <el-date-picker
+            v-model="usageStatsQuery.dates"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+          />
+          <el-select v-model="usageStatsQuery.scene" placeholder="业务场景" clearable>
+            <el-option v-for="item in sceneOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <el-button type="primary" :loading="usageStatsLoading" @click="loadUsageStats">刷新统计</el-button>
+        </div>
+        <div class="usage-summary-grid">
+          <div><span>消耗字数</span><strong>{{ formatNumber(usageStats.consumeWords) }}</strong></div>
+          <div><span>返还/增加</span><strong>{{ formatNumber(usageStats.refundWords) }}</strong></div>
+          <div><span>净消耗</span><strong>{{ formatNumber(usageStats.netWords) }}</strong></div>
+          <div><span>流水条数</span><strong>{{ formatNumber(usageStats.callCount) }}</strong></div>
+          <div><span>涉及用户</span><strong>{{ formatNumber(usageStats.consumeUserCount) }}</strong></div>
+          <div><span>涉及项目</span><strong>{{ formatNumber(usageStats.consumeProjectCount) }}</strong></div>
+        </div>
+        <div class="usage-panel-grid">
+          <div class="usage-panel">
+            <div class="panel-title">按业务场景</div>
+            <el-table :data="usageStats.byScene || []" class="ui-table" height="280" v-loading="usageStatsLoading">
+              <el-table-column prop="name" label="场景" min-width="150"><template #default="{ row }">{{ quotaSceneText(row.groupKey || row.groupName) }}</template></el-table-column>
+              <el-table-column label="净消耗" width="120"><template #default="{ row }">{{ formatNumber(row.netWords) }}</template></el-table-column>
+              <el-table-column prop="callCount" label="条数" width="90" />
+            </el-table>
+          </div>
+          <div class="usage-panel">
+            <div class="panel-title">按业务类型</div>
+            <el-table :data="usageStats.byBizType || []" class="ui-table" height="280" v-loading="usageStatsLoading">
+              <el-table-column prop="name" label="类型" min-width="150"><template #default="{ row }">{{ bizTypeText(row.groupKey || row.groupName) }}</template></el-table-column>
+              <el-table-column label="净消耗" width="120"><template #default="{ row }">{{ formatNumber(row.netWords) }}</template></el-table-column>
+              <el-table-column prop="callCount" label="条数" width="90" />
+            </el-table>
+          </div>
+        </div>
+        <div class="usage-panel">
+          <div class="panel-title">用户消耗排行</div>
+          <el-table :data="usageStats.topUsers || []" class="ui-table" height="300" v-loading="usageStatsLoading">
+            <el-table-column prop="groupName" label="用户" min-width="130" show-overflow-tooltip />
+            <el-table-column prop="groupKey" label="企业" min-width="180" show-overflow-tooltip />
+            <el-table-column label="净消耗" width="130"><template #default="{ row }">{{ formatNumber(row.netWords) }}</template></el-table-column>
+            <el-table-column prop="callCount" label="条数" width="90" />
+          </el-table>
+        </div>
+      </el-tab-pane>
+
+      <el-tab-pane v-if="canManageModels" label="安全检查" name="security">
+        <div class="toolbar">
+          <el-button type="primary" :loading="securityAuditLoading" @click="loadSecurityAudit">刷新安全检查</el-button>
+          <el-tag :type="securityStatusType(securityAudit.overallStatus)">{{ securityAudit.overallStatus || '未检查' }}</el-tag>
+        </div>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          class="model-alert"
+          title="安全检查只做部署前体检，不替代真实渗透测试；文件预览/下载仍必须走后端权限校验和 OSS 临时签名。"
+        />
+        <el-table :data="securityAudit.items || []" class="ui-table" height="560" v-loading="securityAuditLoading">
+          <el-table-column prop="category" label="模块" width="150" />
+          <el-table-column prop="item" label="检查项" min-width="170" show-overflow-tooltip />
+          <el-table-column label="结果" width="100"><template #default="{ row }"><el-tag :type="securityStatusType(row.status)">{{ row.status }}</el-tag></template></el-table-column>
+          <el-table-column prop="detail" label="说明" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="suggestion" label="建议" min-width="280" show-overflow-tooltip />
+        </el-table>
       </el-tab-pane>
 
       <el-tab-pane v-if="canManageModels" label="模型管理" name="models">
@@ -326,7 +398,7 @@
             <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
             <el-table-column prop="actualAvailableWords" label="权益余额" width="110" />
             <el-table-column prop="latestLogAfterWords" label="流水余额" width="110" />
-            <el-table-column prop="message" label="说明" min-width="280" show-overflow-tooltip />
+            <el-table-column prop="detail" label="说明" min-width="280" show-overflow-tooltip />
           </el-table>
 
           <div class="audit-section-title">预占额度异常</div>
@@ -337,7 +409,7 @@
             <el-table-column prop="bizId" label="业务ID" width="190" show-overflow-tooltip />
             <el-table-column prop="reserveWords" label="预占字数" width="110" />
             <el-table-column prop="reserveTime" label="预占时间" width="170" />
-            <el-table-column prop="message" label="说明" min-width="300" show-overflow-tooltip />
+            <el-table-column prop="detail" label="说明" min-width="300" show-overflow-tooltip />
           </el-table>
         </template>
       </div>
@@ -365,6 +437,8 @@ import {
   pageMemberAccounts,
   pageMemberOrders,
   pageMemberPlanManage,
+  getQuotaUsageStats,
+  getSecurityAuditReport,
   updateMemberPlan
 } from '@/api/member'
 import { createAiModel, deleteAiModel, diagnoseAiModels, pageAiModels, previewAiModel, updateAiModel } from '@/api/aiModel'
@@ -377,11 +451,16 @@ const orders = ref([])
 const accounts = ref([])
 const logs = ref([])
 const models = ref([])
+const usageStatsLoading = ref(false)
+const securityAuditLoading = ref(false)
+const usageStats = ref({})
+const securityAudit = ref({ status: '', items: [] })
 
 const orderQuery = reactive({ keyword: '', status: '' })
 const accountQuery = reactive({ keyword: '' })
 const logQuery = reactive({ keyword: '' })
 const modelQuery = reactive({ keyword: '', modelType: '' })
+const usageStatsQuery = reactive({ dates: [], scene: '' })
 
 const orderPager = reactive({ current: 1, size: 10, total: 0 })
 const accountPager = reactive({ current: 1, size: 10, total: 0 })
@@ -421,6 +500,8 @@ watch(activeTab, (tab) => {
   if (tab === 'orders') loadOrders()
   if (tab === 'accounts') loadAccounts()
   if (tab === 'logs') loadLogs()
+  if (tab === 'stats') loadUsageStats()
+  if (tab === 'security' && canManageModels.value) loadSecurityAudit()
   if (tab === 'models' && canManageModels.value) loadModels()
 })
 
@@ -473,6 +554,38 @@ async function loadLogs() {
 function searchLogs() {
   logPager.current = 1
   loadLogs()
+}
+
+async function loadUsageStats() {
+  usageStatsLoading.value = true
+  try {
+    const [startDate, endDate] = usageStatsQuery.dates || []
+    usageStats.value = await getQuotaUsageStats({
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      scene: usageStatsQuery.scene || undefined
+    }) || {}
+  } finally {
+    usageStatsLoading.value = false
+  }
+}
+
+async function loadSecurityAudit() {
+  if (!canManageModels.value) return
+  securityAuditLoading.value = true
+  try {
+    securityAudit.value = await getSecurityAuditReport() || { status: '', items: [] }
+  } finally {
+    securityAuditLoading.value = false
+  }
+}
+
+function securityStatusType(status) {
+  const value = String(status || '').toUpperCase()
+  if (value === 'PASS' || value === 'OK') return 'success'
+  if (value === 'WARN') return 'warning'
+  if (value === 'FAIL' || value === 'RISK') return 'danger'
+  return 'info'
 }
 
 async function openQuotaAudit() {
@@ -790,4 +903,18 @@ p { margin-top: 8px; color: #64748b; }
 .quota-audit-guide ul { margin: 10px 0 0; padding-left: 18px; color: #475569; line-height: 1.8; }
 .audit-ok-tip { margin: 10px 0 2px; padding: 10px 12px; border-radius: 10px; background: #f0fdf4; color: #166534; font-size: 13px; line-height: 1.7; }
 
+
+.usage-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.usage-summary-grid > div { padding: 14px; border: 1px solid #e5e7eb; border-radius: 14px; background: #f8fafc; }
+.usage-summary-grid span { display: block; color: #64748b; font-size: 12px; }
+.usage-summary-grid strong { display: block; margin-top: 8px; color: #0f172a; font-size: 20px; }
+.usage-panel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.usage-panel { padding: 14px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; }
+.panel-title { margin-bottom: 10px; color: #0f172a; font-weight: 800; }
+.stats-toolbar .el-date-editor { width: 280px; }
+
+@media (max-width: 1280px) {
+  .usage-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .usage-panel-grid { grid-template-columns: 1fr; }
+}
 </style>

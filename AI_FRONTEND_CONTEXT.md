@@ -710,3 +710,35 @@ AI标书技术方案前端所有操作必须继续调用 `/bid-project/{id}/tech
   - `analyzeBidProjectTender(id, data)`
 - 分析弹窗需允许选择知识库；没有选择知识库时不能开始分析。
 - 分析结果是项目级结果，后续投标文件、技术方案、评分矩阵、缺失资料清单、偏离表都以项目结果为准。
+
+## 2026-06-08 AI标书主流程 / 企业资料库 / 额度统计 / 安全检查前端口径
+
+### AI标书投标文件页面
+
+- `src/views/bid/project/index.vue` 的“投标文件”区域新增：评分项响应矩阵、缺失资料清单、偏离表初稿、客户确认/修改意见、导出 Word、导出 Markdown。
+- 前端调用：
+  - `reviewBidDocument(id, data)`
+  - `exportBidDocumentWord(id, data)`
+  - `exportBidDocumentMarkdown(id)`
+- 导出成功后只提示文件已生成，后续下载仍走下载中心或后端受控下载，不直接打开 OSS 原始地址。
+- 客户确认状态必须保留：待确认、已确认、需修改、已修改、已废弃。
+
+### 企业资料库页面
+
+- `src/views/bid/companyMaterials/index.vue` 新增资料统计卡片：总数、可用、即将到期、已入库。
+- 资料列表展示可用状态；当前资料可通过“加入知识库”选择同企业知识库并触发入库。
+- 前端调用：
+  - `getCompanyMaterialSummary(params)`
+  - `addCompanyMaterialToKnowledge(id, data)`
+- 企业资料附件仍走 `FileUploadBox` 和后端文件服务；不要在页面直接拼 OSS 原始链接。
+
+### 会员运营 / 模型管理页面
+
+- `src/views/member/admin/index.vue` 新增两个管理页签：
+  - 消耗统计：按日期、场景统计消耗字数、返还字数、净消耗、调用次数、用户排行。
+  - 安全检查：仅超级管理员显示，查看后端安全检查报告。
+- 前端调用：
+  - `getQuotaUsageStats(params)`
+  - `getSecurityAuditReport()`
+- 模型管理页面继续不展示温度、最大 Token 等参数列；不要回退。
+

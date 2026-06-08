@@ -19,6 +19,13 @@
           @input="onKeywordInput"
         />
 
+        <div class="material-summary">
+          <div><span>总数</span><strong>{{ materialSummary.totalCount || 0 }}</strong></div>
+          <div><span>可用</span><strong>{{ materialSummary.availableCount || 0 }}</strong></div>
+          <div><span>即将到期</span><strong>{{ materialSummary.expiringCount || 0 }}</strong></div>
+          <div><span>已入库</span><strong>{{ materialSummary.knowledgeLinkedCount || 0 }}</strong></div>
+        </div>
+
         <el-select
           v-if="canManagePlatform"
           v-model="filters.enterpriseId"
@@ -59,6 +66,7 @@
                 <el-tag size="small" effect="light">{{ materialTypeLabel(item.materialType) }}</el-tag>
                 <el-tag v-if="Number(item.fileExists) === 1" size="small" type="success" effect="light">有附件</el-tag>
                 <el-tag v-else-if="item.fileId" size="small" type="danger" effect="light">附件丢失</el-tag>
+                <el-tag size="small" :type="availabilityTagType(item.availabilityStatus)" effect="light">{{ availabilityText(item.availabilityStatus) }}</el-tag>
               </div>
             </div>
             <el-dropdown v-if="canEditArchive(item) || canManageCompanyMaterial" trigger="click" @click.stop>
@@ -107,6 +115,7 @@
             <div class="top-spacer"></div>
             <div class="top-actions">
               <el-button :icon="View" :disabled="!canOpenFile(selectedArchive)" @click="openFile(selectedArchive)">查看附件</el-button>
+              <el-button v-if="canEditCurrentArchive" plain :disabled="!selectedArchive?.fileId" @click="openKnowledgeLinkDialog">加入知识库</el-button>
               <el-button v-if="canEditCurrentArchive" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
               <el-button v-if="canEditCurrentArchive" type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
             </div>
@@ -393,6 +402,19 @@
       </main>
     </div>
 
+
+
+    <el-dialog v-model="knowledgeLinkDialog.visible" title="加入知识库" width="560px" append-to-body destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon class="knowledge-link-alert" title="将当前企业资料附件作为知识库文件入库，后续 AI标书和知识问答可检索引用。" />
+      <el-select v-model="knowledgeLinkDialog.knowledgeBaseId" filterable placeholder="请选择同企业知识库" style="width: 100%" :loading="knowledgeLinkDialog.loading">
+        <el-option v-for="kb in knowledgeLinkDialog.options" :key="kb.id" :label="kb.kbName" :value="kb.id" />
+      </el-select>
+      <template #footer>
+        <el-button @click="knowledgeLinkDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="knowledgeLinkDialog.saving" :disabled="!knowledgeLinkDialog.knowledgeBaseId" @click="confirmAddToKnowledge">确认入库</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="recordDialog.visible" :title="recordDialogTitle" width="980px" class="material-record-dialog" destroy-on-close>
       <el-form label-position="top" class="dialog-form">
         <div class="form-grid three">
@@ -487,11 +509,14 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
+import { listKnowledgeBases } from '@/api/knowledge'
 import {
   attachCompanyMaterialFile,
   createCompanyMaterial,
   deleteCompanyMaterial,
   getCompanyMaterial,
+  getCompanyMaterialSummary,
+  addCompanyMaterialToKnowledge,
   pageCompanyMaterials,
   updateCompanyMaterial
 } from '@/api/companyMaterial'
@@ -516,6 +541,8 @@ const selectedArchive = ref(null)
 const keywordTimer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const profileSnapshot = ref('')
+const materialSummary = ref({})
+const knowledgeLinkDialog = reactive({ visible: false, loading: false, saving: false, knowledgeBaseId: '', options: [] })
 
 const filters = reactive({
   keyword: '',
@@ -679,6 +706,7 @@ function canEditArchive(item) {
 onMounted(async () => {
   await loadEnterprises()
   await loadArchives()
+  await loadMaterialSummary()
 })
 
 onBeforeUnmount(() => {
@@ -795,6 +823,7 @@ function reloadFirstPage() {
   pager.page = 1
   archiveList.value = []
   loadArchives()
+  loadMaterialSummary()
 }
 
 function onArchiveListScroll(event) {
@@ -860,6 +889,73 @@ async function loadArchives(selectId, options = {}) {
     } else {
       loading.value = false
     }
+  }
+}
+
+
+async function loadMaterialSummary() {
+  try {
+    materialSummary.value = await getCompanyMaterialSummary({
+      keyword: filters.keyword || undefined,
+      enterpriseId: filters.enterpriseId || undefined
+    }) || {}
+  } catch (e) {
+    materialSummary.value = {}
+  }
+}
+
+function availabilityText(status) {
+  const map = {
+    AVAILABLE: '可用',
+    EXPIRING: '即将到期',
+    EXPIRED: '已过期',
+    NO_FILE: '无附件',
+    DISABLED: '停用'
+  }
+  return map[String(status || '').toUpperCase()] || '待确认'
+}
+
+function availabilityTagType(status) {
+  const value = String(status || '').toUpperCase()
+  if (value === 'AVAILABLE') return 'success'
+  if (value === 'EXPIRING') return 'warning'
+  if (value === 'EXPIRED' || value === 'NO_FILE') return 'danger'
+  return 'info'
+}
+
+async function openKnowledgeLinkDialog() {
+  if (!selectedArchive.value?.id) return
+  if (!selectedArchive.value?.fileId) {
+    ElMessage.warning('请先上传资料附件')
+    return
+  }
+  knowledgeLinkDialog.visible = true
+  knowledgeLinkDialog.loading = true
+  knowledgeLinkDialog.knowledgeBaseId = selectedArchive.value.knowledgeBaseId || ''
+  try {
+    const res = await listKnowledgeBases({
+      enterpriseId: selectedArchive.value.enterpriseId || undefined,
+      pageNum: 1,
+      pageSize: 100
+    })
+    const list = Array.isArray(res?.records) ? res.records : (Array.isArray(res) ? res : [])
+    knowledgeLinkDialog.options = list
+  } finally {
+    knowledgeLinkDialog.loading = false
+  }
+}
+
+async function confirmAddToKnowledge() {
+  if (!selectedArchive.value?.id || !knowledgeLinkDialog.knowledgeBaseId) return
+  knowledgeLinkDialog.saving = true
+  try {
+    await addCompanyMaterialToKnowledge(selectedArchive.value.id, { knowledgeBaseId: knowledgeLinkDialog.knowledgeBaseId })
+    ElMessage.success('已加入知识库并开始入库解析')
+    knowledgeLinkDialog.visible = false
+    await loadArchives(selectedArchive.value.id)
+    await loadMaterialSummary()
+  } finally {
+    knowledgeLinkDialog.saving = false
   }
 }
 
@@ -1021,6 +1117,7 @@ async function saveArchive() {
       ElMessage.success('资料档案已创建')
     }
     await loadArchives(savedId)
+    await loadMaterialSummary()
   } finally {
     saving.value = false
   }
@@ -1038,6 +1135,7 @@ async function onUploadSuccess(file) {
   await attachCompanyMaterialFile(profile.id, file.id)
   ElMessage.success('附件已关联到资料档案')
   await loadArchives(profile.id)
+  await loadMaterialSummary()
 }
 
 async function removeArchive(row) {
@@ -1050,6 +1148,7 @@ async function removeArchive(row) {
   ElMessage.success('资料档案已删除')
   if (selectedArchive.value?.id === row.id) closeDetail()
   await loadArchives()
+  await loadMaterialSummary()
 }
 
 function openRecordDialog(section, row = null, index = -1) {
@@ -1682,6 +1781,34 @@ function normalizeRoleList(values = []) {
   margin-top: 4px;
   transform: translateY(-8px);
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+}
+
+
+.material-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.material-summary > div {
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+.material-summary span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+.material-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 17px;
+}
+.knowledge-link-alert {
+  margin-bottom: 12px;
 }
 
 @media (max-width: 1280px) {

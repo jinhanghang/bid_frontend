@@ -185,6 +185,18 @@
                 :disabled="!canFillBidDocument"
                 @click="smartFillBidDocument"
               >智能填空</el-button>
+              <el-button
+                plain
+                :loading="bidDocumentExporting"
+                :disabled="!bidDocumentDraft.trim()"
+                @click="exportBidDocumentWordFile"
+              >导出Word</el-button>
+              <el-button
+                plain
+                :loading="bidDocumentExporting"
+                :disabled="!bidDocumentDraft.trim()"
+                @click="exportBidDocumentMarkdownFile"
+              >导出Markdown</el-button>
             </div>
           </div>
 
@@ -204,6 +216,11 @@
               <span>{{ bidDocumentStatusLabel }}</span>
               <p>{{ bidDocumentContent ? '已生成内容，可继续调整并保存。' : '生成后将在下方显示 Markdown 内容。' }}</p>
             </div>
+            <div class="bid-doc-status-card" :class="{ success: bidDocumentReviewForm.reviewStatus === 'CONFIRMED' }">
+              <strong>客户确认</strong>
+              <span>{{ bidDocumentReviewStatusText(bidDocumentReviewForm.reviewStatus) }}</span>
+              <p>{{ bidDocumentReviewForm.reviewOpinion || '保存客户确认状态和修改意见，作为后续定稿依据。' }}</p>
+            </div>
           </div>
 
           <div class="company-material-ref-card">
@@ -219,6 +236,66 @@
               <el-button type="primary" plain @click="openCompanyMaterialSelector">{{ hasCompanyMaterial ? '更换资料' : '选择资料' }}</el-button>
               <el-button v-if="hasCompanyMaterial" type="danger" plain @click="unbindSelectedCompanyMaterial">解除关联</el-button>
             </div>
+          </div>
+
+          <div class="bid-doc-analysis-grid">
+            <div class="bid-doc-analysis-card">
+              <div class="analysis-card-head">
+                <strong>评分项响应矩阵</strong>
+                <el-button link type="primary" @click="openTenderAnalysisDialog">查看分析</el-button>
+              </div>
+              <el-table :data="bidDocAnalysis?.scoreMatrix || []" class="ui-table" max-height="220" empty-text="暂无评分项分析，请先执行招标文件分析">
+                <el-table-column prop="itemName" label="评分项" min-width="130" show-overflow-tooltip />
+                <el-table-column prop="responseStatus" label="状态" width="105" />
+                <el-table-column prop="riskLevel" label="风险" width="80" />
+              </el-table>
+            </div>
+            <div class="bid-doc-analysis-card">
+              <div class="analysis-card-head">
+                <strong>缺失资料清单</strong>
+                <span>用于客户补资料</span>
+              </div>
+              <el-table :data="bidDocAnalysis?.missingMaterials || []" class="ui-table" max-height="220" empty-text="暂无缺失资料分析">
+                <el-table-column prop="itemName" label="资料" min-width="130" show-overflow-tooltip />
+                <el-table-column prop="responseStatus" label="状态" width="105" />
+                <el-table-column prop="suggestion" label="建议" min-width="150" show-overflow-tooltip />
+              </el-table>
+            </div>
+            <div class="bid-doc-analysis-card">
+              <div class="analysis-card-head">
+                <strong>偏离表初稿</strong>
+                <span>默认需人工确认</span>
+              </div>
+              <el-table :data="bidDocAnalysis?.deviationTable || []" class="ui-table" max-height="220" empty-text="暂无偏离表分析">
+                <el-table-column prop="itemName" label="事项" min-width="130" show-overflow-tooltip />
+                <el-table-column prop="responseStatus" label="响应" width="105" />
+                <el-table-column prop="riskLevel" label="风险" width="80" />
+              </el-table>
+            </div>
+          </div>
+
+          <div class="bid-doc-review-card">
+            <div class="review-card-head">
+              <div>
+                <strong>客户确认 / 修改意见</strong>
+                <p>客户确认过的内容将保存为最终内容；需修改时先记录意见，后续可按意见重新生成或人工调整。</p>
+              </div>
+              <el-button type="primary" plain :loading="bidDocumentReviewSaving" :disabled="!bidDocumentDraft.trim()" @click="saveBidDocumentReview">保存确认状态</el-button>
+            </div>
+            <el-form label-position="top" class="bid-doc-review-form">
+              <el-form-item label="确认状态">
+                <el-select v-model="bidDocumentReviewForm.reviewStatus" style="width: 240px">
+                  <el-option label="待确认" value="PENDING" />
+                  <el-option label="已确认" value="CONFIRMED" />
+                  <el-option label="需修改" value="NEED_MODIFY" />
+                  <el-option label="已修改" value="MODIFIED" />
+                  <el-option label="已废弃" value="DISCARDED" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="客户修改意见">
+                <el-input v-model="bidDocumentReviewForm.reviewOpinion" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="例如：资质说明需要补充证书编号；售后服务承诺需要按客户要求调整。" />
+              </el-form-item>
+            </el-form>
           </div>
 
           <div class="bid-doc-editor-card">
@@ -1143,6 +1220,9 @@ import {
   getBidDocument,
   listBidProjectCompanyMaterialOptions,
   saveBidDocument,
+  reviewBidDocument,
+  exportBidDocumentWord,
+  exportBidDocumentMarkdown,
   unbindBidProjectCompanyMaterial,
   autoFillBidProjectBasicInfo,
   applyBidProjectTechnicalWordPreset,
@@ -1207,7 +1287,10 @@ const autoFillLoading = ref(false)
 const bidDocumentLoading = ref(false)
 const bidDocumentFilling = ref(false)
 const bidDocumentSaving = ref(false)
+const bidDocumentReviewSaving = ref(false)
+const bidDocumentExporting = ref(false)
 const bidDocumentDraft = ref('')
+const bidDocumentReviewForm = reactive({ reviewStatus: 'PENDING', reviewOpinion: '' })
 const bidDocumentDetail = ref(null)
 const companyMaterialOptions = ref([])
 const companyMaterialDialog = reactive({ visible: false, loading: false, saving: false, selectedId: null })
@@ -1429,6 +1512,7 @@ const isPlatformUser = computed(() => {
 })
 const hasCompanyMaterial = computed(() => Boolean(selectedProject.value?.companyMaterialId))
 const bidDocumentContent = computed(() => bidDocumentDetail.value?.content || selectedProject.value?.contentMarkdown || '')
+const bidDocAnalysis = computed(() => bidDocumentDetail.value?.tenderAnalysis || tenderAnalysis.value || null)
 const bidDocumentStatusLabel = computed(() => {
   const status = String(bidDocumentDetail.value?.bidDocStatus || selectedProject.value?.bidDocStatus || '').toUpperCase()
   if (status === 'DONE') return '已生成'
@@ -1852,6 +1936,9 @@ async function runProjectTenderAnalysis() {
     })
     ElMessage.success('招标文件分析已生成并保存到当前项目，请人工核对后使用')
     await refreshWorkflow()
+    if (activeDoc.value === 'BID_DOCUMENT') {
+      await loadBidDocumentDetail()
+    }
   } finally {
     tenderAnalysisDialog.loading = false
   }
@@ -2186,7 +2273,8 @@ async function loadBidDocumentDetail() {
   bidDocumentLoading.value = true
   try {
     bidDocumentDetail.value = await getBidDocument(selectedProject.value.id)
-    bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
+    bidDocumentDraft.value = bidDocumentDetail.value?.finalContent || bidDocumentDetail.value?.content || ''
+    hydrateBidDocumentReviewForm()
   } finally {
     bidDocumentLoading.value = false
   }
@@ -2263,6 +2351,7 @@ async function smartFillBidDocument() {
   try {
     bidDocumentDetail.value = await fillBidDocument(selectedProject.value.id)
     bidDocumentDraft.value = bidDocumentDetail.value?.content || ''
+    hydrateBidDocumentReviewForm()
     await refreshWorkflow()
     ElMessage.success('投标文件智能填空完成')
   } finally {
@@ -2279,10 +2368,83 @@ async function saveBidDocumentDraft() {
   bidDocumentSaving.value = true
   try {
     bidDocumentDetail.value = await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
+    hydrateBidDocumentReviewForm()
     await refreshWorkflow()
     ElMessage.success('投标文件内容已保存')
   } finally {
     bidDocumentSaving.value = false
+  }
+}
+
+
+function hydrateBidDocumentReviewForm() {
+  bidDocumentReviewForm.reviewStatus = bidDocumentDetail.value?.reviewStatus || 'PENDING'
+  bidDocumentReviewForm.reviewOpinion = bidDocumentDetail.value?.reviewOpinion || ''
+}
+
+function bidDocumentReviewStatusText(status) {
+  const map = {
+    PENDING: '待确认',
+    CONFIRMED: '已确认',
+    NEED_MODIFY: '需修改',
+    MODIFIED: '已修改',
+    DISCARDED: '已废弃'
+  }
+  return map[String(status || 'PENDING').toUpperCase()] || '待确认'
+}
+
+async function saveBidDocumentReview() {
+  if (!selectedProject.value?.id) return
+  if (!bidDocumentDraft.value.trim()) {
+    ElMessage.warning('请先生成或填写投标文件内容')
+    return
+  }
+  bidDocumentReviewSaving.value = true
+  try {
+    bidDocumentDetail.value = await reviewBidDocument(selectedProject.value.id, {
+      reviewStatus: bidDocumentReviewForm.reviewStatus,
+      reviewOpinion: bidDocumentReviewForm.reviewOpinion,
+      finalContent: bidDocumentDraft.value
+    })
+    hydrateBidDocumentReviewForm()
+    await refreshWorkflow()
+    ElMessage.success('客户确认状态已保存')
+  } finally {
+    bidDocumentReviewSaving.value = false
+  }
+}
+
+async function exportBidDocumentWordFile() {
+  if (!selectedProject.value?.id) return
+  if (!bidDocumentDraft.value.trim()) {
+    ElMessage.warning('请先生成或填写投标文件内容')
+    return
+  }
+  bidDocumentExporting.value = true
+  try {
+    await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
+    const file = await exportBidDocumentWord(selectedProject.value.id, { styleCode: 'BID_OFFICIAL' })
+    await refreshWorkflow()
+    ElMessage.success(file?.originalName ? `Word 已生成：${file.originalName}` : 'Word 已生成，可在下载中心查看')
+  } finally {
+    bidDocumentExporting.value = false
+  }
+}
+
+async function exportBidDocumentMarkdownFile() {
+  if (!selectedProject.value?.id) return
+  if (!bidDocumentDraft.value.trim()) {
+    ElMessage.warning('请先生成或填写投标文件内容')
+    return
+  }
+  bidDocumentExporting.value = true
+  try {
+    await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
+    const file = await exportBidDocumentMarkdown(selectedProject.value.id)
+    await refreshWorkflow()
+    ElMessage.success(file?.originalName ? `Markdown 已生成：${file.originalName}` : 'Markdown 已生成，可在下载中心查看')
+  } finally {
+    bidDocumentExporting.value = false
   }
 }
 
@@ -4438,13 +4600,15 @@ const WritingDirectionEditor = defineComponent({
 
 .bid-doc-status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 14px;
 }
 
 .bid-doc-status-card,
 .company-material-ref-card,
+.bid-doc-analysis-card,
+.bid-doc-review-card,
 .bid-doc-editor-card {
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -4505,6 +4669,53 @@ const WritingDirectionEditor = defineComponent({
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
+}
+
+
+.bid-doc-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.bid-doc-analysis-card,
+.bid-doc-review-card {
+  padding: 16px;
+}
+
+.analysis-card-head,
+.review-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.analysis-card-head strong,
+.review-card-head strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.analysis-card-head span,
+.review-card-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.bid-doc-review-card {
+  margin-bottom: 14px;
+}
+
+.bid-doc-review-form {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
 }
 
 .bid-doc-editor-card {

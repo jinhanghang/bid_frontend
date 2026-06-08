@@ -59,3 +59,12 @@ export function updateMemberPlan(id, data) {
 export function deleteMemberPlan(id) {
   return request.delete(`/member-plan/${id}`)
 }
+
+export function getQuotaUsageStats(params) {
+  return request.get('/quota-usage-log/stats', { params })
+}
+
+export function getSecurityAuditReport() {
+  return request.get('/security-audit/report')
+}
+
