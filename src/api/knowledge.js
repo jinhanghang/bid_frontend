@@ -64,3 +64,15 @@ export function submitKnowledgeAskFeedback(data) {
 export function getKnowledgeAskFeedbackStats(params) {
   return request.get('/knowledge-vector/ask-feedback/stats', { params })
 }
+
+export function previewKnowledgeAskEvidence(data) {
+  return request.post('/knowledge-vector/ask/preview', data, { timeout: 0 })
+}
+
+export function submitKnowledgeAskTask(data) {
+  return request.post('/knowledge-vector/ask/tasks', data, { timeout: 0 })
+}
+
+export function getKnowledgeAskTask(taskId) {
+  return request.get(`/knowledge-vector/ask/tasks/${taskId}`, { silentError: true })
+}
