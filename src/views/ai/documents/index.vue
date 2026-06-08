@@ -89,7 +89,7 @@
               <el-tag type="success">目标 {{ currentDoc.targetWordCount || 0 }} 字</el-tag>
               <el-tag type="warning">已生成 {{ currentDoc.actualWordCount || 0 }} 字</el-tag>
             </div>
-            <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="章节正文生成" :ai-level="currentDoc.aiLevel || form.aiLevel" />
+            <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="AI文档章节生成" :ai-level="currentDoc.aiLevel || form.aiLevel" />
           </div>
           <div class="header-actions">
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
@@ -1211,15 +1211,20 @@ function resumeParsePolling() {
 function pollParseTask(taskId) {
   clearInterval(parseTimer)
   const tick = async () => {
-    const task = await getDocumentParseTask(taskId)
-    parseTask.value = task
-    const status = String(task.status || '').toUpperCase()
-    if (['SUCCESS', 'FAILED', 'CANCELED'].includes(status)) {
-      clearInterval(parseTimer)
-      parseTimer = null
-      if (status === 'SUCCESS') {
-        await autoFillAfterParseSuccess(taskId)
+    if (document.hidden) return
+    try {
+      const task = await getDocumentParseTask(taskId)
+      parseTask.value = task
+      const status = String(task.status || '').toUpperCase()
+      if (['SUCCESS', 'FAILED', 'CANCELED'].includes(status)) {
+        clearInterval(parseTimer)
+        parseTimer = null
+        if (status === 'SUCCESS') {
+          await autoFillAfterParseSuccess(taskId)
+        }
       }
+    } catch (e) {
+      // Polling should not block the page when the network jitters.
     }
   }
   tick()
@@ -1345,6 +1350,7 @@ function resumeOutlinePolling(forceDocId) {
   if (!forceDocId && !isOutlineGeneratingStatus(currentDoc.value?.status)) return
 
   const tick = async () => {
+    if (document.hidden) return
     try {
       if (currentDoc.value?.id && String(currentDoc.value.id) !== String(docId)) {
         clearInterval(outlineTimer)
@@ -1483,6 +1489,7 @@ function resumeTaskPolling() {
 function pollGenerationTask(taskId) {
   clearInterval(taskTimer)
   const tick = async () => {
+    if (document.hidden) return
     try {
       const task = await getDocumentGenerationTask(taskId)
       const status = String(task.status || '').toUpperCase()

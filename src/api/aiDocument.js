@@ -1,4 +1,5 @@
 import request from '@/utils/request'
+import { createRequestId } from '@/utils/requestId'
 
 // AI生成/解析/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
 const NO_TIMEOUT = 0
@@ -43,7 +44,7 @@ export function uploadDocumentReference(id, file, data = {}) {
 }
 
 export function getDocumentParseTask(taskId) {
-  return request({ url: `/ai-document/parse/task/${taskId}`, method: 'get' })
+  return request({ url: `/ai-document/parse/task/${taskId}`, method: 'get', silentError: true })
 }
 
 export function autoFillDocumentFromReference(id, data = {}, options = {}) {
@@ -69,15 +70,19 @@ export function applyDocumentWordCountPreset(id, data) {
 }
 
 export function generateDocumentFull(id, data = {}) {
-  return request({ url: `/ai-document/${id}/content/generate-full`, method: 'post', data, timeout: NO_TIMEOUT })
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`document_${id}_generate`)
+  return request({ url: `/ai-document/${id}/content/generate-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
 }
 
 export function rewriteDocumentFull(id, data = {}) {
-  return request({ url: `/ai-document/${id}/content/rewrite-full`, method: 'post', data, timeout: NO_TIMEOUT })
+  const payload = { ...(data || {}) }
+  if (!payload.requestId) payload.requestId = createRequestId(`document_${id}_rewrite`)
+  return request({ url: `/ai-document/${id}/content/rewrite-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
 }
 
 export function getDocumentGenerationTask(taskId) {
-  return request({ url: `/ai-document/task/${taskId}`, method: 'get' })
+  return request({ url: `/ai-document/task/${taskId}`, method: 'get', silentError: true })
 }
 
 
