@@ -494,3 +494,19 @@ export function compressBidProjectTechnicalDuplicateSections(id) {
 export function reviewBidProjectTechnicalByAi(id) {
   return request.post(`/bid-project/${id}/technical-solution/ai-review`, null, { timeout: NO_TIMEOUT })
 }
+
+/**
+ * AI标书：查看当前项目已保存的招标文件分析结果
+ */
+export function getBidProjectTenderAnalysis(id) {
+  return request.get(`/bid-project/${id}/tender-analysis`)
+}
+
+/**
+ * AI标书：基于当前项目关联知识库生成并保存招标文件分析
+ */
+export function analyzeBidProjectTender(id, data = {}) {
+  return request.post(`/bid-project/${id}/tender-analysis`, data || {}, {
+    timeout: NO_TIMEOUT
+  })
+}

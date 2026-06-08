@@ -118,7 +118,10 @@
               <h2>解析报告</h2>
               <p>从招标文件中提取项目基础信息、采购需求、评分标准、废标风险和关键条款。</p>
             </div>
-            <el-button :icon="Refresh" @click="refreshWorkflow">刷新状态</el-button>
+            <div class="doc-head-actions">
+              <el-button :icon="Refresh" @click="refreshWorkflow">刷新状态</el-button>
+              <el-button type="primary" plain :disabled="!selectedProject?.id" @click="openTenderAnalysisDialog">招标文件分析</el-button>
+            </div>
           </div>
 
           <div v-if="isParseRunning" class="parse-running">
@@ -174,6 +177,7 @@
             </div>
             <div class="bid-doc-actions">
               <el-button :icon="Refresh" @click="refreshBidDocument">刷新</el-button>
+              <el-button plain @click="openTenderAnalysisDialog">招标文件分析</el-button>
               <el-button plain @click="openCompanyMaterialSelector">选择资料档案</el-button>
               <el-button
                 type="primary"
@@ -996,6 +1000,85 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="tenderAnalysisDialog.visible" title="招标文件分析" width="1080px" append-to-body destroy-on-close>
+      <div class="tender-analysis-intro">
+        <div>
+          <strong>分析当前 AI标书项目</strong>
+          <p>基于所选知识库资料生成关键信息、评分矩阵、缺失资料和偏离表初稿。分析结果会保存到当前项目，后续投标文件和技术方案可继续复用。</p>
+        </div>
+        <div class="tender-analysis-actions">
+          <el-button @click="openKnowledgeSelector('tenderAnalysis')">选择知识库</el-button>
+          <el-button type="primary" :loading="tenderAnalysisDialog.loading" @click="runProjectTenderAnalysis">开始分析</el-button>
+        </div>
+      </div>
+
+      <div v-if="selectedTenderAnalysisKnowledgeBases.length" class="selected-kb-list analysis-kb-list">
+        <el-tag
+          v-for="kb in selectedTenderAnalysisKnowledgeBases"
+          :key="kb.id"
+          closable
+          @close="removeSelectedKnowledgeBase(kb.id, 'tenderAnalysis')"
+        >
+          {{ kb.kbName }}
+        </el-tag>
+      </div>
+      <el-alert
+        v-else
+        class="analysis-alert"
+        type="warning"
+        :closable="false"
+        show-icon
+        title="当前项目未选择分析来源知识库，请先选择包含招标文件或招标资料的知识库。"
+      />
+
+      <el-tabs v-if="tenderAnalysis" class="analysis-tabs">
+        <el-tab-pane label="关键信息">
+          <el-table class="ui-table" :data="tenderAnalysis.keyInfo || []" max-height="420">
+            <el-table-column prop="fieldName" label="字段" width="150" />
+            <el-table-column prop="value" label="识别结果" min-width="240" show-overflow-tooltip />
+            <el-table-column prop="confidence" label="置信度" width="100" />
+            <el-table-column prop="citation" label="来源" min-width="220" show-overflow-tooltip />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="评分矩阵">
+          <el-table class="ui-table" :data="tenderAnalysis.scoreMatrix || []" max-height="420">
+            <el-table-column prop="itemName" label="事项" width="170" show-overflow-tooltip />
+            <el-table-column prop="requirement" label="要求/依据" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="responseStatus" label="状态" width="140" />
+            <el-table-column prop="riskLevel" label="风险" width="90" />
+            <el-table-column prop="suggestion" label="建议" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="citation" label="来源" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="缺失资料">
+          <el-table class="ui-table" :data="tenderAnalysis.missingMaterials || []" max-height="420">
+            <el-table-column prop="itemName" label="事项" width="170" show-overflow-tooltip />
+            <el-table-column prop="requirement" label="要求/依据" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="responseStatus" label="状态" width="140" />
+            <el-table-column prop="riskLevel" label="风险" width="90" />
+            <el-table-column prop="suggestion" label="建议" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="citation" label="来源" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="偏离表初稿">
+          <el-table class="ui-table" :data="tenderAnalysis.deviationTable || []" max-height="420">
+            <el-table-column prop="itemName" label="事项" width="170" show-overflow-tooltip />
+            <el-table-column prop="requirement" label="要求/依据" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="responseStatus" label="状态" width="140" />
+            <el-table-column prop="riskLevel" label="风险" width="90" />
+            <el-table-column prop="suggestion" label="建议" min-width="260" show-overflow-tooltip />
+            <el-table-column prop="citation" label="来源" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="建议">
+          <div class="check-list">
+            <div v-for="item in tenderAnalysis.suggestions || []" :key="item">{{ item }}</div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+      <el-empty v-else description="选择知识库后点击开始分析。分析结果为初稿，正式投标前必须人工核对招标文件原文。" />
+    </el-dialog>
+
     <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
       <div class="knowledge-selector">
         <div class="knowledge-search-row">
@@ -1096,7 +1179,9 @@ import {
   getBidProjectTechnicalWordCountStats,
   getBidProjectTechnicalDuplicateCheck,
   compressBidProjectTechnicalDuplicateSections,
-  reviewBidProjectTechnicalByAi
+  reviewBidProjectTechnicalByAi,
+  getBidProjectTenderAnalysis,
+  analyzeBidProjectTender
 } from '@/api/bidProject'
 import { getCurrentUserRunningAiTask } from '@/api/aiSolution'
 
@@ -1126,6 +1211,9 @@ const bidDocumentDraft = ref('')
 const bidDocumentDetail = ref(null)
 const companyMaterialOptions = ref([])
 const companyMaterialDialog = reactive({ visible: false, loading: false, saving: false, selectedId: null })
+const tenderAnalysisDialog = reactive({ visible: false, loading: false })
+const tenderAnalysis = ref(null)
+const tenderAnalysisKnowledgeIds = ref([])
 const enterpriseOptions = ref([])
 const ownerUserOptions = ref([])
 const enterpriseLoading = ref(false)
@@ -1207,6 +1295,7 @@ const knowledgeSelectorTarget = ref('full')
 const selectedKnowledgeBaseCache = ref([])
 const selectedKnowledgeBases = computed(() => buildSelectedKnowledgeBases(fullGenerateForm.knowledgeIds || []))
 const selectedSectionKnowledgeBases = computed(() => buildSelectedKnowledgeBases(parseKnowledgeIds(sectionForm.knowledgeIds)))
+const selectedTenderAnalysisKnowledgeBases = computed(() => buildSelectedKnowledgeBases(tenderAnalysisKnowledgeIds.value || []))
 
 const technicalVersionDialogVisible = ref(false)
 const technicalVersionLoading = ref(false)
@@ -1716,6 +1805,56 @@ async function refreshWorkflow() {
   if (!selectedProject.value?.id) return
   await selectProject(selectedProject.value.id, false)
   autoFillTechnicalRequirementAfterParse(false)
+}
+
+
+function defaultTenderAnalysisKnowledgeIds() {
+  const ids = []
+  ids.push(...normalizeKnowledgeIds(tenderAnalysisKnowledgeIds.value || []))
+  ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIdList || []))
+  ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIds || ''))
+  ids.push(...normalizeKnowledgeIds(fullGenerateForm.knowledgeIds || []))
+  ids.push(...normalizeKnowledgeIds(technicalForm.knowledgeIds || []))
+  return uniqueIds(ids)
+}
+
+async function openTenderAnalysisDialog() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择一个 AI标书项目')
+    return
+  }
+  tenderAnalysisDialog.visible = true
+  tenderAnalysis.value = null
+  tenderAnalysisKnowledgeIds.value = defaultTenderAnalysisKnowledgeIds()
+  try {
+    const result = await getBidProjectTenderAnalysis(selectedProject.value.id)
+    if (result) tenderAnalysis.value = result
+  } catch (e) {
+    // 历史项目没有分析结果时不打断弹窗，用户可直接点击开始分析。
+  }
+}
+
+async function runProjectTenderAnalysis() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择一个 AI标书项目')
+    return
+  }
+  const knowledgeBaseIds = normalizeKnowledgeIds(tenderAnalysisKnowledgeIds.value || [])
+  if (!knowledgeBaseIds.length) {
+    ElMessage.warning('请先选择包含招标文件或招标资料的知识库')
+    return
+  }
+  tenderAnalysisDialog.loading = true
+  try {
+    tenderAnalysis.value = await analyzeBidProjectTender(selectedProject.value.id, {
+      knowledgeBaseIds,
+      topK: 8
+    })
+    ElMessage.success('招标文件分析已生成并保存到当前项目，请人工核对后使用')
+    await refreshWorkflow()
+  } finally {
+    tenderAnalysisDialog.loading = false
+  }
 }
 
 async function openCreateProject() {
@@ -2418,6 +2557,7 @@ function collectTechnicalFullGenerateKnowledgeIds() {
   ids.push(...normalizeKnowledgeIds(fullGenerateForm.knowledgeIds || []))
   ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIdList || []))
   ids.push(...normalizeKnowledgeIds(selectedProject.value?.knowledgeIds || ''))
+  ids.push(...normalizeKnowledgeIds(tenderAnalysisKnowledgeIds.value || []))
   ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIds || ''))
   ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIdList || []))
 
@@ -2436,15 +2576,17 @@ function collectTechnicalFullGenerateKnowledgeIds() {
 }
 
 function getCurrentKnowledgeIdsByTarget(target = knowledgeSelectorTarget.value) {
-  return target === 'section'
-    ? parseKnowledgeIds(sectionForm.knowledgeIds)
-    : normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
+  if (target === 'section') return parseKnowledgeIds(sectionForm.knowledgeIds)
+  if (target === 'tenderAnalysis') return normalizeKnowledgeIds(tenderAnalysisKnowledgeIds.value || [])
+  return normalizeKnowledgeIds(fullGenerateForm.knowledgeIds)
 }
 
 function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarget.value) {
   const normalized = normalizeKnowledgeIds(ids)
   if (target === 'section') {
     sectionForm.knowledgeIds = stringifyKnowledgeIds(normalized)
+  } else if (target === 'tenderAnalysis') {
+    tenderAnalysisKnowledgeIds.value = normalized
   } else {
     fullGenerateForm.knowledgeIds = normalized
   }
@@ -6768,5 +6910,52 @@ const WritingDirectionEditor = defineComponent({
 }
 .hidden-file-input {
   display: none !important;
+}
+</style>
+
+<style scoped>
+.doc-head-actions,
+.tender-analysis-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tender-analysis-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tender-analysis-intro strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #1f2937;
+}
+
+.tender-analysis-intro p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.analysis-kb-list {
+  margin: 10px 0 14px;
+}
+
+.analysis-alert {
+  margin: 10px 0 14px;
+}
+
+.analysis-tabs {
+  margin-top: 12px;
 }
 </style>

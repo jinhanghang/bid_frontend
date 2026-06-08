@@ -65,14 +65,42 @@ export function getKnowledgeAskFeedbackStats(params) {
   return request.get('/knowledge-vector/ask-feedback/stats', { params })
 }
 
-export function previewKnowledgeAskEvidence(data) {
+export function previewAskKnowledge(data) {
   return request.post('/knowledge-vector/ask/preview', data, { timeout: 0 })
 }
 
-export function submitKnowledgeAskTask(data) {
+export function submitAskTask(data) {
   return request.post('/knowledge-vector/ask/tasks', data, { timeout: 0 })
 }
 
-export function getKnowledgeAskTask(taskId) {
-  return request.get(`/knowledge-vector/ask/tasks/${taskId}`, { silentError: true })
+export function getAskTask(id) {
+  return request.get(`/knowledge-vector/ask/tasks/${id}`, { silentError: true })
+}
+
+export function updateAskTaskReview(id, data) {
+  return request.put(`/knowledge-vector/ask/tasks/${id}/review`, data)
+}
+
+export function analyzeTenderKnowledge(data) {
+  return request.post('/knowledge-vector/tender-analysis', data, { timeout: 0 })
+}
+
+export function listRagTestCases(params) {
+  return request.get('/knowledge-rag-test/cases', { params })
+}
+
+export function createRagTestCase(data) {
+  return request.post('/knowledge-rag-test/cases', data)
+}
+
+export function updateRagTestCase(id, data) {
+  return request.put(`/knowledge-rag-test/cases/${id}`, data)
+}
+
+export function deleteRagTestCase(id) {
+  return request.delete(`/knowledge-rag-test/cases/${id}`)
+}
+
+export function runRagTest(data) {
+  return request.post('/knowledge-rag-test/run', data, { timeout: 0 })
 }

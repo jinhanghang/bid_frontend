@@ -106,6 +106,7 @@
             <div class="kb-detail-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
+              <el-button @click="openRagTestDialog">RAG测试</el-button>
               <el-button v-if="canManageKnowledge" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </section>
@@ -160,19 +161,11 @@
                 </template>
               </el-table-column>
 
-              <el-table-column label="解析质量" width="170">
+              <el-table-column label="解析质量" width="130">
                 <template #default="{ row }">
-                  <div class="quality-cell">
-                    <el-tag :type="qualityTagType(row.parseQualityLevel)" effect="light" size="small">
-                      {{ qualityLabel(row) }}
-                    </el-tag>
-                    <el-button
-                      v-if="row.parseQualityJson"
-                      link
-                      type="primary"
-                      @click.stop="openQualityDialog(row)"
-                    >查看</el-button>
-                  </div>
+                  <el-button link type="primary" @click.stop="openQualityDialog(row)">
+                    {{ qualityLabel(row) }}
+                  </el-button>
                 </template>
               </el-table-column>
 
@@ -310,66 +303,6 @@
       </div>
     </el-dialog>
 
-    <!-- 文件解析质量报告 -->
-    <el-dialog v-model="qualityDialog.visible" title="解析质量报告" width="720px" destroy-on-close>
-      <div v-if="qualityDialog.row" class="quality-report">
-        <div class="quality-report-head">
-          <div class="quality-file-name">{{ qualityDialog.row.fileName || '-' }}</div>
-          <el-tag :type="qualityTagType(qualityDialog.row.parseQualityLevel)" effect="light">
-            {{ qualityLabel(qualityDialog.row) }}
-          </el-tag>
-        </div>
-
-        <div class="quality-grid">
-          <div class="quality-item">
-            <span>文本长度</span>
-            <strong>{{ qualityReportValue('textLength') }}</strong>
-          </div>
-          <div class="quality-item">
-            <span>页数</span>
-            <strong>{{ qualityReportValue('pageCount') }}</strong>
-          </div>
-          <div class="quality-item">
-            <span>标题数</span>
-            <strong>{{ qualityReportValue('headingCount') }}</strong>
-          </div>
-          <div class="quality-item">
-            <span>表格数</span>
-            <strong>{{ qualityReportValue('tableCount') }}</strong>
-          </div>
-        </div>
-
-        <el-alert
-          v-if="qualityDialog.report?.suspectedScanned"
-          class="quality-alert"
-          type="warning"
-          show-icon
-          :closable="false"
-          title="该文件疑似扫描件或图片型 PDF，建议上传 OCR 后的可复制文字版本。"
-        />
-
-        <div v-if="qualityDialog.report?.warnings?.length" class="quality-section">
-          <div class="quality-section-title">风险提示</div>
-          <ul>
-            <li v-for="(item, index) in qualityDialog.report.warnings" :key="`warn-${index}`">{{ item }}</li>
-          </ul>
-        </div>
-
-        <div v-if="qualityDialog.report?.suggestions?.length" class="quality-section">
-          <div class="quality-section-title">处理建议</div>
-          <ul>
-            <li v-for="(item, index) in qualityDialog.report.suggestions" :key="`suggest-${index}`">{{ item }}</li>
-          </ul>
-        </div>
-
-        <el-collapse class="quality-raw" v-if="qualityDialog.formatted">
-          <el-collapse-item title="查看原始报告 JSON" name="raw">
-            <pre>{{ qualityDialog.formatted }}</pre>
-          </el-collapse-item>
-        </el-collapse>
-      </div>
-    </el-dialog>
-
     <!-- 知识库检索测试 -->
     <el-dialog v-model="searchDialog.visible" title="知识库检索测试" width="820px" destroy-on-close>
       <el-form label-width="90px">
@@ -391,13 +324,12 @@
       </div>
 
       <div v-if="searchResult.length" class="hit-list">
-        <div v-for="(item, index) in searchResult" :key="item.chunkId || index" class="hit-card">
+        <div v-for="item in searchResult" :key="item.chunkId" class="hit-card">
           <div class="hit-head hit-head--stack">
             <div class="hit-source-title">{{ formatReferenceTitle(item) }}</div>
             <div class="hit-source-meta">
               <span>相似度：{{ formatScore(item.score) }}</span>
               <span v-if="formatReferenceMeta(item)">{{ formatReferenceMeta(item) }}</span>
-              <el-button v-if="canOpenReference(item)" link type="primary" @click="openReferenceFile(item)">打开原文</el-button>
             </div>
           </div>
           <div class="hit-content">{{ referencePreview(item) }}</div>
@@ -411,7 +343,7 @@
     </el-dialog>
 
     <!-- 知识库问答 -->
-    <el-dialog v-model="askDialog.visible" title="知识库问答" width="920px" destroy-on-close @closed="stopAskTaskPolling">
+    <el-dialog v-model="askDialog.visible" title="知识库问答" width="860px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="问题">
           <el-input
@@ -419,55 +351,55 @@
             type="textarea"
             :rows="3"
             placeholder="例如：根据企业资料，总结一下我们的核心优势"
-            @input="onAskQuestionInput"
           />
         </el-form-item>
         <el-form-item label="引用数量">
-          <el-input-number v-model="askForm.topK" :min="1" :max="10" @change="onAskQuestionInput" />
+          <el-input-number v-model="askForm.topK" :min="1" :max="10" />
         </el-form-item>
       </el-form>
 
-      <div class="dialog-actions ask-actions">
+      <div class="dialog-actions">
         <el-button :loading="askDialog.previewLoading" @click="previewAskEvidence">先预览依据</el-button>
-        <el-button
-          type="primary"
-          :loading="askDialog.loading"
-          :disabled="!askEvidencePreview.length || askLowConfidence"
-          @click="submitAsk"
-        >确认依据并生成回答</el-button>
+        <el-button type="primary" :loading="askDialog.loading" :disabled="!askPreview.hasEvidence" @click="submitAskTaskFlow">确认依据并生成回答</el-button>
       </div>
 
-      <el-progress
-        v-if="askDialog.taskId && askDialog.loading"
-        class="ask-progress"
-        :percentage="Number(askDialog.progress || 0)"
-        :status="Number(askDialog.progress || 0) >= 100 ? 'success' : undefined"
-      />
-      <div v-if="askDialog.taskId && askDialog.message" class="task-message">{{ askDialog.message }}</div>
+      <div v-if="askPreview.searched" class="preview-box">
+        <div class="answer-title">
+          <span>回答依据预览</span>
+          <el-tag v-if="askPreview.hasEvidence" type="success" size="small">命中 {{ askPreview.evidenceCount }} 条</el-tag>
+          <el-tag v-else type="warning" size="small">无有效依据</el-tag>
+        </div>
+        <div v-if="askPreview.queryVariants?.length" class="query-variants">
+          <span v-for="item in askPreview.queryVariants" :key="item" class="query-chip">{{ item }}</span>
+        </div>
+        <el-alert
+          v-if="!askPreview.hasEvidence"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="askPreview.lowConfidenceReason || '当前问题没有命中有效资料，系统不会调用模型生成无依据答案'"
+        />
+        <div v-if="askPreview.references?.length" class="hit-list hit-list--compact">
+          <div v-for="(item, index) in askPreview.references" :key="item.chunkId || index" class="hit-card">
+            <div class="hit-head hit-head--stack">
+              <div class="hit-source-title">[资料{{ index + 1 }}] {{ formatReferenceTitle(item) }}</div>
+              <div class="hit-source-meta">
+                <span>相似度：{{ formatScore(item.score) }}</span>
+                </div>
+            </div>
+            <div class="hit-content">{{ referencePreview(item) }}</div>
+          </div>
+        </div>
+      </div>
 
       <el-alert
-        v-if="askDialog.evidencePreviewed && askLowConfidence"
+        v-if="askDialog.asked && askLowConfidence"
         class="ask-alert"
         type="warning"
         show-icon
         :closable="false"
-        title="当前问题没有命中有效资料，系统不会调用模型生成无依据答案"
+        title="当前知识库未检索到相关资料，系统已停止无依据生成"
       />
-
-      <div v-if="askEvidencePreview.length" class="hit-list evidence-preview-list">
-        <div class="answer-title">待使用依据</div>
-        <div v-for="(item, index) in askEvidencePreview" :key="item.chunkId || index" class="hit-card">
-          <div class="hit-head hit-head--stack">
-            <div class="hit-source-title">[资料{{ index + 1 }}] {{ formatReferenceTitle(item) }}</div>
-            <div class="hit-source-meta">
-              <span>相似度：{{ formatScore(item.score) }}</span>
-              <span v-if="formatReferenceMeta(item)">{{ formatReferenceMeta(item) }}</span>
-              <el-button v-if="canOpenReference(item)" link type="primary" @click="openReferenceFile(item)">打开原文</el-button>
-            </div>
-          </div>
-          <div class="hit-content">{{ referencePreview(item) }}</div>
-        </div>
-      </div>
 
       <div v-if="askAnswer" class="answer-box" :class="{ 'answer-box--warning': askLowConfidence }">
         <div class="answer-title">
@@ -478,20 +410,44 @@
         <div class="answer-content">{{ askAnswer }}</div>
       </div>
 
+      <div v-if="askAnswerCheck" class="check-box">
+        <div class="answer-title">
+          <span>答案自检</span>
+          <el-tag :type="checkTagType(askAnswerCheck.status)" size="small">{{ askAnswerCheck.status || '-' }} / {{ askAnswerCheck.score ?? '-' }}分</el-tag>
+        </div>
+        <div v-if="askAnswerCheck.issues?.length" class="check-list">
+          <div v-for="item in askAnswerCheck.issues" :key="item">{{ item }}</div>
+        </div>
+        <div v-if="askAnswerCheck.suggestions?.length" class="check-list muted">
+          <div v-for="item in askAnswerCheck.suggestions" :key="item">建议：{{ item }}</div>
+        </div>
+      </div>
+
+      <div v-if="askTaskId && askAnswer" class="review-box">
+        <el-select v-model="askReviewForm.reviewStatus" style="width: 180px">
+          <el-option label="待确认" value="PENDING" />
+          <el-option label="已确认" value="CONFIRMED" />
+          <el-option label="需修改" value="NEED_CHANGE" />
+          <el-option label="已修改" value="UPDATED" />
+          <el-option label="已废弃" value="DISCARDED" />
+        </el-select>
+        <el-input v-model="askReviewForm.reviewOpinion" placeholder="客户修改意见 / 内部确认意见" />
+        <el-button :loading="askDialog.reviewSaving" @click="saveAskReview">保存确认状态</el-button>
+      </div>
+
       <el-empty
-        v-if="askDialog.asked && !askDialog.loading && !askAnswer && !askReferences.length && !askEvidencePreview.length"
+        v-if="askDialog.asked && !askDialog.loading && !askAnswer && !askReferences.length"
         description="暂未生成回答，请确认知识库文件已解析入库，或换一个问题再试"
       />
 
       <div v-if="askReferences.length" class="hit-list">
-        <div class="answer-title">最终引用来源</div>
+        <div class="answer-title">引用来源</div>
         <div v-for="(item, index) in askReferences" :key="item.chunkId || index" class="hit-card">
           <div class="hit-head hit-head--stack">
             <div class="hit-source-title">[资料{{ index + 1 }}] {{ formatReferenceTitle(item) }}</div>
             <div class="hit-source-meta">
               <span>相似度：{{ formatScore(item.score) }}</span>
               <span v-if="formatReferenceMeta(item)">{{ formatReferenceMeta(item) }}</span>
-              <el-button v-if="canOpenReference(item)" link type="primary" @click="openReferenceFile(item)">打开原文</el-button>
             </div>
           </div>
           <div class="hit-content">{{ referencePreview(item) }}</div>
@@ -499,6 +455,58 @@
       </div>
     </el-dialog>
 
+    <el-dialog v-model="qualityDialog.visible" title="解析质量报告" width="760px" destroy-on-close>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="文件名">{{ qualityDialog.row?.fileName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="解析质量">{{ qualityLabel(qualityDialog.row || {}) }}</el-descriptions-item>
+        <el-descriptions-item label="文本长度">{{ qualityDialog.row?.parseTextLength || 0 }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ fileStatusLabel(qualityDialog.row || {}) }}</el-descriptions-item>
+      </el-descriptions>
+      <pre class="json-preview">{{ prettyJson(qualityDialog.row?.parseQualityJson) }}</pre>
+    </el-dialog>
+
+    <el-dialog v-model="ragTestDialog.visible" title="RAG自动测试" width="980px" destroy-on-close>
+      <div class="dialog-actions">
+        <el-button @click="loadRagCases">刷新用例</el-button>
+        <el-button type="primary" :loading="ragTestDialog.running" @click="runRagTests(false)">只测召回</el-button>
+        <el-button type="warning" :loading="ragTestDialog.running" @click="runRagTests(true)">召回+生成</el-button>
+      </div>
+      <el-form :model="ragCaseForm" label-width="90px" class="rag-case-form">
+        <el-form-item label="问题">
+          <el-input v-model="ragCaseForm.questionText" placeholder="例如：评分标准是什么？" />
+        </el-form-item>
+        <el-form-item label="期望关键词">
+          <el-input v-model="ragCaseForm.expectedKeywords" placeholder="多个关键词用逗号分隔" />
+        </el-form-item>
+        <el-form-item label="期望文件">
+          <el-input v-model="ragCaseForm.expectedFileName" placeholder="可选：文件名关键字" />
+        </el-form-item>
+        <el-button type="primary" :loading="ragTestDialog.saving" @click="saveRagCase">新增用例</el-button>
+      </el-form>
+      <el-table class="ui-table" :data="ragCases" max-height="260">
+        <el-table-column prop="caseName" label="用例" min-width="160" show-overflow-tooltip />
+        <el-table-column prop="questionText" label="问题" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="expectedKeywords" label="期望关键词" min-width="180" show-overflow-tooltip />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="removeRagCase(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="ragTestResult" class="test-result-box">
+        <el-alert :closable="false" type="info" :title="`共 ${ragTestResult.total || 0} 条，通过 ${ragTestResult.passed || 0} 条，失败 ${ragTestResult.failed || 0} 条`" />
+        <el-table class="ui-table" :data="ragTestResult.runs || []" max-height="300">
+          <el-table-column label="结果" width="90">
+            <template #default="{ row }"><el-tag :type="row.passFlag ? 'success' : 'danger'">{{ row.passFlag ? '通过' : '未通过' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column prop="questionText" label="问题" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="score" label="得分" width="80" />
+          <el-table-column label="问题" min-width="260">
+            <template #default="{ row }">{{ (row.issues || []).join('；') || '-' }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -524,15 +532,20 @@ import { createRequestId } from '@/utils/requestId'
 import {
   createKnowledgeBase,
   createKnowledgeFile,
+  createRagTestCase,
   deleteKnowledgeBase,
   deleteKnowledgeFile,
+  deleteRagTestCase,
+  getAskTask,
+  listRagTestCases,
   pageKnowledgeBases,
   pageKnowledgeFiles,
+  previewAskKnowledge,
   rebuildKnowledgeFile,
+  runRagTest,
   searchKnowledge,
-  previewKnowledgeAskEvidence,
-  submitKnowledgeAskTask,
-  getKnowledgeAskTask,
+  submitAskTask,
+  updateAskTaskReview,
   updateKnowledgeBase,
   updateKnowledgeBaseStatus
 } from '@/api/knowledge'
@@ -557,8 +570,8 @@ const baseFormRef = ref()
 const timer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const pollingTimer = ref(null)
-const filePollingLoading = ref(false)
-const askTaskPollingTimer = ref(null)
+const askTaskTimer = ref(null)
+const askTaskPolling = ref(false)
 const rebuildingIds = ref(new Set())
 
 const basePager = reactive({
@@ -587,13 +600,8 @@ const askDialog = reactive({
   visible: false,
   loading: false,
   previewLoading: false,
-  asked: false,
-  evidencePreviewed: false,
-  taskId: '',
-  progress: 0,
-  message: '',
-  requestId: '',
-  requestSignature: ''
+  reviewSaving: false,
+  asked: false
 })
 
 const searchForm = reactive({
@@ -609,15 +617,44 @@ const askForm = reactive({
 const searchResult = ref([])
 const askAnswer = ref('')
 const askReferences = ref([])
-const askEvidencePreview = ref([])
 const askLowConfidence = ref(false)
 const askEvidenceCount = ref(0)
+const askAnswerCheck = ref(null)
+const askTaskId = ref('')
+
+const askPreview = reactive({
+  searched: false,
+  hasEvidence: false,
+  evidenceCount: 0,
+  lowConfidenceReason: '',
+  queryVariants: [],
+  references: []
+})
+
+const askReviewForm = reactive({
+  reviewStatus: 'PENDING',
+  reviewOpinion: '',
+  finalAnswer: ''
+})
 
 const qualityDialog = reactive({
   visible: false,
-  row: null,
-  report: null,
-  formatted: ''
+  row: null
+})
+
+
+const ragTestDialog = reactive({
+  visible: false,
+  loading: false,
+  saving: false,
+  running: false
+})
+const ragCases = ref([])
+const ragTestResult = ref(null)
+const ragCaseForm = reactive({
+  questionText: '',
+  expectedKeywords: '',
+  expectedFileName: ''
 })
 
 const baseForm = reactive({
@@ -1034,14 +1071,8 @@ function startFilePolling() {
       stopFilePolling()
       return
     }
-    if (filePollingLoading.value) return
-    filePollingLoading.value = true
-    try {
-      await loadFiles()
-      await loadBases(selectedBase.value.id)
-    } finally {
-      filePollingLoading.value = false
-    }
+    await loadFiles()
+    await loadBases(selectedBase.value.id)
   }, 3000)
 }
 
@@ -1075,43 +1106,51 @@ function openAskDialog() {
     return
   }
   askDialog.visible = true
-  resetAskResult()
-}
-
-function resetAskResult() {
-  stopAskTaskPolling()
-  askDialog.loading = false
-  askDialog.previewLoading = false
   askDialog.asked = false
-  askDialog.evidencePreviewed = false
-  askDialog.taskId = ''
-  askDialog.progress = 0
-  askDialog.message = ''
   askAnswer.value = ''
   askReferences.value = []
-  askEvidencePreview.value = []
   askLowConfidence.value = false
   askEvidenceCount.value = 0
+  askAnswerCheck.value = null
+  askTaskId.value = ''
+  resetAskPreview()
+  askReviewForm.reviewStatus = 'PENDING'
+  askReviewForm.reviewOpinion = ''
+  askReviewForm.finalAnswer = ''
 }
 
-function onAskQuestionInput() {
-  const signature = buildAskSignature()
-  if (askDialog.requestSignature && askDialog.requestSignature !== signature) {
-    resetAskResult()
+async function submitSearch() {
+  if (!searchForm.query.trim()) {
+    ElMessage.warning('请输入检索问题')
+    return
+  }
+
+  searchDialog.loading = true
+  try {
+    const res = await searchKnowledge({
+      knowledgeBaseIds: [selectedBase.value.id],
+      query: searchForm.query,
+      topK: searchForm.topK
+    })
+    searchResult.value = res?.hits || []
+    searchDialog.searched = true
+    if (searchResult.value.length) {
+      ElMessage.success(`检索完成，命中 ${searchResult.value.length} 个片段`)
+    } else {
+      ElMessage.warning('未检索到相关片段，请确认文件已解析入库，或换一个关键词再试')
+    }
+  } finally {
+    searchDialog.loading = false
   }
 }
 
-function buildAskSignature() {
-  return [selectedBase.value?.id || '', askForm.question.trim(), Number(askForm.topK || 5)].join('|')
-}
-
-function ensureAskRequestId() {
-  const signature = buildAskSignature()
-  if (!askDialog.requestId || askDialog.requestSignature !== signature) {
-    askDialog.requestId = createRequestId('kb_ask')
-    askDialog.requestSignature = signature
-  }
-  return askDialog.requestId
+function resetAskPreview() {
+  askPreview.searched = false
+  askPreview.hasEvidence = false
+  askPreview.evidenceCount = 0
+  askPreview.lowConfidenceReason = ''
+  askPreview.queryVariants = []
+  askPreview.references = []
 }
 
 async function previewAskEvidence() {
@@ -1119,131 +1158,137 @@ async function previewAskEvidence() {
     ElMessage.warning('请输入问题')
     return
   }
-  if (!selectedBase.value?.id) {
-    ElMessage.warning('请先选择知识库')
-    return
-  }
-
   askDialog.previewLoading = true
-  askDialog.evidencePreviewed = false
-  askAnswer.value = ''
-  askReferences.value = []
-  askLowConfidence.value = false
-  askEvidenceCount.value = 0
   try {
-    const res = await previewKnowledgeAskEvidence({
+    const res = await previewAskKnowledge({
       knowledgeBaseIds: [selectedBase.value.id],
-      question: askForm.question.trim(),
-      topK: askForm.topK,
-      requestId: ensureAskRequestId()
+      question: askForm.question,
+      topK: askForm.topK
     })
-    askEvidencePreview.value = res?.hits || []
-    askDialog.evidencePreviewed = true
-    askLowConfidence.value = askEvidencePreview.value.length === 0
-    askEvidenceCount.value = askEvidencePreview.value.length
-    if (askEvidencePreview.value.length) {
-      ElMessage.success(`已找到 ${askEvidencePreview.value.length} 条可用依据，请确认后生成回答`)
+    askPreview.searched = true
+    askPreview.hasEvidence = Boolean(res?.hasEvidence)
+    askPreview.evidenceCount = Number(res?.evidenceCount || 0)
+    askPreview.lowConfidenceReason = res?.lowConfidenceReason || ''
+    askPreview.queryVariants = res?.queryVariants || []
+    askPreview.references = res?.references || []
+    askReferences.value = askPreview.references
+    if (askPreview.hasEvidence) {
+      ElMessage.success(`已命中 ${askPreview.evidenceCount} 条有效依据`)
     } else {
-      ElMessage.warning('未找到有效依据，已停止无依据生成')
+      ElMessage.warning('当前问题未命中有效依据，不会调用模型生成无依据答案')
     }
   } finally {
     askDialog.previewLoading = false
   }
 }
 
-async function submitAsk() {
+async function submitAskTaskFlow() {
   if (!askForm.question.trim()) {
     ElMessage.warning('请输入问题')
     return
   }
-  if (!askEvidencePreview.value.length) {
-    ElMessage.warning('请先预览依据，确认有有效资料后再生成回答')
+  if (!askPreview.searched) {
+    await previewAskEvidence()
+  }
+  if (!askPreview.hasEvidence) {
+    ElMessage.warning('当前没有有效依据，已停止生成')
     return
   }
-
   askDialog.loading = true
   askDialog.asked = true
-  askDialog.progress = 5
-  askDialog.message = '正在提交问答任务'
+  askAnswer.value = ''
+  askAnswerCheck.value = null
+  let submitted = false
   try {
-    const res = await submitKnowledgeAskTask({
+    const res = await submitAskTask({
       knowledgeBaseIds: [selectedBase.value.id],
-      question: askForm.question.trim(),
+      question: askForm.question,
       topK: askForm.topK,
-      requestId: ensureAskRequestId()
+      requestId: createRequestId('kb_ask_task')
     })
-    askDialog.taskId = res?.taskId || ''
-    askDialog.progress = Number(res?.progress || 5)
-    askDialog.message = res?.message || '问答任务已提交'
-    if (!askDialog.taskId) {
-      throw new Error('知识库问答任务提交后未返回任务ID')
+    askTaskId.value = res?.taskId || ''
+    if (!askTaskId.value) {
+      ElMessage.error('问答任务提交失败：未返回任务ID')
+      return
     }
-    pollAskTask(true)
-  } catch (e) {
-    askDialog.loading = false
-    askDialog.message = ''
-    throw e
+    submitted = true
+    startAskTaskPolling()
+  } finally {
+    if (!submitted) askDialog.loading = false
   }
 }
 
-async function pollAskTask(immediate = false) {
+function startAskTaskPolling() {
   stopAskTaskPolling()
-  const run = async () => {
-    if (!askDialog.taskId) return
-    try {
-      const detail = await getKnowledgeAskTask(askDialog.taskId)
-      applyAskTaskDetail(detail || {})
-      if (isAskTaskRunning(detail?.status)) {
-        askTaskPollingTimer.value = window.setTimeout(run, 1600)
-      }
-    } catch (e) {
-      askTaskPollingTimer.value = window.setTimeout(run, 3000)
-    }
-  }
-  if (immediate) {
-    await run()
-  } else {
-    askTaskPollingTimer.value = window.setTimeout(run, 1600)
-  }
-}
-
-function applyAskTaskDetail(detail = {}) {
-  askDialog.progress = Number(detail.progress || 0)
-  askDialog.message = detail.message || ''
-  const status = String(detail.status || '').toUpperCase()
-  if (status === 'SUCCESS') {
-    askDialog.loading = false
-    askDialog.progress = 100
-    askAnswer.value = detail.answer || ''
-    askReferences.value = detail.references || []
-    askLowConfidence.value = Boolean(detail.lowConfidence)
-    askEvidenceCount.value = Number(detail.evidenceCount || askReferences.value.length || 0)
-    stopAskTaskPolling()
-    if (askLowConfidence.value) {
-      ElMessage.warning('当前知识库未检索到相关资料，已停止无依据生成')
-    } else {
-      ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
-    }
-    return
-  }
-  if (status === 'FAILED') {
-    askDialog.loading = false
-    askDialog.progress = 100
-    askDialog.message = detail.errorMessage || detail.message || '问答任务失败'
-    stopAskTaskPolling()
-    ElMessage.error(askDialog.message)
-  }
-}
-
-function isAskTaskRunning(status) {
-  const value = String(status || '').toUpperCase()
-  return value === 'WAITING' || value === 'RUNNING' || !value
+  pollAskTask()
+  askTaskTimer.value = window.setInterval(pollAskTask, 1800)
 }
 
 function stopAskTaskPolling() {
-  if (!askTaskPollingTimer.value) return
-  clearTimeout(askTaskPollingTimer.value)
-  askTaskPollingTimer.value = null
+  if (askTaskTimer.value) {
+    clearInterval(askTaskTimer.value)
+    askTaskTimer.value = null
+  }
+}
+
+async function pollAskTask() {
+  if (!askTaskId.value || askTaskPolling.value) return
+  askTaskPolling.value = true
+  try {
+    const res = await getAskTask(askTaskId.value)
+    const preview = res?.preview
+    if (preview) {
+      askPreview.searched = true
+      askPreview.hasEvidence = Boolean(preview.hasEvidence)
+      askPreview.evidenceCount = Number(preview.evidenceCount || 0)
+      askPreview.lowConfidenceReason = preview.lowConfidenceReason || ''
+      askPreview.queryVariants = preview.queryVariants || []
+      askPreview.references = preview.references || []
+    }
+    const response = res?.response
+    if (response) {
+      applyAskResponse(response)
+    }
+    if (['SUCCESS', 'FAILED', 'CANCELLED'].includes(String(res?.status || '').toUpperCase())) {
+      stopAskTaskPolling()
+      askDialog.loading = false
+      if (res?.status === 'FAILED') {
+        ElMessage.error(res?.errorMsg || '知识库问答任务失败')
+      } else if (askAnswer.value) {
+        ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
+      }
+    }
+  } catch (e) {
+    stopAskTaskPolling()
+    askDialog.loading = false
+  } finally {
+    askTaskPolling.value = false
+  }
+}
+
+function applyAskResponse(res = {}) {
+  askAnswer.value = res?.answer || ''
+  askReferences.value = res?.references || []
+  askLowConfidence.value = Boolean(res?.lowConfidence)
+  askEvidenceCount.value = Number(res?.evidenceCount || 0)
+  askAnswerCheck.value = res?.answerCheck || null
+  askReviewForm.finalAnswer = askAnswer.value
+  askDialog.asked = true
+}
+
+async function saveAskReview() {
+  if (!askTaskId.value) return
+  askDialog.reviewSaving = true
+  try {
+    await updateAskTaskReview(askTaskId.value, {
+      reviewStatus: askReviewForm.reviewStatus,
+      reviewOpinion: askReviewForm.reviewOpinion,
+      finalAnswer: askReviewForm.finalAnswer || askAnswer.value
+    })
+    ElMessage.success('确认状态已保存')
+  } finally {
+    askDialog.reviewSaving = false
+  }
 }
 
 async function deleteFile(row) {
@@ -1261,64 +1306,6 @@ async function deleteFile(row) {
 
   await loadFiles()
   await loadBases(selectedBase.value?.id)
-}
-
-function qualityLabel(row = {}) {
-  const level = String(row.parseQualityLevel || '').toUpperCase()
-  const score = row.parseQualityScore === undefined || row.parseQualityScore === null ? '-' : row.parseQualityScore
-  if (level === 'HIGH') return `高 / ${score}`
-  if (level === 'MEDIUM') return `中 / ${score}`
-  if (level === 'LOW') return `低 / ${score}`
-  if (Number(row.parseStatus) === 2) return `未评估 / ${score}`
-  return '待解析'
-}
-
-function qualityTagType(level) {
-  const value = String(level || '').toUpperCase()
-  if (value === 'HIGH') return 'success'
-  if (value === 'MEDIUM') return 'warning'
-  if (value === 'LOW') return 'danger'
-  return 'info'
-}
-
-function openQualityDialog(row = {}) {
-  const report = parseQualityReport(row.parseQualityJson)
-  qualityDialog.row = row
-  qualityDialog.report = report
-  qualityDialog.formatted = report ? JSON.stringify(report, null, 2) : ''
-  qualityDialog.visible = true
-}
-
-function parseQualityReport(json) {
-  if (!json) return null
-  try {
-    return JSON.parse(json)
-  } catch (e) {
-    return null
-  }
-}
-
-function qualityReportValue(field) {
-  const value = qualityDialog.report?.[field]
-  return value === undefined || value === null || value === '' ? '-' : value
-}
-
-function getReferenceFile(item = {}) {
-  return files.value.find((file) => String(file.id || '') === String(item.knowledgeFileId || '')) || null
-}
-
-function canOpenReference(item = {}) {
-  const file = getReferenceFile(item)
-  return Boolean(file?.fileUrl)
-}
-
-function openReferenceFile(item = {}) {
-  const file = getReferenceFile(item)
-  if (!file?.fileUrl) {
-    ElMessage.warning('当前引用没有可打开的文件链接')
-    return
-  }
-  window.open(file.fileUrl, '_blank')
 }
 
 function fileStatusLabel(row = {}) {
@@ -1373,6 +1360,104 @@ function formatReferenceMeta(item = {}) {
 
 function referencePreview(item = {}) {
   return item.contentPreview || item.content || ''
+}
+
+
+
+function openQualityDialog(row) {
+  qualityDialog.row = row || null
+  qualityDialog.visible = true
+}
+
+function qualityLabel(row = {}) {
+  const level = String(row.parseQualityLevel || '').toUpperCase()
+  const score = row.parseQualityScore === undefined || row.parseQualityScore === null ? '-' : row.parseQualityScore
+  const map = { HIGH: '高', MEDIUM: '中', LOW: '低' }
+  if (!level && score === '-') return '待解析'
+  return `${map[level] || level || '-'} / ${score}`
+}
+
+function prettyJson(value) {
+  if (!value) return '暂无解析质量报告。'
+  try {
+    const obj = typeof value === 'string' ? JSON.parse(value) : value
+    return JSON.stringify(obj, null, 2)
+  } catch (e) {
+    return String(value)
+  }
+}
+
+function checkTagType(status) {
+  const value = String(status || '').toUpperCase()
+  if (value === 'PASS') return 'success'
+  if (value === 'WARN') return 'warning'
+  return 'danger'
+}
+
+async function openRagTestDialog() {
+  if (!selectedBase.value?.id) {
+    ElMessage.warning('请先选择知识库')
+    return
+  }
+  ragTestDialog.visible = true
+  loadRagCases()
+}
+
+async function loadRagCases() {
+  if (!selectedBase.value?.id) return
+  ragTestDialog.loading = true
+  try {
+    ragCases.value = await listRagTestCases({ knowledgeBaseId: selectedBase.value.id }) || []
+  } finally {
+    ragTestDialog.loading = false
+  }
+}
+
+async function saveRagCase() {
+  if (!ragCaseForm.questionText.trim()) {
+    ElMessage.warning('请输入测试问题')
+    return
+  }
+  ragTestDialog.saving = true
+  try {
+    await createRagTestCase({
+      knowledgeBaseId: selectedBase.value.id,
+      caseName: ragCaseForm.questionText.slice(0, 60),
+      questionText: ragCaseForm.questionText,
+      expectedKeywords: ragCaseForm.expectedKeywords,
+      expectedFileName: ragCaseForm.expectedFileName,
+      topK: 5,
+      enabled: 1
+    })
+    ragCaseForm.questionText = ''
+    ragCaseForm.expectedKeywords = ''
+    ragCaseForm.expectedFileName = ''
+    ElMessage.success('测试用例已新增')
+    await loadRagCases()
+  } finally {
+    ragTestDialog.saving = false
+  }
+}
+
+async function removeRagCase(row) {
+  await ElMessageBox.confirm('确定删除该测试用例吗？', '提示', { type: 'warning' })
+  await deleteRagTestCase(row.id)
+  ElMessage.success('测试用例已删除')
+  await loadRagCases()
+}
+
+async function runRagTests(generateAnswer) {
+  if (!selectedBase.value?.id) return
+  ragTestDialog.running = true
+  try {
+    ragTestResult.value = await runRagTest({
+      knowledgeBaseId: selectedBase.value.id,
+      generateAnswer
+    })
+    ElMessage.success('RAG自动测试执行完成')
+  } finally {
+    ragTestDialog.running = false
+  }
 }
 
 function formatScore(score) {
@@ -1880,113 +1965,10 @@ function formatTime(value) {
   font-weight: 800;
 }
 
-.quality-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.quality-report {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.quality-report-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.quality-file-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-main);
-  font-weight: 800;
-}
-
-.quality-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.quality-item {
-  padding: 12px;
-  border: 1px solid #e5edf7;
-  border-radius: 10px;
-  background: #f8fafc;
-}
-
-.quality-item span {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.quality-item strong {
-  display: block;
-  margin-top: 6px;
-  color: #111827;
-  font-size: 18px;
-}
-
-.quality-alert {
-  margin-top: 2px;
-}
-
-.quality-section {
-  padding: 12px 14px;
-  border: 1px solid #e5edf7;
-  border-radius: 10px;
-}
-
-.quality-section-title {
-  margin-bottom: 8px;
-  color: #111827;
-  font-weight: 800;
-}
-
-.quality-section ul {
-  margin: 0;
-  padding-left: 18px;
-  color: #475569;
-  line-height: 1.7;
-}
-
-.quality-raw pre {
-  max-height: 260px;
-  margin: 0;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
-}
-
-.ask-actions {
-  gap: 10px;
-}
-
-.ask-progress {
-  margin-bottom: 8px;
-}
-
-.task-message {
-  margin-bottom: 12px;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.evidence-preview-list {
-  margin-bottom: 14px;
 }
 
 .hit-list {
@@ -2101,4 +2083,71 @@ function formatTime(value) {
     display: none;
   }
 }
+.preview-box,
+.check-box,
+.review-box,
+.test-result-box,
+.rag-case-form {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e7edf7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.query-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.query-chip {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2554a6;
+  font-size: 12px;
+}
+
+.check-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.check-list.muted {
+  color: #6b7280;
+}
+
+.review-box {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.json-preview {
+  margin-top: 12px;
+  padding: 12px;
+  max-height: 360px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.analysis-tabs {
+  margin-top: 10px;
+}
+
+.hit-list--compact {
+  max-height: 320px;
+  overflow: auto;
+}
+
 </style>

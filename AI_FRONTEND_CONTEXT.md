@@ -18,6 +18,29 @@
 - AI方案知识库选择需要在“节点编辑、整体生成、切换步骤/刷新详情”之间尽量保留用户已选状态，不能因详情回填为空就清掉当前选择。
 - JMeter 用 `ai_level` 参数模拟用户显式选择 AI 等级；前端自身不要把 `STANDARD/BASIC` 写成默认值。
 
+### 0.0.1 2026-06-08 知识库 RAG 商用增强前端口径
+
+本节为知识库页面后续维护的最新基准。后续修改 `src/views/knowledge/base/index.vue`、`src/api/knowledge.js` 时，不要把以下交互回退。
+
+- 知识库页面顶部操作入口保留：`检索测试`、`知识问答`、`招标分析`、`RAG测试`、`添加文件`。
+- 知识问答默认流程为：输入问题 → `先预览依据` → 用户确认命中资料 → `确认依据并生成回答` → 后端问答任务轮询 → 展示 AI 回答、引用来源、答案自检和确认状态。
+- 当前问题未命中有效依据时，前端必须禁用或阻止生成，提示“不会调用模型生成无依据答案”，不能自动走同步问答或让模型自由发挥。
+- 问答任务前端默认调用：
+  - `previewAskKnowledge` 对应 `/knowledge-vector/ask/preview`；
+  - `submitAskTask` 对应 `/knowledge-vector/ask/tasks`；
+  - `getAskTask` 对应 `/knowledge-vector/ask/tasks/{taskId}`；
+  - `updateAskTaskReview` 对应 `/knowledge-vector/ask/tasks/{taskId}/review`。
+- 问答轮询必须有并发锁和卸载清理，避免接口慢时多个状态查询叠加；组件销毁时必须停止问答任务轮询和文件解析轮询。
+- 问答结果必须展示 `答案自检`，包括 `PASS/WARN/FAIL`、分数、问题和建议。自检不通过时，不应把答案包装成完全可信内容。
+- 问答结果必须支持客户确认闭环：`待确认/已确认/需修改/已修改/已废弃`，并允许填写客户修改意见和最终答案。
+- 检索测试、证据预览、最终引用来源都应展示短摘要 `contentPreview`，不要在卡片里直接铺开超长 `content`。
+- 引用来源必须展示文件名、页码/章节/工作表/幻灯片、切片序号、召回来源等元数据，并提供“打开原文”按钮。当前实现通过 `knowledgeFileId` 匹配文件列表中的 `fileUrl` 打开原文件；PDF 精确定位页码属于后续增强，不要删掉现有打开原文能力。
+- 知识库文件列表必须展示 `解析质量` 列，点击后显示 `parseQualityScore/parseQualityLevel/parseQualityJson`。质量报告用于解释“上传成功但问不出来”的原因。
+- `招标分析` 弹窗调用 `analyzeTenderKnowledge`，展示关键信息、评分矩阵、缺失资料、偏离表初稿和建议。所有结果都作为初稿展示，页面文案要保留人工核对提示。
+- `RAG测试` 弹窗调用 `listRagTestCases/createRagTestCase/deleteRagTestCase/runRagTest`，支持新增测试问题、只测召回、召回 + 生成。`召回 + 生成` 会消耗模型额度，日常回归优先用“只测召回”。
+- `src/api/knowledge.js` 保留同步 `askKnowledge` 兼容旧调用，但知识库页面默认走任务接口，不再把同步 `/ask` 作为主流程。
+
+
 ### 0.1 已核对到的当前前端状态
 
 - `src/layout/AdminLayout.vue` 当前右上角下拉入口已使用“用户管理”，不是“管理后台/后台管理”。
@@ -677,3 +700,13 @@ AI标书技术方案前端所有操作必须继续调用 `/bid-project/{id}/tech
 - 超级管理员、平台管理员、企业管理员、已绑定企业的普通用户，首页仍保持原有统计入口和业务展示口径，不显示个人空间引导。
 - 首页角色判断兼容 roleCode、roles 字符串以及“超级管理员/平台管理员/企业管理员/普通用户”等中文角色名称，避免管理员被误判为未绑定企业普通用户。
 - 未绑定企业普通用户首页展示个人标书项目、个人知识库、导出文件和企业申请入口；绑定企业后恢复企业空间展示。
+
+## 2026-06-08 RAG / 招标分析前端口径
+
+- 知识库页面不放“招标分析”入口，只保留资料管理和 RAG 调试能力。
+- “招标文件分析”入口放在 `src/views/bid/project/index.vue`：解析报告区域、投标文件区域。
+- 前端调用 `src/api/bidProject.js`：
+  - `getBidProjectTenderAnalysis(id)`
+  - `analyzeBidProjectTender(id, data)`
+- 分析弹窗需允许选择知识库；没有选择知识库时不能开始分析。
+- 分析结果是项目级结果，后续投标文件、技术方案、评分矩阵、缺失资料清单、偏离表都以项目结果为准。
