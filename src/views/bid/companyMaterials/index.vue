@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page material-archive-page">
     <div v-if="showEnterpriseRequiredGuide" class="enterprise-required-card card">
       <div class="enterprise-required-icon">
@@ -30,12 +30,6 @@
           @input="onKeywordInput"
         />
 
-        <div class="material-summary">
-          <div><span>总数</span><strong>{{ materialSummary.totalCount || 0 }}</strong></div>
-          <div><span>可用</span><strong>{{ materialSummary.availableCount || 0 }}</strong></div>
-          <div><span>即将到期</span><strong>{{ materialSummary.expiringCount || 0 }}</strong></div>
-          <div><span>已入库</span><strong>{{ materialSummary.knowledgeLinkedCount || 0 }}</strong></div>
-        </div>
 
         <el-select
           v-if="canManagePlatform"
@@ -47,8 +41,10 @@
           reserve-keyword
           :remote-method="remoteSearchEnterprises"
           :loading="enterpriseLoading"
+          popper-class="enterprise-select-popper"
           placeholder="按企业筛选"
           @visible-change="onEnterpriseVisibleChange"
+          @popup-scroll="onEnterprisePopupScroll"
           @change="reloadFirstPage"
         >
           <el-option
@@ -203,9 +199,11 @@
                         clearable
                         :remote-method="remoteSearchEnterprises"
                         :loading="enterpriseLoading"
+                        popper-class="enterprise-select-popper"
                         placeholder="请选择企业"
                         style="width: 100%"
                         @visible-change="onEnterpriseVisibleChange"
+                        @popup-scroll="onEnterprisePopupScroll"
                       >
                         <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
                       </el-select>
@@ -527,7 +525,6 @@ import {
   createCompanyMaterial,
   deleteCompanyMaterial,
   getCompanyMaterial,
-  getCompanyMaterialSummary,
   addCompanyMaterialToKnowledge,
   pageCompanyMaterials,
   updateCompanyMaterial
@@ -541,6 +538,7 @@ const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 const CONTENT_VERSION = 'MATERIAL_ARCHIVE_V1'
+const ENTERPRISE_PAGE_SIZE = 20
 
 const loading = ref(false)
 const appendLoading = ref(false)
@@ -555,12 +553,21 @@ const selectedArchive = ref(null)
 const keywordTimer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const profileSnapshot = ref('')
-const materialSummary = ref({})
+const enterpriseDropdownScrollEl = ref(null)
+const enterpriseRequestSeq = ref(0)
 const knowledgeLinkDialog = reactive({ visible: false, loading: false, saving: false, knowledgeBaseId: '', options: [] })
 
 const filters = reactive({
   keyword: '',
   enterpriseId: ''
+})
+
+const enterprisePager = reactive({
+  page: 1,
+  size: ENTERPRISE_PAGE_SIZE,
+  total: 0,
+  keyword: '',
+  hasMore: false
 })
 
 const pager = reactive({
@@ -723,12 +730,12 @@ onMounted(async () => {
   if (showEnterpriseRequiredGuide.value) return
   await loadEnterprises()
   await loadArchives()
-  await loadMaterialSummary()
 })
 
 onBeforeUnmount(() => {
   clearTimeout(keywordTimer.value)
   clearTimeout(enterpriseKeywordTimer.value)
+  unbindEnterpriseDropdownScroll()
 })
 
 function defaultProfile() {
@@ -784,32 +791,90 @@ function defaultProfile() {
   }
 }
 
-async function loadEnterprises(keyword = '') {
+async function loadEnterprises(keyword = '', options = {}) {
   if (!canManagePlatform.value) {
     enterprises.value = []
+    enterprisePager.page = 1
+    enterprisePager.total = 0
+    enterprisePager.keyword = ''
+    enterprisePager.hasMore = false
     return
   }
+
+  const append = Boolean(options.append)
+  const queryKeyword = String(keyword || '').trim()
+  if (append && (!enterprisePager.hasMore || enterpriseLoading.value)) return
+
+  const pageToLoad = append ? enterprisePager.page + 1 : 1
+  const requestSeq = ++enterpriseRequestSeq.value
   enterpriseLoading.value = true
   try {
-    // 资料库页面只需要企业筛选下拉，不允许一次性加载全部企业。
-    // 原来调用 /enterprise/list?status=1 会返回全部企业，企业数量较多时会导致浏览器渲染 el-option 卡死。
-    // 这里改为分页取前 20 条；需要找其他企业时，通过下拉远程搜索继续按 20 条返回。
     const res = await pageEnterprises({
-      current: 1,
-      size: 20,
-      pageNum: 1,
-      pageSize: 20,
+      current: pageToLoad,
+      size: enterprisePager.size,
+      pageNum: pageToLoad,
+      pageSize: enterprisePager.size,
       status: 1,
-      keyword: keyword || undefined
+      keyword: queryKeyword || undefined
     })
-    enterprises.value = Array.isArray(res?.records) ? res.records : []
+
+    const records = normalizeEnterpriseRecords(res)
+    const total = normalizeEnterpriseTotal(res)
+    if (requestSeq !== enterpriseRequestSeq.value) return
+
+    enterprisePager.page = pageToLoad
+    enterprisePager.total = total
+    enterprisePager.keyword = queryKeyword
+
+    if (append) {
+      enterprises.value = mergeEnterpriseRecords(enterprises.value, records)
+    } else {
+      enterprises.value = mergeEnterpriseRecords([], records)
+    }
+
+    enterprisePager.hasMore = total > 0
+      ? enterprises.value.length < total
+      : records.length >= enterprisePager.size
   } catch (e) {
-    enterprises.value = []
+    if (requestSeq === enterpriseRequestSeq.value) {
+      if (append) {
+        enterprisePager.hasMore = false
+      } else {
+        enterprises.value = []
+        enterprisePager.page = 1
+        enterprisePager.total = 0
+        enterprisePager.hasMore = false
+      }
+    }
   } finally {
-    enterpriseLoading.value = false
+    if (requestSeq === enterpriseRequestSeq.value) {
+      enterpriseLoading.value = false
+    }
   }
 }
 
+function normalizeEnterpriseRecords(res) {
+  if (Array.isArray(res?.records)) return res.records
+  if (Array.isArray(res?.list)) return res.list
+  if (Array.isArray(res?.rows)) return res.rows
+  if (Array.isArray(res)) return res
+  return []
+}
+
+function normalizeEnterpriseTotal(res) {
+  const value = res?.total ?? res?.totalCount ?? res?.count
+  const total = Number(value)
+  return Number.isFinite(total) && total >= 0 ? total : 0
+}
+
+function mergeEnterpriseRecords(oldList = [], newList = []) {
+  const map = new Map()
+  oldList.concat(newList).forEach((item) => {
+    if (!item?.id) return
+    map.set(String(item.id), item)
+  })
+  return Array.from(map.values())
+}
 
 function remoteSearchEnterprises(keyword = '') {
   if (!canManagePlatform.value) return
@@ -818,9 +883,46 @@ function remoteSearchEnterprises(keyword = '') {
 }
 
 function onEnterpriseVisibleChange(visible) {
-  if (visible && canManagePlatform.value && enterprises.value.length === 0) {
-    loadEnterprises()
+  if (!canManagePlatform.value) return
+  if (visible) {
+    if (enterprises.value.length === 0) {
+      loadEnterprises(enterprisePager.keyword)
+    }
+    bindEnterpriseDropdownScroll()
+    return
   }
+  unbindEnterpriseDropdownScroll()
+}
+
+function onEnterprisePopupScroll(event) {
+  const scrollEl = event?.target?.scrollHeight ? event.target : (event?.scrollHeight ? event : enterpriseDropdownScrollEl.value)
+  if (!scrollEl || enterpriseLoading.value || !enterprisePager.hasMore) return
+  const remain = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight
+  if (remain <= 80) {
+    loadEnterprises(enterprisePager.keyword, { append: true })
+  }
+}
+
+function bindEnterpriseDropdownScroll() {
+  nextTick(() => {
+    unbindEnterpriseDropdownScroll()
+    const wraps = Array.from(document.querySelectorAll('.enterprise-select-popper .el-scrollbar__wrap, .el-select-dropdown .el-scrollbar__wrap'))
+    const visibleWrap = wraps.find((wrap) => {
+      const popper = wrap.closest('.el-select-dropdown') || wrap.closest('.enterprise-select-popper')
+      if (!popper) return false
+      const rect = popper.getBoundingClientRect()
+      return rect.width > 0 && rect.height > 0
+    })
+    if (!visibleWrap) return
+    enterpriseDropdownScrollEl.value = visibleWrap
+    visibleWrap.addEventListener('scroll', onEnterprisePopupScroll, { passive: true })
+  })
+}
+
+function unbindEnterpriseDropdownScroll() {
+  if (!enterpriseDropdownScrollEl.value) return
+  enterpriseDropdownScrollEl.value.removeEventListener('scroll', onEnterprisePopupScroll)
+  enterpriseDropdownScrollEl.value = null
 }
 
 function ensureEnterpriseOption(id, name) {
@@ -840,7 +942,6 @@ function reloadFirstPage() {
   pager.page = 1
   archiveList.value = []
   loadArchives()
-  loadMaterialSummary()
 }
 
 function onArchiveListScroll(event) {
@@ -915,21 +1016,6 @@ async function loadArchives(selectId, options = {}) {
 }
 
 
-async function loadMaterialSummary() {
-  if (showEnterpriseRequiredGuide.value) {
-    materialSummary.value = {}
-    return
-  }
-  try {
-    materialSummary.value = await getCompanyMaterialSummary({
-      keyword: filters.keyword || undefined,
-      enterpriseId: filters.enterpriseId || undefined
-    }) || {}
-  } catch (e) {
-    materialSummary.value = {}
-  }
-}
-
 function availabilityText(status) {
   const map = {
     AVAILABLE: '可用',
@@ -983,7 +1069,6 @@ async function confirmAddToKnowledge() {
     ElMessage.success('已加入知识库并开始入库解析')
     knowledgeLinkDialog.visible = false
     await loadArchives(selectedArchive.value.id)
-    await loadMaterialSummary()
   } finally {
     knowledgeLinkDialog.saving = false
   }
@@ -1023,7 +1108,6 @@ async function loadCurrentUser() {
   if (!showEnterpriseRequiredGuide.value) {
     await loadEnterprises()
     await loadArchives()
-    await loadMaterialSummary()
   }
 }
 
@@ -1160,7 +1244,6 @@ async function saveArchive() {
       ElMessage.success('资料档案已创建')
     }
     await loadArchives(savedId)
-    await loadMaterialSummary()
   } finally {
     saving.value = false
   }
@@ -1178,7 +1261,6 @@ async function onUploadSuccess(file) {
   await attachCompanyMaterialFile(profile.id, file.id)
   ElMessage.success('附件已关联到资料档案')
   await loadArchives(profile.id)
-  await loadMaterialSummary()
 }
 
 async function removeArchive(row) {
@@ -1191,7 +1273,6 @@ async function removeArchive(row) {
   ElMessage.success('资料档案已删除')
   if (selectedArchive.value?.id === row.id) closeDetail()
   await loadArchives()
-  await loadMaterialSummary()
 }
 
 function openRecordDialog(section, row = null, index = -1) {
@@ -1878,29 +1959,7 @@ function normalizeRoleList(values = []) {
 }
 
 
-.material-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin: 10px 0 12px;
-}
-.material-summary > div {
-  padding: 9px 10px;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-}
-.material-summary span {
-  display: block;
-  color: #64748b;
-  font-size: 12px;
-}
-.material-summary strong {
-  display: block;
-  margin-top: 4px;
-  color: #0f172a;
-  font-size: 17px;
-}
+
 .knowledge-link-alert {
   margin-bottom: 12px;
 }
