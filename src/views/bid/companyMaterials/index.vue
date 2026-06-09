@@ -538,7 +538,7 @@ const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 const CONTENT_VERSION = 'MATERIAL_ARCHIVE_V1'
-const ENTERPRISE_PAGE_SIZE = 20
+const ENTERPRISE_PAGE_SIZE = 50
 
 const loading = ref(false)
 const appendLoading = ref(false)
@@ -553,7 +553,9 @@ const selectedArchive = ref(null)
 const keywordTimer = ref(null)
 const enterpriseKeywordTimer = ref(null)
 const profileSnapshot = ref('')
-const enterpriseDropdownScrollEl = ref(null)
+const enterpriseDropdownScrollEls = ref([])
+const enterpriseDropdownBindTimer = ref(null)
+const enterpriseScrollRaf = ref(0)
 const enterpriseRequestSeq = ref(0)
 const knowledgeLinkDialog = reactive({ visible: false, loading: false, saving: false, knowledgeBaseId: '', options: [] })
 
@@ -566,6 +568,7 @@ const enterprisePager = reactive({
   page: 1,
   size: ENTERPRISE_PAGE_SIZE,
   total: 0,
+  pages: 0,
   keyword: '',
   hasMore: false
 })
@@ -796,6 +799,7 @@ async function loadEnterprises(keyword = '', options = {}) {
     enterprises.value = []
     enterprisePager.page = 1
     enterprisePager.total = 0
+    enterprisePager.pages = 0
     enterprisePager.keyword = ''
     enterprisePager.hasMore = false
     return
@@ -820,10 +824,12 @@ async function loadEnterprises(keyword = '', options = {}) {
 
     const records = normalizeEnterpriseRecords(res)
     const total = normalizeEnterpriseTotal(res)
+    const pages = normalizeEnterprisePages(res)
     if (requestSeq !== enterpriseRequestSeq.value) return
 
     enterprisePager.page = pageToLoad
     enterprisePager.total = total
+    enterprisePager.pages = pages
     enterprisePager.keyword = queryKeyword
 
     if (append) {
@@ -832,9 +838,9 @@ async function loadEnterprises(keyword = '', options = {}) {
       enterprises.value = mergeEnterpriseRecords([], records)
     }
 
-    enterprisePager.hasMore = total > 0
-      ? enterprises.value.length < total
-      : records.length >= enterprisePager.size
+    enterprisePager.hasMore = pages > 0
+      ? pageToLoad < pages
+      : (total > 0 ? enterprises.value.length < total : records.length >= enterprisePager.size)
   } catch (e) {
     if (requestSeq === enterpriseRequestSeq.value) {
       if (append) {
@@ -843,6 +849,7 @@ async function loadEnterprises(keyword = '', options = {}) {
         enterprises.value = []
         enterprisePager.page = 1
         enterprisePager.total = 0
+        enterprisePager.pages = 0
         enterprisePager.hasMore = false
       }
     }
@@ -865,6 +872,12 @@ function normalizeEnterpriseTotal(res) {
   const value = res?.total ?? res?.totalCount ?? res?.count
   const total = Number(value)
   return Number.isFinite(total) && total >= 0 ? total : 0
+}
+
+function normalizeEnterprisePages(res) {
+  const value = res?.pages ?? res?.totalPage ?? res?.totalPages
+  const pages = Number(value)
+  return Number.isFinite(pages) && pages >= 0 ? pages : 0
 }
 
 function mergeEnterpriseRecords(oldList = [], newList = []) {
@@ -895,34 +908,80 @@ function onEnterpriseVisibleChange(visible) {
 }
 
 function onEnterprisePopupScroll(event) {
-  const scrollEl = event?.target?.scrollHeight ? event.target : (event?.scrollHeight ? event : enterpriseDropdownScrollEl.value)
-  if (!scrollEl || enterpriseLoading.value || !enterprisePager.hasMore) return
-  const remain = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight
-  if (remain <= 80) {
+  const scrollEl = resolveEnterpriseScrollEl(event)
+  if (!scrollEl) return
+
+  if (enterpriseScrollRaf.value) return
+  enterpriseScrollRaf.value = window.requestAnimationFrame(() => {
+    enterpriseScrollRaf.value = 0
+    maybeLoadMoreEnterprises(scrollEl)
+  })
+}
+
+function maybeLoadMoreEnterprises(scrollEl) {
+  if (!canManagePlatform.value || enterpriseLoading.value || !enterprisePager.hasMore) return
+  if (!scrollEl) return
+
+  const scrollTop = Number(scrollEl.scrollTop || 0)
+  const scrollHeight = Number(scrollEl.scrollHeight || 0)
+  const clientHeight = Number(scrollEl.clientHeight || 0)
+  if (!scrollHeight || !clientHeight) return
+
+  const remain = scrollHeight - scrollTop - clientHeight
+  if (remain <= 48) {
     loadEnterprises(enterprisePager.keyword, { append: true })
   }
 }
 
+function resolveEnterpriseScrollEl(eventOrEl) {
+  if (eventOrEl?.target?.scrollHeight && eventOrEl?.target?.clientHeight) return eventOrEl.target
+  if (eventOrEl?.scrollHeight && eventOrEl?.clientHeight) return eventOrEl
+  return findVisibleEnterpriseScrollEl()
+}
+
 function bindEnterpriseDropdownScroll() {
+  unbindEnterpriseDropdownScroll()
   nextTick(() => {
-    unbindEnterpriseDropdownScroll()
-    const wraps = Array.from(document.querySelectorAll('.enterprise-select-popper .el-scrollbar__wrap, .el-select-dropdown .el-scrollbar__wrap'))
-    const visibleWrap = wraps.find((wrap) => {
-      const popper = wrap.closest('.el-select-dropdown') || wrap.closest('.enterprise-select-popper')
-      if (!popper) return false
-      const rect = popper.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0
-    })
-    if (!visibleWrap) return
-    enterpriseDropdownScrollEl.value = visibleWrap
-    visibleWrap.addEventListener('scroll', onEnterprisePopupScroll, { passive: true })
+    enterpriseDropdownBindTimer.value = window.setTimeout(() => {
+      const scrollEl = findVisibleEnterpriseScrollEl()
+      if (!scrollEl) return
+      enterpriseDropdownScrollEls.value = [scrollEl]
+      scrollEl.addEventListener('scroll', onEnterprisePopupScroll, { passive: true })
+    }, 80)
   })
 }
 
+function findVisibleEnterpriseScrollEl() {
+  const candidates = Array.from(document.querySelectorAll([
+    '.enterprise-select-popper .el-select-dropdown__wrap',
+    '.enterprise-select-popper .el-scrollbar__wrap'
+  ].join(',')))
+
+  return candidates.find((el) => {
+    if (!el) return false
+    const popper = el.closest('.enterprise-select-popper') || el.closest('.el-select__popper') || el.closest('.el-popper')
+    if (!popper) return false
+    const rect = popper.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return false
+    const style = window.getComputedStyle(popper)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+    return el.scrollHeight >= el.clientHeight
+  }) || null
+}
+
 function unbindEnterpriseDropdownScroll() {
-  if (!enterpriseDropdownScrollEl.value) return
-  enterpriseDropdownScrollEl.value.removeEventListener('scroll', onEnterprisePopupScroll)
-  enterpriseDropdownScrollEl.value = null
+  if (enterpriseDropdownBindTimer.value) {
+    window.clearTimeout(enterpriseDropdownBindTimer.value)
+    enterpriseDropdownBindTimer.value = null
+  }
+  if (enterpriseScrollRaf.value) {
+    window.cancelAnimationFrame(enterpriseScrollRaf.value)
+    enterpriseScrollRaf.value = 0
+  }
+  enterpriseDropdownScrollEls.value.forEach((scrollEl) => {
+    scrollEl.removeEventListener('scroll', onEnterprisePopupScroll)
+  })
+  enterpriseDropdownScrollEls.value = []
 }
 
 function ensureEnterpriseOption(id, name) {
