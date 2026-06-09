@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <div class="page-body">
       <div class="card card--table">
@@ -231,7 +231,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import {
   createUser,

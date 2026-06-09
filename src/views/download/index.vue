@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="download-page">
     <div class="content-card">
       <div class="page-title-row">
@@ -127,7 +127,7 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { Document, Refresh, Search } from '@element-plus/icons-vue'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import { deleteDownloadFile, downloadCenterFile, pageDownloadFiles } from '@/api/downloadCenter'
@@ -351,3 +351,4 @@ function sanitizeFileName(name) {
   border-top: 1px solid #edf0f5;
 }
 </style>
+

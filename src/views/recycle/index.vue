@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="recycle-page">
     <div class="content-card">
       <div class="page-title-row">
@@ -103,7 +103,7 @@
 
 <script setup>
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { Document, Refresh, Search } from '@element-plus/icons-vue'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import { deleteRecycleItemForever, pageRecycleBin, restoreRecycleItem } from '@/api/recycleBin'
@@ -345,3 +345,4 @@ function remainingType(days) {
   }
 }
 </style>
+

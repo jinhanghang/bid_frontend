@@ -26,6 +26,20 @@ export default defineConfig(({ mode }) => {
           proxyTimeout: 0
         }
       }
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            if (id.includes('@element-plus/icons-vue')) return 'vendor-icons'
+            if (id.includes('element-plus')) return 'vendor-element-plus'
+            if (id.includes('vue') || id.includes('pinia')) return 'vendor-vue'
+            if (id.includes('axios')) return 'vendor-http'
+            return 'vendor'
+          }
+        }
+      }
     }
   }
 })

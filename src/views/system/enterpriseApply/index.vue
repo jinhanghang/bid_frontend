@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <div class="page-body">
       <template v-if="isAuditPage">
@@ -297,7 +297,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { useRoute } from 'vue-router'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import { listEnterprises } from '@/api/enterprise'
@@ -626,3 +626,4 @@ function statusTagType(status) {
 }
 
 </style>
+

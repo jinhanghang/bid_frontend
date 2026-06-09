@@ -1,5 +1,5 @@
-import axios from 'axios'
-import { ElMessage } from 'element-plus'
+﻿import axios from 'axios'
+import { ElMessage } from '@/plugins/element-plus-api'
 import router from '@/router'
 import { getToken, clearAuthStorage } from '@/utils/storage'
 
@@ -143,3 +143,4 @@ service.interceptors.response.use(
 )
 
 export default service
+

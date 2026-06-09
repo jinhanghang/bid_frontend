@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-upload
     drag
     :show-file-list="true"
@@ -25,7 +25,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/plugins/element-plus-api'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { uploadFile } from '@/api/file'
 
@@ -117,3 +117,4 @@ function onRemove(file) {
   emit('remove', file)
 }
 </script>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="solution-shell" :class="shellClass">
     <aside class="solution-list-card">
       <div class="list-title">
@@ -1133,7 +1133,7 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, ElTooltip } from 'element-plus'
+import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, ElTooltip } from '@/plugins/element-plus-api'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
@@ -5472,3 +5472,4 @@ const WritingDirectionEditor = defineComponent({
 }
 
 </style>
+

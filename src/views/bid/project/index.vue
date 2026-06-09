@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ai-bid-page">
     <aside class="project-pane">
       <div class="pane-title">我的项目</div>
@@ -1208,7 +1208,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from 'element-plus'
+import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from '@/plugins/element-plus-api'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
@@ -7170,3 +7170,4 @@ const WritingDirectionEditor = defineComponent({
   margin-top: 12px;
 }
 </style>
+

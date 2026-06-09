@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page material-archive-page">
     <div v-if="showEnterpriseRequiredGuide" class="enterprise-required-card card">
       <div class="enterprise-required-icon">
@@ -502,7 +502,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import {
   Back,
   Briefcase,
@@ -1944,3 +1944,4 @@ function normalizeRoleList(values = []) {
   }
 }
 </style>
+

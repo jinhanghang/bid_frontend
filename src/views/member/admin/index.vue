@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="member-admin-page">
 
     <el-tabs v-model="activeTab" class="admin-tabs">
@@ -423,7 +423,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import PageFooterPager from '@/components/PageFooterPager.vue'
@@ -918,3 +918,4 @@ p { margin-top: 8px; color: #64748b; }
   .usage-panel-grid { grid-template-columns: 1fr; }
 }
 </style>
+

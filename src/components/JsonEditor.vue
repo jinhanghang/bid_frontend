@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-input
     v-model="inner"
     class="code-textarea"
@@ -11,7 +11,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/plugins/element-plus-api'
 
 const props = defineProps({
   modelValue: { type: [String, Object, Array], default: '' },
@@ -41,3 +41,4 @@ function formatJson() {
   }
 }
 </script>
+

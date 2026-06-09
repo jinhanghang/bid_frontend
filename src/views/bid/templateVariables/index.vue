@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page">
     <div class="page-body variable-page">
       <div class="card card--table variable-left">
@@ -208,7 +208,7 @@
 
 <script setup>
 import { nextTick, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import {
   createTemplateVariable,
@@ -532,3 +532,4 @@ function variableTypeTag(value) {
   }
 }
 </style>
+

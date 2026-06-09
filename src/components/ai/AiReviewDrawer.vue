@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <el-drawer
     v-model="visible"
     :title="title"
@@ -117,7 +117,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { deleteAiReviewRecord, getAiReviewRecord, pageAiReviewRecords } from '@/api/aiReviewRecord'
 import { formatDateTime } from '@/utils/format'
 import AiModelTrace from '@/components/ai/AiModelTrace.vue'
@@ -304,3 +304,4 @@ function riskTagType(risk) {
   }
 }
 </style>
+

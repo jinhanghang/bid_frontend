@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ai-doc-page">
     <aside class="doc-sidebar">
       <div class="side-head">
@@ -554,7 +554,7 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElIcon, ElMessage, ElMessageBox, ElTag, ElTooltip } from 'element-plus'
+import { ElButton, ElIcon, ElMessage, ElMessageBox, ElTag, ElTooltip } from '@/plugins/element-plus-api'
 import { ArrowLeft, Document, InfoFilled, MagicStick, Plus, Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
 import {
   applyDocumentWordCountPreset,
@@ -4409,3 +4409,4 @@ function fallbackTypes() {
 .doc-export-check-list { margin: 0; padding-left: 18px; }
 .doc-export-check-tip { margin: 8px 0 0; color: #64748b; }
 </style>
+

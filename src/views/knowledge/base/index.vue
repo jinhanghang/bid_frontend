@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="page kb-page-wrap">
     <div class="kb-shell">
       <!-- 左侧：我的知识库 -->
@@ -512,7 +512,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import {
   ChatLineRound,
   Document,
@@ -2170,3 +2170,4 @@ function formatTime(value) {
 }
 
 </style>
+

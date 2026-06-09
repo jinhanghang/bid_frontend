@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="member-page">
 
     <section class="quota-grid">
@@ -115,7 +115,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import {
   createMemberOrder,
   getMemberSummary,
@@ -357,3 +357,4 @@ h1 { margin-top: 12px; font-size: 30px; color: #0f172a; }
   .plan-price { font-size: 24px; }
 }
 </style>
+

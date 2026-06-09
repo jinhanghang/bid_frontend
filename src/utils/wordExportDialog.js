@@ -1,5 +1,5 @@
-import { defineComponent, h, ref } from 'vue'
-import { ElMessageBox, ElRadio, ElRadioGroup, ElTag } from 'element-plus'
+﻿import { defineComponent, h, ref } from 'vue'
+import { ElMessageBox, ElRadio, ElRadioGroup, ElTag } from '@/plugins/element-plus-api'
 
 const EXPORT_STYLES = [
   {
@@ -102,3 +102,4 @@ export async function openWordExportDialog(options = {}) {
     return null
   }
 }
+

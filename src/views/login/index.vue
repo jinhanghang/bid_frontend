@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="login-page" :class="{ 'is-reset-mode': pageMode === 'reset' }">
     <div class="login-bg-shape shape-one"></div>
     <div class="login-bg-shape shape-two"></div>
@@ -291,7 +291,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/plugins/element-plus-api'
 import { getCaptcha, resetPassword, sendResetPasswordSmsCode, sendSmsCode } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
@@ -1032,3 +1032,4 @@ function handleAppLogin() {
   }
 }
 </style>
+

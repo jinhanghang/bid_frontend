@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="product-shell">
     <aside class="product-rail">
       <div class="rail-logo">AI</div>
@@ -77,7 +77,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from '@/plugins/element-plus-api'
 import {
   ArrowDown,
   DataBoard,
@@ -396,3 +396,4 @@ async function logout() {
   overflow: hidden;
 }
 </style>
+
