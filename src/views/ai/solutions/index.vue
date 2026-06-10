@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="solution-shell" :class="shellClass">
     <aside class="solution-list-card">
       <div class="list-title">
@@ -11,6 +11,7 @@
         placeholder="搜索方案"
         clearable
         :prefix-icon="Search"
+        :disabled="isCreateFormLocked"
         @input="onSearchInput"
       />
       <el-scrollbar ref="solutionListScrollbar" class="solution-list-scroll" v-loading="loading && solutions.length === 0" @scroll="onSolutionListScroll">
@@ -20,7 +21,7 @@
             :key="item.id"
             class="solution-card"
             :class="{ active: String(currentSolution?.id || '') === String(item.id || '') }"
-            @click="loadDetail(item.id)"
+            @click="onSolutionCardClick(item)"
           >
             <div class="solution-card-name">
               <el-icon><Document /></el-icon>
@@ -33,10 +34,10 @@
             </div>
             <div class="solution-card-actions">
               <el-tooltip content="编辑" placement="top">
-                <el-button circle size="small" type="danger" :icon="EditPen" @click.stop="loadDetail(item.id)" />
+                <el-button circle size="small" type="danger" :icon="EditPen" :disabled="isCreateFormLocked" @click.stop="loadDetail(item.id)" />
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
-                <el-button circle size="small" type="info" :icon="Delete" @click.stop="onDeleteSolution(item)" />
+                <el-button circle size="small" type="info" :icon="Delete" :disabled="isCreateFormLocked" @click.stop="onDeleteSolution(item)" />
               </el-tooltip>
             </div>
           </div>
@@ -48,7 +49,7 @@
         </div>
         <el-empty v-else-if="!loading" description="暂无方案，您可先新建方案" :image-size="110" />
       </el-scrollbar>
-      <el-button class="new-btn" type="primary" :loading="creatingDraft" @click="startCreate('QUICK')">新建方案</el-button>
+      <el-button class="new-btn" type="primary" :loading="creatingDraft" :disabled="isCreateFormLocked" @click="startCreate('QUICK')">新建方案</el-button>
     </aside>
 
     <section class="solution-main-card">
@@ -80,7 +81,7 @@
       <template v-else-if="mode === 'create'">
         <div class="create-panel">
           <div class="create-header">
-            <el-button :icon="ArrowLeft" @click="mode = currentSolution ? 'detail' : 'home'">退出新建</el-button>
+            <el-button :icon="ArrowLeft" :disabled="isCreateFormLocked" @click="exitCreateMode">退出新建</el-button>
             <el-steps :active="createStep" align-center class="steps">
               <el-step title="选择方案类型" />
               <el-step title="录入基础信息" />
@@ -94,7 +95,7 @@
               <div class="form-section">
                 <div class="form-label required">方案类型：</div>
                 <div class="type-grid">
-                  <el-select v-model="createForm.solutionType" placeholder="服务" class="type-select">
+                  <el-select v-model="createForm.solutionType" placeholder="服务" class="type-select" :disabled="isCreateFormLocked">
                     <el-option label="服务" value="SERVICE" />
                     <el-option label="工程" value="ENGINEERING" />
                     <el-option label="货物" value="GOODS" />
@@ -102,7 +103,7 @@
                     <el-option label="IT信息" value="IT" />
                     <el-option label="其他" value="OTHER" />
                   </el-select>
-                  <el-select v-model="createForm.solutionSubType" placeholder="不限" class="type-select">
+                  <el-select v-model="createForm.solutionSubType" placeholder="不限" class="type-select" :disabled="isCreateFormLocked">
                     <el-option label="不限" value="不限" />
                     <el-option v-for="sub in subTypes" :key="sub" :label="sub" :value="sub" />
                   </el-select>
@@ -116,8 +117,8 @@
                     v-for="level in aiLevels"
                     :key="level.value"
                     class="ai-level-card"
-                    :class="{ active: createForm.aiLevel === level.value }"
-                    @click="createForm.aiLevel = level.value"
+                    :class="{ active: createForm.aiLevel === level.value, disabled: isCreateFormLocked }"
+                    @click="setCreateAiLevel(level.value)"
                   >
                     <strong>{{ level.label }}</strong>
                     <span>{{ level.desc }}</span>
@@ -134,6 +135,7 @@
                   :show-file-list="false"
                   accept=".doc,.docx,.pdf,.txt,.md"
                   :on-change="handleTenderFileChange"
+                  :disabled="isCreateFormLocked"
                 >
                   <template v-if="parseTask">
                     <el-icon class="upload-icon"><Document /></el-icon>
@@ -152,7 +154,7 @@
 
               <div class="form-section">
                 <div class="form-label required">方案名称：</div>
-                <el-input v-model="createForm.solutionName" placeholder="请填写方案名称" />
+                <el-input v-model="createForm.solutionName" placeholder="请填写方案名称" :disabled="isCreateFormLocked" />
               </div>
 
               <div class="form-section outline-direction-section">
@@ -164,6 +166,7 @@
                   maxlength="10000"
                   show-word-limit
                   placeholder="生成目录时使用，例如：重点突出无人值守流程、减少人工干预、风险防控、系统对接、落地交付能力等"
+                  :disabled="isCreateFormLocked"
                 />
               </div>
 
@@ -171,14 +174,14 @@
                 <div class="form-label">目录知识库：</div>
                 <div class="knowledge-setting">
                   <div class="knowledge-actions">
-                    <el-button :disabled="outlineGenerating || isOutlineGeneratingByBackend" @click="goKnowledgeBasePage">上传</el-button>
-                    <el-button :disabled="outlineGenerating || isOutlineGeneratingByBackend" @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
+                    <el-button :disabled="isCreateFormLocked" @click="goKnowledgeBasePage">上传</el-button>
+                    <el-button :disabled="isCreateFormLocked" @click="openKnowledgeSelector('outline')">从知识库选择</el-button>
                   </div>
                   <div v-if="selectedOutlineKnowledgeBases.length" class="selected-kb-list">
                     <el-tag
                       v-for="kb in selectedOutlineKnowledgeBases"
                       :key="kb.id"
-                      :closable="!outlineGenerating && !isOutlineGeneratingByBackend"
+                      :closable="!isCreateFormLocked"
                       @close="removeSelectedKnowledgeBase(kb.id, 'outline')"
                     >
                       {{ kb.kbName }}
@@ -191,17 +194,17 @@
               <div class="form-section">
                 <div class="inline-title">
                   <span class="required">采购需求：</span>
-                  <el-button size="small" :loading="parseLoading" @click="reExtractFromParse">从招标文件重新提取</el-button>
+                  <el-button size="small" :loading="parseLoading" :disabled="isCreateFormLocked" @click="reExtractFromParse">从招标文件重新提取</el-button>
                 </div>
-                <el-input v-model="requirementForm.purchaseRequirement" type="textarea" :rows="12" maxlength="100000" show-word-limit placeholder="请上传招标文件后自动提取，也可手工粘贴采购需求" />
+                <el-input v-model="requirementForm.purchaseRequirement" type="textarea" :rows="12" maxlength="100000" show-word-limit placeholder="请上传招标文件后自动提取，也可手工粘贴采购需求" :disabled="isCreateFormLocked" />
               </div>
 
               <div class="form-section">
                 <div class="inline-title">
                   <span>评分标准 / 技术评分项：</span>
-                  <el-button size="small" @click="scoreDialogVisible = true">查看/编辑评分项</el-button>
+                  <el-button size="small" :disabled="isCreateFormLocked" @click="scoreDialogVisible = true">查看/编辑评分项</el-button>
                 </div>
-                <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="9" maxlength="100000" show-word-limit placeholder="评分标准：没有评分项时可留空，系统会按采购需求生成目录" />
+                <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="9" maxlength="100000" show-word-limit placeholder="评分标准：没有评分项时可留空，系统会按采购需求生成目录" :disabled="isCreateFormLocked" />
               </div>
 
             </div>
@@ -211,6 +214,14 @@
                 <strong>预览目录 {{ outlineLeafCount }}</strong>
               </div>
               <el-scrollbar class="preview-scroll">
+                <el-alert
+                  v-if="isCreateFormLocked"
+                  class="outline-lock-alert"
+                  type="warning"
+                  show-icon
+                  :closable="false"
+                  title="目录生成中，左侧基础信息已锁定，请等待生成完成后再调整。"
+                />
                 <el-empty v-if="!previewOutlines.length" description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                 <OutlineTree v-else :nodes="previewOutlines" simple />
               </el-scrollbar>
@@ -793,11 +804,19 @@
       </div>
     </section>
 
-    <el-dialog v-model="wordPresetVisible" title="设置方案篇幅" width="760px" append-to-body class="word-preset-dialog">
+    <el-dialog
+      v-model="wordPresetVisible"
+      title="设置方案篇幅"
+      width="760px"
+      append-to-body
+      class="word-preset-dialog"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
       <div class="word-preset-panel">
         <div class="preset-tip">
           <strong>目录已生成完成</strong>
-          <span>请选择每个末级章节的目标字数。后续仍可在“编辑 - 修改字数”里单独调整。</span>
+          <span>请选择每个末级章节的目标字数。系统不会再默认设置字数，确认后才会写入章节。</span>
         </div>
 
         <div class="preset-auto-card" :class="{ active: wordPreset.mode === 'AUTO' }" @click="wordPreset.mode = 'AUTO'">
@@ -859,8 +878,8 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="wordPresetVisible = false">稍后设置</el-button>
-        <el-button type="primary" :loading="wordPresetSaving" @click="onApplyWordPreset">确认并进入方案</el-button>
+        <el-button @click="wordPresetVisible = false">暂不设置</el-button>
+        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="onApplyWordPreset">确认并进入方案</el-button>
       </template>
     </el-dialog>
 
@@ -868,16 +887,16 @@
       <div class="score-dialog-body">
         <div>
           <div class="dialog-label">完整评分标准</div>
-          <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="16" placeholder="本次提供的招标信息中未包含评分标准时，可手动补充" />
+          <el-input v-model="requirementForm.scoreRequirement" type="textarea" :rows="16" placeholder="本次提供的招标信息中未包含评分标准时，可手动补充" :disabled="isCreateFormLocked" />
         </div>
         <div>
           <div class="dialog-label">技术评分项</div>
-          <el-input v-model="requirementForm.technicalScoreItems" type="textarea" :rows="16" placeholder="技术评分项用于生成更贴合技术标的目录" />
+          <el-input v-model="requirementForm.technicalScoreItems" type="textarea" :rows="16" placeholder="技术评分项用于生成更贴合技术标的目录" :disabled="isCreateFormLocked" />
         </div>
       </div>
       <template #footer>
         <el-button @click="scoreDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="scoreDialogVisible = false">使用技术评分项</el-button>
+        <el-button type="primary" :disabled="isCreateFormLocked" @click="scoreDialogVisible = false">使用技术评分项</el-button>
       </template>
     </el-dialog>
 
@@ -1090,16 +1109,17 @@
             v-model="knowledgeKeyword"
             clearable
             placeholder="请输入知识库名称"
+            :disabled="isKnowledgeSelectorLocked"
             @keyup.enter="loadKnowledgeBases"
           >
             <template #prefix>
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          <el-button type="primary" plain @click="loadKnowledgeBases">搜索</el-button>
+          <el-button type="primary" plain :disabled="isKnowledgeSelectorLocked" @click="loadKnowledgeBases">搜索</el-button>
         </div>
 
-        <el-checkbox-group v-model="tempSelectedKnowledgeIds" class="knowledge-check-list">
+        <el-checkbox-group v-model="tempSelectedKnowledgeIds" class="knowledge-check-list" :disabled="isKnowledgeSelectorLocked">
           <div
             v-for="kb in knowledgeBaseList"
             :key="kb.id"
@@ -1124,7 +1144,7 @@
       </div>
       <template #footer>
         <el-button @click="knowledgeSelectorVisible = false">取消</el-button>
-        <el-button type="primary" :loading="knowledgeLoading" @click="confirmKnowledgeSelection">确定</el-button>
+        <el-button type="primary" :loading="knowledgeLoading" :disabled="isKnowledgeSelectorLocked" @click="confirmKnowledgeSelection">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -1227,6 +1247,8 @@ const outlineFinishedStatuses = ['OUTLINE_READY', 'WORD_COUNT_SET', 'CONTENT_GEN
 const outlineGeneratingStatuses = ['OUTLINE_GENERATING']
 const hasOutlineFromBackend = computed(() => Array.isArray(currentSolution.value?.outlines) && currentSolution.value.outlines.length > 0)
 const isOutlineGeneratingByBackend = computed(() => outlineGeneratingStatuses.includes(currentSolution.value?.status))
+const isCreateFormLocked = computed(() => outlineGenerating.value || isOutlineGeneratingByBackend.value)
+const isKnowledgeSelectorLocked = computed(() => isCreateFormLocked.value && knowledgeSelectorTarget.value === 'outline')
 const isOutlineFinishedByBackend = computed(() => hasOutlineFromBackend.value || outlineFinishedStatuses.includes(currentSolution.value?.status))
 const canClickGenerateOutline = computed(() => {
   return !!currentSolution.value?.id
@@ -1321,7 +1343,8 @@ const riskLevelOptions = [
 ]
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
-const wordPreset = reactive({ mode: 'FIXED', wordCount: 300 })
+const wordPreset = reactive({ mode: '', wordCount: null })
+const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const editMode = ref(false)
 const editTab = ref('word')
 const deleteIds = ref([])
@@ -2099,6 +2122,34 @@ async function onDeleteRequirementItem(row) {
   ElMessage.success('要求明细已删除')
 }
 
+function warnCreateFormLocked() {
+  ElMessage.warning('目录生成中，基础信息已锁定，请等待生成完成后再操作')
+}
+
+function exitCreateMode() {
+  if (isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
+  mode.value = currentSolution.value ? 'detail' : 'home'
+}
+
+function setCreateAiLevel(value) {
+  if (isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
+  createForm.aiLevel = value
+}
+
+function onSolutionCardClick(item) {
+  if (isCreateFormLocked.value && !isSameId(item?.id, currentSolution.value?.id)) {
+    warnCreateFormLocked()
+    return
+  }
+  loadDetail(item.id)
+}
+
 async function loadDetail(id) {
   const solutionId = normalizeId(id)
   if (!solutionId) return
@@ -2258,6 +2309,10 @@ function calcCreateStep(solution, task) {
 }
 
 async function startCreate(solutionMode = 'QUICK') {
+  if (isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   clearInterval(parseTimer)
   clearInterval(taskTimer)
   clearInterval(outlineTimer)
@@ -2321,6 +2376,10 @@ async function startCreate(solutionMode = 'QUICK') {
 }
 
 async function handleTenderFileChange(uploadFile) {
+  if (isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   if (!uploadFile?.raw) return
   if (!requireSelectedAiLevel()) return
 
@@ -2428,6 +2487,10 @@ function pollParseTask(taskId) {
 }
 
 async function reExtractFromParse() {
+  if (isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   if (!parseTask.value?.id) {
     ElMessage.warning('请先上传并解析招标文件')
     return
@@ -2557,6 +2620,7 @@ async function onGenerateOutline() {
 
     await loadList()
 
+    resetWordPresetSelection()
     wordPresetVisible.value = true
     ElMessage.success('目录生成完成，请设置篇幅')
   } finally {
@@ -2577,6 +2641,11 @@ function formatGenerateCheckIssues(data = {}) {
   ].filter(Boolean).join('\n') || '当前资料未达到生成条件，请先补充必填信息。'
 }
 
+function resetWordPresetSelection() {
+  wordPreset.mode = ''
+  wordPreset.wordCount = null
+}
+
 function setPreset(modeValue, wordCount) {
   wordPreset.mode = modeValue
   wordPreset.wordCount = wordCount
@@ -2584,6 +2653,10 @@ function setPreset(modeValue, wordCount) {
 
 async function onApplyWordPreset() {
   if (!currentSolution.value?.id) return
+  if (!wordPresetSelectionValid.value) {
+    ElMessage.warning('请先选择章节字数')
+    return
+  }
   wordPresetSaving.value = true
   try {
     const data = await applyWordCountPreset(currentSolution.value.id, wordPreset)
@@ -2816,6 +2889,10 @@ function setCurrentKnowledgeIdsByTarget(ids = [], target = knowledgeSelectorTarg
 }
 
 function goKnowledgeBasePage() {
+  if (isCreateFormLocked.value && mode.value === 'create') {
+    warnCreateFormLocked()
+    return
+  }
   fullGenerateSettingVisible.value = false
   sectionDialogVisible.value = false
   knowledgeSelectorVisible.value = false
@@ -2823,6 +2900,10 @@ function goKnowledgeBasePage() {
 }
 
 async function openKnowledgeSelector(target = 'full') {
+  if (target === 'outline' && isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   knowledgeSelectorTarget.value = target
   tempSelectedKnowledgeIds.value = getCurrentKnowledgeIdsByTarget(target)
   knowledgeSelectorVisible.value = true
@@ -2845,6 +2926,10 @@ async function loadKnowledgeBases() {
 }
 
 function confirmKnowledgeSelection() {
+  if (isKnowledgeSelectorLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   const ids = uniqueIds(tempSelectedKnowledgeIds.value || [])
   setCurrentKnowledgeIdsByTarget(ids)
 
@@ -2866,6 +2951,10 @@ function confirmKnowledgeSelection() {
 }
 
 function removeSelectedKnowledgeBase(id, target = 'full') {
+  if (target === 'outline' && isCreateFormLocked.value) {
+    warnCreateFormLocked()
+    return
+  }
   const removeId = normalizeId(id)
   const next = getCurrentKnowledgeIdsByTarget(target).filter((item) => normalizeId(item) !== removeId)
   setCurrentKnowledgeIdsByTarget(next, target)
@@ -4466,6 +4555,23 @@ const WritingDirectionEditor = defineComponent({
 .blind-rule-input { margin-top: 10px; }
 .style-radio-grid { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; width: 100%; }
 .style-radio-grid :deep(.el-radio-button__inner) { width: 100%; }
+
+.outline-lock-alert {
+  margin: 0 0 12px;
+}
+
+.ai-level-card.disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  background: #f8fafc;
+}
+
+.ai-level-card.disabled:hover {
+  border-color: #e5e7eb;
+  box-shadow: none;
+  transform: none;
+}
+
 .knowledge-setting {
   width: 100%;
 }

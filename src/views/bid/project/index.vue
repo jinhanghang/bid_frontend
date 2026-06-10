@@ -796,11 +796,19 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="wordPresetVisible" title="设置技术方案篇幅" width="760px" append-to-body class="word-preset-dialog">
+    <el-dialog
+      v-model="wordPresetVisible"
+      title="设置技术方案篇幅"
+      width="760px"
+      append-to-body
+      class="word-preset-dialog"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
       <div class="word-preset-panel">
         <div class="preset-tip">
           <strong>目录已生成完成</strong>
-          <span>请选择每个末级章节的目标字数。设置后可直接开始生成正文。</span>
+          <span>请选择每个末级章节的目标字数。系统不会再默认设置字数，确认后才会写入章节。</span>
         </div>
 
         <div class="preset-auto-card" :class="{ active: wordPreset.mode === 'AUTO' }" @click="wordPreset.mode = 'AUTO'">
@@ -836,8 +844,8 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="wordPresetVisible = false">取消</el-button>
-        <el-button type="primary" :loading="wordPresetSaving" @click="applyTechnicalWordPreset">确认设置</el-button>
+        <el-button @click="wordPresetVisible = false">暂不设置</el-button>
+        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="applyTechnicalWordPreset">确认设置</el-button>
       </template>
     </el-dialog>
 
@@ -1320,7 +1328,8 @@ const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
 const fullGenerating = ref(false)
 const exportingWord = ref(false)
-const wordPreset = reactive({ mode: 'FIXED', wordCount: 300 })
+const wordPreset = reactive({ mode: '', wordCount: null })
+const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const selectedTechnicalLeaf = ref(null)
 const technicalEditMode = ref(false)
 const technicalEditTab = ref('word')
@@ -2648,6 +2657,7 @@ async function generateTechnicalOutline() {
       }
       if (technicalOutlines.value.length) {
         technicalStep.value = 4
+        resetWordPresetSelection()
         wordPresetVisible.value = true
         ElMessage.success('技术方案目录已生成，请继续调整总字数')
       } else {
@@ -2808,6 +2818,11 @@ function openWordPresetDialog() {
   wordPresetVisible.value = true
 }
 
+function resetWordPresetSelection() {
+  wordPreset.mode = ''
+  wordPreset.wordCount = null
+}
+
 function setWordPreset(mode, wordCount) {
   wordPreset.mode = mode
   wordPreset.wordCount = wordCount
@@ -2815,6 +2830,10 @@ function setWordPreset(mode, wordCount) {
 
 async function applyTechnicalWordPreset() {
   if (!selectedProject.value?.id) return
+  if (!wordPresetSelectionValid.value) {
+    ElMessage.warning('请先选择章节字数')
+    return
+  }
   if (!technicalOutlines.value.length) {
     ElMessage.warning('请先生成目录')
     return
@@ -3330,7 +3349,10 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
       technicalOutlines.value = outlines.map(mapSolutionOutlineNode)
       technicalStep.value = Math.max(technicalStep.value, 4)
       technicalGeneratingOutline.value = false
-      if (!silent && technicalFinishedLeafCount.value === 0) wordPresetVisible.value = true
+      if (!silent && technicalFinishedLeafCount.value === 0) {
+          resetWordPresetSelection()
+          wordPresetVisible.value = true
+        }
       await refreshWorkflow()
     }
 

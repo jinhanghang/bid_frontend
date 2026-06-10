@@ -361,11 +361,19 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="wordPresetDialogVisible" title="设置文档篇幅" width="620px" append-to-body class="word-preset-dialog">
+    <el-dialog
+      v-model="wordPresetDialogVisible"
+      title="设置文档篇幅"
+      width="620px"
+      append-to-body
+      class="word-preset-dialog"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+    >
       <div class="word-preset-panel">
         <div class="preset-tip">
           <strong>大纲已生成完成</strong>
-          <span>请选择每个末级章节的目标字数，确认后再开始生成正文。</span>
+          <span>请选择每个末级章节的目标字数。系统不会再默认设置字数，确认后才会写入章节。</span>
         </div>
         <div class="dialog-word-row dialog-word-row--standalone">
           <el-radio-group v-model="wordPreset.mode">
@@ -378,8 +386,8 @@
         </div>
       </div>
       <template #footer>
-        <el-button @click="wordPresetDialogVisible = false">稍后设置</el-button>
-        <el-button type="primary" :loading="wordSaving" @click="confirmDocumentWordPreset">确认设置</el-button>
+        <el-button @click="wordPresetDialogVisible = false">暂不设置</el-button>
+        <el-button type="primary" :loading="wordSaving" :disabled="!wordPresetSelectionValid" @click="confirmDocumentWordPreset">确认设置</el-button>
       </template>
     </el-dialog>
 
@@ -640,7 +648,8 @@ const form = reactive({
   overallWritingRequirement: ''
 })
 const formData = reactive({})
-const wordPreset = reactive({ mode: 'FIXED', wordCount: 900 })
+const wordPreset = reactive({ mode: '', wordCount: null })
+const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const wordOptions = [300, 600, 900, 1200, 1800, 2400, 3000]
 
 let searchTimer = null
@@ -1425,11 +1434,17 @@ async function onGenerateOutline() {
     await refreshCurrent()
     await loadDocuments()
     formDialogVisible.value = false
+    resetWordPresetSelection()
     wordPresetDialogVisible.value = true
     ElMessage.success('大纲已生成，请设置篇幅')
   } finally {
     outlineLoading.value = false
   }
+}
+
+function resetWordPresetSelection() {
+  wordPreset.mode = ''
+  wordPreset.wordCount = null
 }
 
 async function confirmDocumentWordPreset() {
@@ -1439,6 +1454,10 @@ async function confirmDocumentWordPreset() {
 async function onApplyWordPreset(options = {}) {
   if (isOperationLocked.value) return
   if (!currentDoc.value?.id) return
+  if (!wordPresetSelectionValid.value) {
+    ElMessage.warning('请先选择章节字数')
+    return
+  }
   wordSaving.value = true
   try {
     const data = await applyDocumentWordCountPreset(currentDoc.value.id, wordPreset)
@@ -1544,7 +1563,7 @@ async function onRegenerateSection() {
   try {
     await streamSection(activeNode.value.id, {
       title: activeNode.value.title,
-      targetWordCount: activeNode.value.targetWordCount || wordPreset.wordCount,
+      targetWordCount: activeNode.value.targetWordCount || wordPreset.wordCount || 900,
       writingStyle: form.writingStyle,
       writingDirection: activeNode.value.writingDirection,
       writingRequirement: activeNode.value.writingRequirement,
