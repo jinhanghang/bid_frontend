@@ -410,6 +410,25 @@
         <div class="answer-content">{{ askAnswer }}</div>
       </div>
 
+      <div v-if="askAnswer" class="feedback-box">
+        <div class="answer-title">问答反馈</div>
+        <el-radio-group v-model="askFeedbackForm.feedbackType">
+          <el-radio-button label="USEFUL">有用</el-radio-button>
+          <el-radio-button label="USELESS">无用</el-radio-button>
+          <el-radio-button label="CITATION_WRONG">引用错误</el-radio-button>
+          <el-radio-button label="INCOMPLETE">答案不完整</el-radio-button>
+          <el-radio-button label="NO_EVIDENCE">无依据</el-radio-button>
+        </el-radio-group>
+        <el-input
+          v-model="askFeedbackForm.reason"
+          class="feedback-reason"
+          maxlength="500"
+          show-word-limit
+          placeholder="可填写问题原因，便于后续优化知识库或测试集"
+        />
+        <el-button type="primary" :loading="askDialog.feedbackSaving" @click="saveAskFeedback">提交反馈</el-button>
+      </div>
+
       <div v-if="askAnswerCheck" class="check-box">
         <div class="answer-title">
           <span>答案自检</span>
@@ -427,8 +446,8 @@
         <el-select v-model="askReviewForm.reviewStatus" style="width: 180px">
           <el-option label="待确认" value="PENDING" />
           <el-option label="已确认" value="CONFIRMED" />
-          <el-option label="需修改" value="NEED_CHANGE" />
-          <el-option label="已修改" value="UPDATED" />
+          <el-option label="需修改" value="NEED_MODIFY" />
+          <el-option label="已修改" value="MODIFIED" />
           <el-option label="已废弃" value="DISCARDED" />
         </el-select>
         <el-input v-model="askReviewForm.reviewOpinion" placeholder="客户修改意见 / 内部确认意见" />
@@ -545,6 +564,7 @@ import {
   runRagTest,
   searchKnowledge,
   submitAskTask,
+  submitKnowledgeAskFeedback,
   updateAskTaskReview,
   updateKnowledgeBase,
   updateKnowledgeBaseStatus
@@ -601,6 +621,7 @@ const askDialog = reactive({
   loading: false,
   previewLoading: false,
   reviewSaving: false,
+  feedbackSaving: false,
   asked: false
 })
 
@@ -635,6 +656,11 @@ const askReviewForm = reactive({
   reviewStatus: 'PENDING',
   reviewOpinion: '',
   finalAnswer: ''
+})
+
+const askFeedbackForm = reactive({
+  feedbackType: 'USEFUL',
+  reason: ''
 })
 
 const qualityDialog = reactive({
@@ -1135,6 +1161,8 @@ function openAskDialog() {
   resetAskPreview()
   askReviewForm.reviewStatus = 'PENDING'
   askReviewForm.reviewOpinion = ''
+  askFeedbackForm.feedbackType = 'USEFUL'
+  askFeedbackForm.reason = ''
   askReviewForm.finalAnswer = ''
 }
 
@@ -1307,6 +1335,39 @@ async function saveAskReview() {
     ElMessage.success('确认状态已保存')
   } finally {
     askDialog.reviewSaving = false
+  }
+}
+
+async function saveAskFeedback() {
+  if (!askAnswer.value) {
+    ElMessage.warning('暂无可反馈的回答')
+    return
+  }
+  askDialog.feedbackSaving = true
+  try {
+    await submitKnowledgeAskFeedback({
+      requestId: askTaskId.value || '',
+      knowledgeBaseIds: selectedBase.value?.id ? [selectedBase.value.id] : [],
+      question: askForm.question,
+      answer: askAnswer.value,
+      feedbackType: askFeedbackForm.feedbackType,
+      reason: askFeedbackForm.reason,
+      lowConfidence: askLowConfidence.value,
+      evidenceCount: askEvidenceCount.value,
+      referenceJson: JSON.stringify((askReferences.value || []).slice(0, 10).map((item, index) => ({
+        index: index + 1,
+        chunkId: item.chunkId,
+        fileName: item.fileName,
+        score: item.score,
+        sourceRef: item.sourceRef,
+        pageStart: item.pageStart,
+        pageEnd: item.pageEnd
+      })))
+    })
+    ElMessage.success('反馈已提交')
+    askFeedbackForm.reason = ''
+  } finally {
+    askDialog.feedbackSaving = false
   }
 }
 
@@ -2104,6 +2165,7 @@ function formatTime(value) {
 }
 .preview-box,
 .check-box,
+.feedback-box,
 .review-box,
 .test-result-box,
 .rag-case-form {
@@ -2139,6 +2201,15 @@ function formatTime(value) {
 
 .check-list.muted {
   color: #6b7280;
+}
+
+.feedback-box {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-reason {
+  max-width: 100%;
 }
 
 .review-box {
