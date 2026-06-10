@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="member-page">
 
     <section class="quota-grid">

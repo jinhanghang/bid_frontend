@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page kb-page-wrap">
     <div class="kb-shell">
       <!-- 左侧：我的知识库 -->
@@ -106,7 +106,6 @@
             <div class="kb-detail-actions">
               <el-button :icon="Search" @click="openSearchDialog">检索测试</el-button>
               <el-button :icon="ChatLineRound" @click="openAskDialog">知识问答</el-button>
-              <el-button @click="openRagTestDialog">RAG测试</el-button>
               <el-button v-if="canManageSelectedBase" type="primary" :icon="Upload" @click="openUploadDialog">添加文件</el-button>
             </div>
           </section>
@@ -484,48 +483,6 @@
       <pre class="json-preview">{{ prettyJson(qualityDialog.row?.parseQualityJson) }}</pre>
     </el-dialog>
 
-    <el-dialog v-model="ragTestDialog.visible" title="RAG自动测试" width="980px" destroy-on-close>
-      <div class="dialog-actions">
-        <el-button @click="loadRagCases">刷新用例</el-button>
-        <el-button type="primary" :loading="ragTestDialog.running" @click="runRagTests(false)">只测召回</el-button>
-        <el-button type="warning" :loading="ragTestDialog.running" @click="runRagTests(true)">召回+生成</el-button>
-      </div>
-      <el-form :model="ragCaseForm" label-width="90px" class="rag-case-form">
-        <el-form-item label="问题">
-          <el-input v-model="ragCaseForm.questionText" placeholder="例如：评分标准是什么？" />
-        </el-form-item>
-        <el-form-item label="期望关键词">
-          <el-input v-model="ragCaseForm.expectedKeywords" placeholder="多个关键词用逗号分隔" />
-        </el-form-item>
-        <el-form-item label="期望文件">
-          <el-input v-model="ragCaseForm.expectedFileName" placeholder="可选：文件名关键字" />
-        </el-form-item>
-        <el-button type="primary" :loading="ragTestDialog.saving" @click="saveRagCase">新增用例</el-button>
-      </el-form>
-      <el-table class="ui-table" :data="ragCases" max-height="260">
-        <el-table-column prop="caseName" label="用例" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="questionText" label="问题" min-width="260" show-overflow-tooltip />
-        <el-table-column prop="expectedKeywords" label="期望关键词" min-width="180" show-overflow-tooltip />
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button link type="danger" @click="removeRagCase(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-if="ragTestResult" class="test-result-box">
-        <el-alert :closable="false" type="info" :title="`共 ${ragTestResult.total || 0} 条，通过 ${ragTestResult.passed || 0} 条，失败 ${ragTestResult.failed || 0} 条`" />
-        <el-table class="ui-table" :data="ragTestResult.runs || []" max-height="300">
-          <el-table-column label="结果" width="90">
-            <template #default="{ row }"><el-tag :type="row.passFlag ? 'success' : 'danger'">{{ row.passFlag ? '通过' : '未通过' }}</el-tag></template>
-          </el-table-column>
-          <el-table-column prop="questionText" label="问题" min-width="220" show-overflow-tooltip />
-          <el-table-column prop="score" label="得分" width="80" />
-          <el-table-column label="问题" min-width="260">
-            <template #default="{ row }">{{ (row.issues || []).join('；') || '-' }}</template>
-          </el-table-column>
-        </el-table>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -551,17 +508,13 @@ import { createRequestId } from '@/utils/requestId'
 import {
   createKnowledgeBase,
   createKnowledgeFile,
-  createRagTestCase,
   deleteKnowledgeBase,
   deleteKnowledgeFile,
-  deleteRagTestCase,
   getAskTask,
-  listRagTestCases,
   pageKnowledgeBases,
   pageKnowledgeFiles,
   previewAskKnowledge,
   rebuildKnowledgeFile,
-  runRagTest,
   searchKnowledge,
   submitAskTask,
   submitKnowledgeAskFeedback,
@@ -668,20 +621,6 @@ const qualityDialog = reactive({
   row: null
 })
 
-
-const ragTestDialog = reactive({
-  visible: false,
-  loading: false,
-  saving: false,
-  running: false
-})
-const ragCases = ref([])
-const ragTestResult = ref(null)
-const ragCaseForm = reactive({
-  questionText: '',
-  expectedKeywords: '',
-  expectedFileName: ''
-})
 
 const baseForm = reactive({
   enterpriseId: '',
@@ -1474,72 +1413,6 @@ function checkTagType(status) {
   return 'danger'
 }
 
-async function openRagTestDialog() {
-  if (!selectedBase.value?.id) {
-    ElMessage.warning('请先选择知识库')
-    return
-  }
-  ragTestDialog.visible = true
-  loadRagCases()
-}
-
-async function loadRagCases() {
-  if (!selectedBase.value?.id) return
-  ragTestDialog.loading = true
-  try {
-    ragCases.value = await listRagTestCases({ knowledgeBaseId: selectedBase.value.id }) || []
-  } finally {
-    ragTestDialog.loading = false
-  }
-}
-
-async function saveRagCase() {
-  if (!ragCaseForm.questionText.trim()) {
-    ElMessage.warning('请输入测试问题')
-    return
-  }
-  ragTestDialog.saving = true
-  try {
-    await createRagTestCase({
-      knowledgeBaseId: selectedBase.value.id,
-      caseName: ragCaseForm.questionText.slice(0, 60),
-      questionText: ragCaseForm.questionText,
-      expectedKeywords: ragCaseForm.expectedKeywords,
-      expectedFileName: ragCaseForm.expectedFileName,
-      topK: 5,
-      enabled: 1
-    })
-    ragCaseForm.questionText = ''
-    ragCaseForm.expectedKeywords = ''
-    ragCaseForm.expectedFileName = ''
-    ElMessage.success('测试用例已新增')
-    await loadRagCases()
-  } finally {
-    ragTestDialog.saving = false
-  }
-}
-
-async function removeRagCase(row) {
-  await ElMessageBox.confirm('确定删除该测试用例吗？', '提示', { type: 'warning' })
-  await deleteRagTestCase(row.id)
-  ElMessage.success('测试用例已删除')
-  await loadRagCases()
-}
-
-async function runRagTests(generateAnswer) {
-  if (!selectedBase.value?.id) return
-  ragTestDialog.running = true
-  try {
-    ragTestResult.value = await runRagTest({
-      knowledgeBaseId: selectedBase.value.id,
-      generateAnswer
-    })
-    ElMessage.success('RAG自动测试执行完成')
-  } finally {
-    ragTestDialog.running = false
-  }
-}
-
 function formatScore(score) {
   const value = Number(score || 0)
   return value.toFixed(4)
@@ -2166,9 +2039,7 @@ function formatTime(value) {
 .preview-box,
 .check-box,
 .feedback-box,
-.review-box,
-.test-result-box,
-.rag-case-form {
+.review-box {
   margin-top: 12px;
   padding: 12px;
   border: 1px solid #e7edf7;

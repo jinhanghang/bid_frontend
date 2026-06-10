@@ -1,4 +1,4 @@
-﻿import axios from 'axios'
+import axios from 'axios'
 import { ElMessage } from '@/plugins/element-plus-api'
 import router from '@/router'
 import { getToken, clearAuthStorage } from '@/utils/storage'
@@ -8,6 +8,19 @@ let loginExpiredRedirecting = false
 
 const LOGIN_REQUIRED_CODE = 200001
 const AI_GENERIC_ERROR_MESSAGE = 'AI任务执行失败，请稍后重试或检查模型配置/额度'
+
+
+function normalizeTraceId(traceId) {
+  const value = String(traceId || '').trim()
+  return value ? value.slice(0, 64) : ''
+}
+
+function withTraceId(message, traceId) {
+  const id = normalizeTraceId(traceId)
+  const text = message || '接口请求失败'
+  if (!id || String(text).includes(id) || String(text).includes('追踪号')) return text
+  return `${text}（追踪号：${id}）`
+}
 
 function isLoginRequiredCode(code) {
   return Number(code) === LOGIN_REQUIRED_CODE || Number(code) === 401
@@ -112,7 +125,7 @@ service.interceptors.response.use(
     if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'code')) {
       if (body.code === 0) return body.data
 
-      const message = safeResponseMessage(response.config, body.message, '接口请求失败')
+      const message = withTraceId(safeResponseMessage(response.config, body.message, '接口请求失败'), body.traceId)
       if (isLoginRequiredCode(body.code)) {
         handleLoginExpired(message || '登录已过期，请重新登录')
         return Promise.reject(new Error(message))
@@ -125,7 +138,7 @@ service.interceptors.response.use(
   },
   (error) => {
     const status = error?.response?.status
-    const message = safeResponseMessage(error?.config, error?.response?.data?.message || error?.message, '网络异常，请检查后端服务是否启动')
+    const message = withTraceId(safeResponseMessage(error?.config, error?.response?.data?.message || error?.message, '网络异常，请检查后端服务是否启动'), error?.response?.data?.traceId)
 
     if (status === 401) {
       handleLoginExpired(message || '登录已过期，请重新登录')
@@ -133,7 +146,7 @@ service.interceptors.response.use(
     }
 
     if (status === 403) {
-      if (!error?.config?.silentError) ElMessage.error(isAiModuleRequest(error?.config) ? message : '没有权限访问该功能')
+      if (!error?.config?.silentError) ElMessage.error(isAiModuleRequest(error?.config) ? message : withTraceId('没有权限访问该功能', error?.response?.data?.traceId))
       return Promise.reject(error)
     }
 

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-page" :class="{ 'is-reset-mode': pageMode === 'reset' }">
     <div class="login-bg-shape shape-one"></div>
     <div class="login-bg-shape shape-two"></div>

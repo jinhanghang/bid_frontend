@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <el-upload
     drag
     :show-file-list="true"

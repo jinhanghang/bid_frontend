@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="page">
     <div class="page-body">
       <div class="card card--table">
@@ -701,6 +701,15 @@ async function submitForm() {
   loadData()
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 async function showCreatedAccount(res = {}) {
   const username = res?.username || ''
   const password = res?.plainPassword || res?.password || ''
@@ -709,8 +718,8 @@ async function showCreatedAccount(res = {}) {
     await ElMessageBox.alert(
         `<div style="line-height: 1.9">
         <div>用户创建成功，请复制保存。</div>
-        ${username ? `<div>账号：<b>${username}</b></div>` : ''}
-        ${password ? `<div>初始密码：<b>${password}</b></div>` : '<div>初始密码：已按你填写的密码保存</div>'}
+        ${username ? `<div>账号：<b>${escapeHtml(username)}</b></div>` : ''}
+        ${password ? `<div>初始密码：<b>${escapeHtml(password)}</b></div>` : '<div>初始密码：已按你填写的密码保存</div>'}
         <div style="color:#909399;margin-top:8px">账号和初始密码只在创建成功时展示一次。</div>
       </div>`,
         '新增成功',
@@ -747,8 +756,8 @@ async function resetPassword(row) {
   if (password) {
     await ElMessageBox.alert(
         `<div style="line-height: 1.9">
-        ${username ? `<div>账号：<b>${username}</b></div>` : ''}
-        <div>新密码：<b>${password}</b></div>
+        ${username ? `<div>账号：<b>${escapeHtml(username)}</b></div>` : ''}
+        <div>新密码：<b>${escapeHtml(password)}</b></div>
         <div style="color:#909399;margin-top:8px">请复制保存，密码只显示一次。</div>
       </div>`,
         '重置成功',

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="ai-bid-page">
     <aside class="project-pane">
       <div class="pane-title">我的项目</div>
@@ -2633,6 +2633,20 @@ async function generateTechnicalOutline() {
   try {
     const selectedOutlineKnowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
     technicalForm.knowledgeIds = selectedOutlineKnowledgeIds
+    const regenerateOutline = technicalOutlines.value.length > 0 || getTechnicalOutlinesFromSolution(technicalSolution.value).length > 0
+    if (regenerateOutline) {
+      try {
+        await ElMessageBox.confirm('当前技术方案已经生成目录，重新生成会在新目录生成成功后覆盖旧目录及旧章节正文，是否继续？', '重新生成目录确认', {
+          type: 'warning',
+          confirmButtonText: '重新生成',
+          cancelButtonText: '取消'
+        })
+      } catch {
+        technicalGeneratingOutline.value = false
+        clearTechnicalOutlinePending(projectId)
+        return
+      }
+    }
     const res = await generateBidProjectTechnicalOutline(projectId, {
       solutionName: technicalForm.solutionName,
       solutionType: technicalForm.solutionType,
@@ -2644,7 +2658,8 @@ async function generateTechnicalOutline() {
       scoreRequirement: technicalForm.scoreRequirement,
       outlineMode: technicalForm.outlineMode,
       outlineRequirement: technicalForm.outlineRequirement,
-      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKnowledgeIds)
+      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKnowledgeIds),
+      regenerate: regenerateOutline
     })
 
     // 如果用户在生成期间切换了项目，不要把返回结果写到别的项目页面。
@@ -3198,8 +3213,17 @@ async function chooseExportFormat() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function internalInfoHtml(title, lines = []) {
-  return `<div style="line-height:1.8"><b>${title}</b><br/>${lines.filter(Boolean).map(i => String(i)).join('<br/>')}</div>`
+  return `<div style="line-height:1.8"><b>${escapeHtml(title)}</b><br/>${lines.filter(Boolean).map(i => escapeHtml(i)).join('<br/>')}</div>`
 }
 
 async function showTechnicalWordCountCheck() {
@@ -3349,10 +3373,11 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
       technicalOutlines.value = outlines.map(mapSolutionOutlineNode)
       technicalStep.value = Math.max(technicalStep.value, 4)
       technicalGeneratingOutline.value = false
-      if (!silent && technicalFinishedLeafCount.value === 0) {
-          resetWordPresetSelection()
-          wordPresetVisible.value = true
-        }
+      const needWordPreset = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.some((node) => !Number(node?.wordCount || node?.targetWordCount || 0))
+      if (needWordPreset && !wordPresetVisible.value) {
+        resetWordPresetSelection()
+        wordPresetVisible.value = true
+      }
       await refreshWorkflow()
     }
 

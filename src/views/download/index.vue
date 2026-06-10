@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="download-page">
     <div class="content-card">
       <div class="page-title-row">

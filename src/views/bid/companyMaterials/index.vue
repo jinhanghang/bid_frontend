@@ -45,7 +45,7 @@
           placeholder="按企业筛选"
           @visible-change="onEnterpriseVisibleChange"
           @popup-scroll="onEnterprisePopupScroll"
-          @change="reloadFirstPage"
+          @change="onEnterpriseFilterChange"
         >
           <el-option
             v-for="item in enterprises"
@@ -53,6 +53,11 @@
             :label="item.enterpriseName"
             :value="item.id"
           />
+          <el-option v-if="enterprisePager.hasMore" :value="ENTERPRISE_LOAD_MORE_VALUE" label="加载更多企业" class="enterprise-load-more-option">
+            <div class="select-load-more" @mousedown.prevent.stop @click.prevent.stop="loadMoreEnterprises">
+              {{ enterpriseLoading ? '正在加载...' : '加载更多企业' }}
+            </div>
+          </el-option>
         </el-select>
 
         <div v-loading="loading && archiveList.length === 0" class="archive-list" @scroll="onArchiveListScroll">
@@ -204,8 +209,14 @@
                         style="width: 100%"
                         @visible-change="onEnterpriseVisibleChange"
                         @popup-scroll="onEnterprisePopupScroll"
+                        @change="onProfileEnterpriseChange"
                       >
                         <el-option v-for="item in enterprises" :key="item.id" :label="item.enterpriseName" :value="item.id" />
+                        <el-option v-if="enterprisePager.hasMore" :value="ENTERPRISE_LOAD_MORE_VALUE" label="加载更多企业" class="enterprise-load-more-option">
+                          <div class="select-load-more" @mousedown.prevent.stop @click.prevent.stop="loadMoreEnterprises">
+                            {{ enterpriseLoading ? '正在加载...' : '加载更多企业' }}
+                          </div>
+                        </el-option>
                       </el-select>
                     </el-form-item>
                     <el-form-item label="企业名称" required>
@@ -415,8 +426,25 @@
 
     <el-dialog v-model="knowledgeLinkDialog.visible" title="加入知识库" width="560px" append-to-body destroy-on-close>
       <el-alert type="info" :closable="false" show-icon class="knowledge-link-alert" title="将当前企业资料附件作为知识库文件入库，后续 AI标书和知识问答可检索引用。" />
-      <el-select v-model="knowledgeLinkDialog.knowledgeBaseId" filterable placeholder="请选择同企业知识库" style="width: 100%" :loading="knowledgeLinkDialog.loading">
+      <el-select
+        v-model="knowledgeLinkDialog.knowledgeBaseId"
+        filterable
+        remote
+        reserve-keyword
+        placeholder="请选择同企业知识库"
+        style="width: 100%"
+        :loading="knowledgeLinkDialog.loading"
+        :remote-method="remoteSearchKnowledgeBases"
+        @visible-change="onKnowledgeBaseVisibleChange"
+        @popup-scroll="onKnowledgeBasePopupScroll"
+        @change="onKnowledgeBaseSelectChange"
+      >
         <el-option v-for="kb in knowledgeLinkDialog.options" :key="kb.id" :label="kb.kbName" :value="kb.id" />
+        <el-option v-if="knowledgeLinkDialog.hasMore" :value="KNOWLEDGE_BASE_LOAD_MORE_VALUE" label="加载更多知识库" class="enterprise-load-more-option">
+          <div class="select-load-more" @mousedown.prevent.stop @click.prevent.stop="loadMoreKnowledgeBases">
+            {{ knowledgeLinkDialog.loading ? '正在加载...' : '加载更多知识库' }}
+          </div>
+        </el-option>
       </el-select>
       <template #footer>
         <el-button @click="knowledgeLinkDialog.visible = false">取消</el-button>
@@ -519,7 +547,7 @@ import {
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
-import { listKnowledgeBases } from '@/api/knowledge'
+import { pageKnowledgeBases } from '@/api/knowledge'
 import {
   attachCompanyMaterialFile,
   createCompanyMaterial,
@@ -539,6 +567,9 @@ const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 const CONTENT_VERSION = 'MATERIAL_ARCHIVE_V1'
 const ENTERPRISE_PAGE_SIZE = 50
+const KNOWLEDGE_BASE_PAGE_SIZE = 50
+const ENTERPRISE_LOAD_MORE_VALUE = '__LOAD_MORE_ENTERPRISE__'
+const KNOWLEDGE_BASE_LOAD_MORE_VALUE = '__LOAD_MORE_KNOWLEDGE_BASE__'
 
 const loading = ref(false)
 const appendLoading = ref(false)
@@ -552,12 +583,27 @@ const enterprises = ref([])
 const selectedArchive = ref(null)
 const keywordTimer = ref(null)
 const enterpriseKeywordTimer = ref(null)
+const knowledgeBaseKeywordTimer = ref(null)
 const profileSnapshot = ref('')
-const enterpriseDropdownScrollEls = ref([])
-const enterpriseDropdownBindTimer = ref(null)
 const enterpriseScrollRaf = ref(0)
 const enterpriseRequestSeq = ref(0)
-const knowledgeLinkDialog = reactive({ visible: false, loading: false, saving: false, knowledgeBaseId: '', options: [] })
+const knowledgeBaseRequestSeq = ref(0)
+const lastEnterpriseFilterId = ref('')
+const lastProfileEnterpriseId = ref('')
+const lastKnowledgeBaseId = ref('')
+const knowledgeLinkDialog = reactive({
+  visible: false,
+  loading: false,
+  saving: false,
+  knowledgeBaseId: '',
+  options: [],
+  page: 1,
+  size: KNOWLEDGE_BASE_PAGE_SIZE,
+  total: 0,
+  pages: 0,
+  keyword: '',
+  hasMore: false
+})
 
 const filters = reactive({
   keyword: '',
@@ -738,7 +784,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearTimeout(keywordTimer.value)
   clearTimeout(enterpriseKeywordTimer.value)
-  unbindEnterpriseDropdownScroll()
+  clearTimeout(knowledgeBaseKeywordTimer.value)
+  if (enterpriseScrollRaf.value) window.cancelAnimationFrame(enterpriseScrollRaf.value)
 })
 
 function defaultProfile() {
@@ -898,17 +945,35 @@ function remoteSearchEnterprises(keyword = '') {
 function onEnterpriseVisibleChange(visible) {
   if (!canManagePlatform.value) return
   if (visible) {
+    lastEnterpriseFilterId.value = filters.enterpriseId || ''
+    lastProfileEnterpriseId.value = profile.enterpriseId || ''
     if (enterprises.value.length === 0) {
       loadEnterprises(enterprisePager.keyword)
     }
-    bindEnterpriseDropdownScroll()
+  }
+}
+
+function onEnterpriseFilterChange(value) {
+  if (value === ENTERPRISE_LOAD_MORE_VALUE) {
+    filters.enterpriseId = lastEnterpriseFilterId.value || ''
+    loadMoreEnterprises()
     return
   }
-  unbindEnterpriseDropdownScroll()
+  lastEnterpriseFilterId.value = value || ''
+  reloadFirstPage()
+}
+
+function onProfileEnterpriseChange(value) {
+  if (value === ENTERPRISE_LOAD_MORE_VALUE) {
+    profile.enterpriseId = lastProfileEnterpriseId.value || ''
+    loadMoreEnterprises()
+    return
+  }
+  lastProfileEnterpriseId.value = value || ''
 }
 
 function onEnterprisePopupScroll(event) {
-  const scrollEl = resolveEnterpriseScrollEl(event)
+  const scrollEl = event?.target || event
   if (!scrollEl) return
 
   if (enterpriseScrollRaf.value) return
@@ -920,8 +985,6 @@ function onEnterprisePopupScroll(event) {
 
 function maybeLoadMoreEnterprises(scrollEl) {
   if (!canManagePlatform.value || enterpriseLoading.value || !enterprisePager.hasMore) return
-  if (!scrollEl) return
-
   const scrollTop = Number(scrollEl.scrollTop || 0)
   const scrollHeight = Number(scrollEl.scrollHeight || 0)
   const clientHeight = Number(scrollEl.clientHeight || 0)
@@ -929,59 +992,13 @@ function maybeLoadMoreEnterprises(scrollEl) {
 
   const remain = scrollHeight - scrollTop - clientHeight
   if (remain <= 48) {
-    loadEnterprises(enterprisePager.keyword, { append: true })
+    loadMoreEnterprises()
   }
 }
 
-function resolveEnterpriseScrollEl(eventOrEl) {
-  if (eventOrEl?.target?.scrollHeight && eventOrEl?.target?.clientHeight) return eventOrEl.target
-  if (eventOrEl?.scrollHeight && eventOrEl?.clientHeight) return eventOrEl
-  return findVisibleEnterpriseScrollEl()
-}
-
-function bindEnterpriseDropdownScroll() {
-  unbindEnterpriseDropdownScroll()
-  nextTick(() => {
-    enterpriseDropdownBindTimer.value = window.setTimeout(() => {
-      const scrollEl = findVisibleEnterpriseScrollEl()
-      if (!scrollEl) return
-      enterpriseDropdownScrollEls.value = [scrollEl]
-      scrollEl.addEventListener('scroll', onEnterprisePopupScroll, { passive: true })
-    }, 80)
-  })
-}
-
-function findVisibleEnterpriseScrollEl() {
-  const candidates = Array.from(document.querySelectorAll([
-    '.enterprise-select-popper .el-select-dropdown__wrap',
-    '.enterprise-select-popper .el-scrollbar__wrap'
-  ].join(',')))
-
-  return candidates.find((el) => {
-    if (!el) return false
-    const popper = el.closest('.enterprise-select-popper') || el.closest('.el-select__popper') || el.closest('.el-popper')
-    if (!popper) return false
-    const rect = popper.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return false
-    const style = window.getComputedStyle(popper)
-    if (style.display === 'none' || style.visibility === 'hidden') return false
-    return el.scrollHeight >= el.clientHeight
-  }) || null
-}
-
-function unbindEnterpriseDropdownScroll() {
-  if (enterpriseDropdownBindTimer.value) {
-    window.clearTimeout(enterpriseDropdownBindTimer.value)
-    enterpriseDropdownBindTimer.value = null
-  }
-  if (enterpriseScrollRaf.value) {
-    window.cancelAnimationFrame(enterpriseScrollRaf.value)
-    enterpriseScrollRaf.value = 0
-  }
-  enterpriseDropdownScrollEls.value.forEach((scrollEl) => {
-    scrollEl.removeEventListener('scroll', onEnterprisePopupScroll)
-  })
-  enterpriseDropdownScrollEls.value = []
+function loadMoreEnterprises() {
+  if (!canManagePlatform.value || enterpriseLoading.value || !enterprisePager.hasMore) return
+  loadEnterprises(enterprisePager.keyword, { append: true })
 }
 
 function ensureEnterpriseOption(id, name) {
@@ -1105,19 +1122,98 @@ async function openKnowledgeLinkDialog() {
     return
   }
   knowledgeLinkDialog.visible = true
-  knowledgeLinkDialog.loading = true
   knowledgeLinkDialog.knowledgeBaseId = selectedArchive.value.knowledgeBaseId || ''
-  try {
-    const res = await listKnowledgeBases({
-      enterpriseId: selectedArchive.value.enterpriseId || undefined,
-      pageNum: 1,
-      pageSize: 100
-    })
-    const list = Array.isArray(res?.records) ? res.records : (Array.isArray(res) ? res : [])
-    knowledgeLinkDialog.options = list
-  } finally {
-    knowledgeLinkDialog.loading = false
+  lastKnowledgeBaseId.value = knowledgeLinkDialog.knowledgeBaseId || ''
+  await loadKnowledgeBaseOptions('', { append: false })
+}
+
+function remoteSearchKnowledgeBases(keyword = '') {
+  clearTimeout(knowledgeBaseKeywordTimer.value)
+  knowledgeBaseKeywordTimer.value = setTimeout(() => loadKnowledgeBaseOptions(keyword, { append: false }), 300)
+}
+
+function onKnowledgeBaseVisibleChange(visible) {
+  if (visible && knowledgeLinkDialog.options.length === 0) {
+    loadKnowledgeBaseOptions(knowledgeLinkDialog.keyword || '', { append: false })
   }
+}
+
+function onKnowledgeBasePopupScroll(event) {
+  const el = event?.target || event
+  if (!el || knowledgeLinkDialog.loading || !knowledgeLinkDialog.hasMore) return
+  const remain = Number(el.scrollHeight || 0) - Number(el.scrollTop || 0) - Number(el.clientHeight || 0)
+  if (remain <= 48) {
+    loadMoreKnowledgeBases()
+  }
+}
+
+function onKnowledgeBaseSelectChange(value) {
+  if (value === KNOWLEDGE_BASE_LOAD_MORE_VALUE) {
+    knowledgeLinkDialog.knowledgeBaseId = lastKnowledgeBaseId.value || ''
+    loadMoreKnowledgeBases()
+    return
+  }
+  lastKnowledgeBaseId.value = value || ''
+}
+
+function loadMoreKnowledgeBases() {
+  if (knowledgeLinkDialog.loading || !knowledgeLinkDialog.hasMore) return
+  loadKnowledgeBaseOptions(knowledgeLinkDialog.keyword, { append: true })
+}
+
+async function loadKnowledgeBaseOptions(keyword = '', options = {}) {
+  const append = Boolean(options.append)
+  const queryKeyword = String(keyword || '').trim()
+  if (append && (!knowledgeLinkDialog.hasMore || knowledgeLinkDialog.loading)) return
+  const pageToLoad = append ? knowledgeLinkDialog.page + 1 : 1
+  const requestSeq = ++knowledgeBaseRequestSeq.value
+  knowledgeLinkDialog.loading = true
+  try {
+    const res = await pageKnowledgeBases({
+      enterpriseId: selectedArchive.value?.enterpriseId || undefined,
+      keyword: queryKeyword || undefined,
+      pageNum: pageToLoad,
+      pageSize: knowledgeLinkDialog.size,
+      current: pageToLoad,
+      size: knowledgeLinkDialog.size
+    })
+    if (requestSeq !== knowledgeBaseRequestSeq.value) return
+
+    const records = normalizeKnowledgeBaseRecords(res)
+    const total = Number(res?.total || 0)
+    const pages = Number(res?.pages || res?.totalPage || res?.totalPages || 0)
+    knowledgeLinkDialog.page = pageToLoad
+    knowledgeLinkDialog.total = Number.isFinite(total) && total >= 0 ? total : 0
+    knowledgeLinkDialog.pages = Number.isFinite(pages) && pages >= 0 ? pages : 0
+    knowledgeLinkDialog.keyword = queryKeyword
+    knowledgeLinkDialog.options = append
+      ? mergeKnowledgeBaseRecords(knowledgeLinkDialog.options, records)
+      : mergeKnowledgeBaseRecords([], records)
+    knowledgeLinkDialog.hasMore = knowledgeLinkDialog.pages > 0
+      ? pageToLoad < knowledgeLinkDialog.pages
+      : (knowledgeLinkDialog.total > 0 ? knowledgeLinkDialog.options.length < knowledgeLinkDialog.total : records.length >= knowledgeLinkDialog.size)
+  } finally {
+    if (requestSeq === knowledgeBaseRequestSeq.value) {
+      knowledgeLinkDialog.loading = false
+    }
+  }
+}
+
+function normalizeKnowledgeBaseRecords(res) {
+  if (Array.isArray(res?.records)) return res.records
+  if (Array.isArray(res?.list)) return res.list
+  if (Array.isArray(res?.rows)) return res.rows
+  if (Array.isArray(res)) return res
+  return []
+}
+
+function mergeKnowledgeBaseRecords(oldList = [], newList = []) {
+  const map = new Map()
+  oldList.concat(newList).forEach((item) => {
+    if (!item?.id) return
+    map.set(String(item.id), item)
+  })
+  return Array.from(map.values())
 }
 
 async function confirmAddToKnowledge() {
@@ -2018,6 +2114,17 @@ function normalizeRoleList(values = []) {
 }
 
 
+
+.select-load-more {
+  width: 100%;
+  text-align: center;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.enterprise-load-more-option {
+  text-align: center;
+}
 
 .knowledge-link-alert {
   margin-bottom: 12px;

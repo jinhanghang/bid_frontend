@@ -1,4 +1,4 @@
-﻿import {
+import {
   ElAlert
 } from 'element-plus/es/components/alert/index'
 import {

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="ai-doc-page">
     <aside class="doc-sidebar">
       <div class="side-head">
@@ -1373,7 +1373,17 @@ function resumeOutlinePolling(forceDocId) {
         clearInterval(outlineTimer)
         outlineTimer = null
         if ((data?.outlines || []).length) {
-          ElMessage.success('大纲生成完成')
+          const leaves = flattenLeaves(data?.outlines || [])
+          const needWordPreset = leaves.length > 0 && leaves.some((node) => !Number(node?.targetWordCount || node?.wordCount || 0))
+          if (needWordPreset && !wordPresetDialogVisible.value) {
+            resetWordPresetSelection()
+            wordPresetDialogVisible.value = true
+            ElMessage.success('大纲生成完成，请设置篇幅')
+          } else {
+            ElMessage.success('大纲生成完成')
+          }
+        } else {
+          ElMessage.error('大纲生成失败或超时，请稍后重试')
         }
       }
     } catch (e) {
@@ -1422,15 +1432,33 @@ async function onGenerateOutline() {
       await ElMessageBox.alert(formatDocumentGenerateCheckIssues(generateCheck), '生成前检查未通过', { type: 'warning' })
       return
     }
+    const regenerateOutline = hasOutline.value
+    if (regenerateOutline) {
+      try {
+        await ElMessageBox.confirm('当前文档已经生成大纲，重新生成会在新大纲生成成功后覆盖旧大纲及旧章节正文，是否继续？', '重新生成大纲确认', {
+          type: 'warning',
+          confirmButtonText: '重新生成',
+          cancelButtonText: '取消'
+        })
+      } catch {
+        return
+      }
+    }
     resumeOutlinePolling(docId)
     const data = await generateDocumentOutline(docId, {
       outlineMode: 'DOCUMENT',
       writingStyle: form.writingStyle,
       outlineRequirement: form.outlineRequirement,
       extraRequirement: form.outlineRequirement,
-      writingDirection: form.overallWritingRequirement
+      writingDirection: form.overallWritingRequirement,
+      regenerate: regenerateOutline
     })
     applyDoc(data)
+    if (isOutlineGeneratingStatus(data?.status)) {
+      resumeOutlinePolling(docId)
+      ElMessage.success('大纲生成已开始，完成后会自动刷新')
+      return
+    }
     await refreshCurrent()
     await loadDocuments()
     formDialogVisible.value = false
@@ -4428,4 +4456,3 @@ function fallbackTypes() {
 .doc-export-check-list { margin: 0; padding-left: 18px; }
 .doc-export-check-tip { margin: 8px 0 0; color: #64748b; }
 </style>
-

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="recycle-page">
     <div class="content-card">
       <div class="page-title-row">

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="product-shell">
     <aside class="product-rail">
       <div class="rail-logo">AI</div>

@@ -548,7 +548,7 @@
           </div>
         </div>
 
-        <el-empty v-if="!requirementExtract?.hasExtract" description="暂无结构化解析结果，请点击重新解析" :image-size="120" />
+        <el-empty v-if="!requirementExtract?.hasExtract" :description="requirementExtractEmptyDescription" :image-size="120" />
 
         <template v-else>
           <div class="requirement-extract-summary">
@@ -1225,6 +1225,7 @@ let searchTimer = null
 let parseTimer = null
 let taskTimer = null
 let outlineTimer = null
+let requirementExtractTimer = null
 let globalTaskTimer = null
 const notifiedTaskIds = new Set()
 const SOLUTION_TASK_PENDING_KEY = 'ai_solution_generation_task_pending'
@@ -1251,18 +1252,19 @@ const isCreateFormLocked = computed(() => outlineGenerating.value || isOutlineGe
 const isKnowledgeSelectorLocked = computed(() => isCreateFormLocked.value && knowledgeSelectorTarget.value === 'outline')
 const isOutlineFinishedByBackend = computed(() => hasOutlineFromBackend.value || outlineFinishedStatuses.includes(currentSolution.value?.status))
 const canClickGenerateOutline = computed(() => {
+  const hasExistingOutline = isOutlineFinishedByBackend.value
   return !!currentSolution.value?.id
     && !outlineGenerating.value
     && !parseLoading.value
     && !isOutlineGeneratingByBackend.value
-    && !isOutlineFinishedByBackend.value
-    && parseDone.value
+    && !hasRunningTask.value
+    && (hasExistingOutline || parseDone.value)
     && !!createForm.solutionName?.trim()
     && !!requirementForm.purchaseRequirement?.trim()
 })
 const generateOutlineButtonText = computed(() => {
   if (outlineGenerating.value || isOutlineGeneratingByBackend.value) return '目录生成中'
-  if (isOutlineFinishedByBackend.value) return '目录已生成'
+  if (isOutlineFinishedByBackend.value) return '重新生成目录'
   if (!currentSolution.value?.id) return '正在创建草稿'
   if (!parseTask.value?.id) return '请先上传标书'
   if (parseTask.value.status === 'FAILED') return '解析失败，无法生成'
@@ -1287,6 +1289,12 @@ const requirementExtractLoading = ref(false)
 const requirementExtractRebuilding = ref(false)
 const requirementOutlineSyncing = ref(false)
 const requirementExtract = ref({ hasExtract: false, extract: null, scoreItems: [], requirementItems: [], requirementTypeCounts: {} })
+const requirementExtractEmptyDescription = computed(() => {
+  if (requirementExtractLoading.value || requirementExtractRebuilding.value) return '结构化解析正在生成，请稍候'
+  if (isOutlineGeneratingByBackend.value || outlineGenerating.value) return '目录生成中，评分项/需求解析将在后台自动补齐'
+  if (isOutlineFinishedByBackend.value) return '结构化解析正在后台补齐，稍候会自动刷新；也可以点击“重新解析”立即生成'
+  return '暂无结构化解析结果，请点击重新解析'
+})
 const extractSummaryDialogVisible = ref(false)
 const extractSummarySaving = ref(false)
 const scoreItemDialogVisible = ref(false)
@@ -1666,6 +1674,7 @@ onBeforeUnmount(() => {
   clearInterval(parseTimer)
   clearInterval(taskTimer)
   clearInterval(outlineTimer)
+  clearInterval(requirementExtractTimer)
   clearInterval(globalTaskTimer)
 })
 
@@ -1924,6 +1933,9 @@ async function openRequirementExtractDrawer() {
   if (!currentSolution.value?.id) return
   requirementExtractVisible.value = true
   await loadRequirementExtract()
+  if (!requirementExtract.value?.hasExtract) {
+    startRequirementExtractPolling()
+  }
 }
 
 async function loadRequirementExtract() {
@@ -1934,6 +1946,34 @@ async function loadRequirementExtract() {
   } finally {
     requirementExtractLoading.value = false
   }
+}
+
+function startRequirementExtractPolling() {
+  clearInterval(requirementExtractTimer)
+  let retry = 0
+  const tick = async () => {
+    if (!requirementExtractVisible.value || !currentSolution.value?.id) {
+      clearInterval(requirementExtractTimer)
+      requirementExtractTimer = null
+      return
+    }
+    if (document.hidden) return
+    retry += 1
+    try {
+      const data = normalizeRequirementExtractPayload(await getRequirementExtract(currentSolution.value.id))
+      requirementExtract.value = data
+      if (data?.hasExtract || retry >= 60) {
+        clearInterval(requirementExtractTimer)
+        requirementExtractTimer = null
+      }
+    } catch {
+      if (retry >= 60) {
+        clearInterval(requirementExtractTimer)
+        requirementExtractTimer = null
+      }
+    }
+  }
+  requirementExtractTimer = setInterval(tick, 5000)
 }
 
 async function onRebuildRequirementExtract() {
@@ -2287,7 +2327,21 @@ function pollOutlineStatus(solutionId) {
       await loadList()
 
       if ((Array.isArray(data?.outlines) && data.outlines.length > 0) || outlineFinishedStatuses.includes(data?.status)) {
-        ElMessage.success('目录生成完成')
+        previewOutlinesLocal.value = data?.outlines || []
+        createStep.value = 3
+        mode.value = 'detail'
+        const leaves = flattenLeaf(data?.outlines || [])
+        const needWordPreset = leaves.length > 0 && leaves.some((node) => !Number(node?.targetWordCount || 0))
+        if (needWordPreset) {
+          resetWordPresetSelection()
+          wordPresetVisible.value = true
+          ElMessage.success('目录生成完成，请设置篇幅')
+        } else {
+          ElMessage.success('目录生成完成')
+        }
+      } else {
+        outlineGenerating.value = false
+        ElMessage.error('目录生成失败或超时，请稍后重试')
       }
     } catch (e) {
       // 目录生成期间详情查询可能偶发失败，不能清掉“目录生成中”状态。
@@ -2316,9 +2370,11 @@ async function startCreate(solutionMode = 'QUICK') {
   clearInterval(parseTimer)
   clearInterval(taskTimer)
   clearInterval(outlineTimer)
+  clearInterval(requirementExtractTimer)
   parseTimer = null
   taskTimer = null
   outlineTimer = null
+  requirementExtractTimer = null
 
   mode.value = 'create'
   createStep.value = 0
@@ -2552,25 +2608,35 @@ async function onGenerateOutline() {
     return
   }
 
-  if ((Array.isArray(latest?.outlines) && latest.outlines.length > 0) || outlineFinishedStatuses.includes(latest?.status)) {
-    ElMessage.warning('目录已经生成，请不要重复生成')
-    return
-  }
-
-  if (!parseTask.value?.id) {
-    ElMessage.warning('请先上传招标文件并等待解析完成')
-    return
-  }
-
-  if (parseTask.value.status !== 'SUCCESS') {
-    if (parseTask.value.status === 'FAILED') {
-      ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传标书')
-    } else if (parseTask.value.status === 'CANCELED') {
-      ElMessage.warning('解析任务已取消，请重新上传标书')
-    } else {
-      ElMessage.warning('标书正在解析中，请等待解析完成后再生成目录')
+  const regenerateOutline = (Array.isArray(latest?.outlines) && latest.outlines.length > 0) || outlineFinishedStatuses.includes(latest?.status)
+  if (regenerateOutline) {
+    try {
+      await ElMessageBox.confirm('当前方案已经生成目录，重新生成会在新目录生成成功后覆盖旧目录及旧章节正文，是否继续？', '重新生成目录确认', {
+        type: 'warning',
+        confirmButtonText: '重新生成',
+        cancelButtonText: '取消'
+      })
+    } catch {
+      return
     }
-    return
+  }
+
+  if (!regenerateOutline) {
+    if (!parseTask.value?.id) {
+      ElMessage.warning('请先上传招标文件并等待解析完成')
+      return
+    }
+
+    if (parseTask.value.status !== 'SUCCESS') {
+      if (parseTask.value.status === 'FAILED') {
+        ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传标书')
+      } else if (parseTask.value.status === 'CANCELED') {
+        ElMessage.warning('解析任务已取消，请重新上传标书')
+      } else {
+        ElMessage.warning('标书正在解析中，请等待解析完成后再生成目录')
+      }
+      return
+    }
   }
 
   if (!createForm.solutionName?.trim()) {
@@ -2605,7 +2671,8 @@ async function onGenerateOutline() {
       extraRequirement: requirementForm.outlineRequirement,
       outlineRequirement: requirementForm.outlineRequirement,
       writingDirection,
-      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKbIds)
+      knowledgeIds: stringifyKnowledgeIds(selectedOutlineKbIds),
+      regenerate: regenerateOutline
     })
 
     if (selectedOutlineKbIds.length && Array.isArray(data?.outlines)) {
@@ -2613,6 +2680,13 @@ async function onGenerateOutline() {
     }
     applySolutionDetail(data)
     previewOutlinesLocal.value = data?.outlines || []
+    if (outlineGeneratingStatuses.includes(data?.status)) {
+      createStep.value = Math.max(createStep.value, 2)
+      mode.value = 'create'
+      pollOutlineStatus(solutionId)
+      ElMessage.success('目录生成已开始，完成后会自动刷新')
+      return
+    }
     createStep.value = 3
     mode.value = 'detail'
     clearInterval(outlineTimer)
@@ -5578,4 +5652,3 @@ const WritingDirectionEditor = defineComponent({
 }
 
 </style>
-

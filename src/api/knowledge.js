@@ -84,23 +84,3 @@ export function updateAskTaskReview(id, data) {
 export function analyzeTenderKnowledge(data) {
   return request.post('/knowledge-vector/tender-analysis', data, { timeout: 0 })
 }
-
-export function listRagTestCases(params) {
-  return request.get('/knowledge-rag-test/cases', { params })
-}
-
-export function createRagTestCase(data) {
-  return request.post('/knowledge-rag-test/cases', data)
-}
-
-export function updateRagTestCase(id, data) {
-  return request.put(`/knowledge-rag-test/cases/${id}`, data)
-}
-
-export function deleteRagTestCase(id) {
-  return request.delete(`/knowledge-rag-test/cases/${id}`)
-}
-
-export function runRagTest(data) {
-  return request.post('/knowledge-rag-test/run', data, { timeout: 0 })
-}

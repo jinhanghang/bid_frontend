@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <el-input
     v-model="inner"
     class="code-textarea"

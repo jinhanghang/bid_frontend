@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="member-admin-page">
 
     <el-tabs v-model="activeTab" class="admin-tabs">
