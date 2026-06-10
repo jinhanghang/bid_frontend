@@ -879,7 +879,7 @@
       </div>
       <template #footer>
         <el-button @click="wordPresetVisible = false">暂不设置</el-button>
-        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="onApplyWordPreset">确认并进入方案</el-button>
+        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="onApplyWordPreset">{{ wordPresetNextAction ? '确认并继续生成' : '确认并进入方案' }}</el-button>
       </template>
     </el-dialog>
 
@@ -1351,6 +1351,7 @@ const riskLevelOptions = [
 ]
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
+const wordPresetNextAction = ref(null)
 const wordPreset = reactive({ mode: '', wordCount: null })
 const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const editMode = ref(false)
@@ -2334,6 +2335,7 @@ function pollOutlineStatus(solutionId) {
         const needWordPreset = leaves.length > 0 && leaves.some((node) => !Number(node?.targetWordCount || 0))
         if (needWordPreset) {
           resetWordPresetSelection()
+          wordPresetNextAction.value = null
           wordPresetVisible.value = true
           ElMessage.success('目录生成完成，请设置篇幅')
         } else {
@@ -2695,6 +2697,7 @@ async function onGenerateOutline() {
     await loadList()
 
     resetWordPresetSelection()
+    wordPresetNextAction.value = null
     wordPresetVisible.value = true
     ElMessage.success('目录生成完成，请设置篇幅')
   } finally {
@@ -2720,6 +2723,17 @@ function resetWordPresetSelection() {
   wordPreset.wordCount = null
 }
 
+function solutionNeedsWordPreset(solution = currentSolution.value) {
+  const leaves = flattenLeaf(solution?.outlines || [])
+  return leaves.length > 0 && leaves.some((node) => Number(node?.targetWordCount || 0) <= 0)
+}
+
+function openWordPresetDialog(nextAction = null) {
+  resetWordPresetSelection()
+  wordPresetNextAction.value = nextAction
+  wordPresetVisible.value = true
+}
+
 function setPreset(modeValue, wordCount) {
   wordPreset.mode = modeValue
   wordPreset.wordCount = wordCount
@@ -2738,8 +2752,15 @@ async function onApplyWordPreset() {
     wordPresetVisible.value = false
     createStep.value = 4
     mode.value = 'detail'
+    const nextAction = wordPresetNextAction.value
+    wordPresetNextAction.value = null
     await loadList()
-    ElMessage.success('新建完成')
+    if (nextAction) {
+      ElMessage.success('字数已保存，请确认生成设置')
+      await openFullGenerateDialog(nextAction)
+    } else {
+      ElMessage.success('字数已保存')
+    }
   } finally {
     wordPresetSaving.value = false
   }
@@ -3142,6 +3163,12 @@ async function openFullGenerateDialog(action = 'GENERATE') {
   }
   if (!currentSolution.value?.outlines?.length) {
     ElMessage.warning('请先生成目录')
+    return
+  }
+
+  if (action !== 'REWRITE' && solutionNeedsWordPreset(currentSolution.value)) {
+    openWordPresetDialog(action)
+    ElMessage.warning('请先设置每个末级章节的目标字数')
     return
   }
 

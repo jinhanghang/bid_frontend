@@ -845,7 +845,7 @@
       </div>
       <template #footer>
         <el-button @click="wordPresetVisible = false">暂不设置</el-button>
-        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="applyTechnicalWordPreset">确认设置</el-button>
+        <el-button type="primary" :loading="wordPresetSaving" :disabled="!wordPresetSelectionValid" @click="applyTechnicalWordPreset">{{ wordPresetNextAction ? '确认并继续生成' : '确认设置' }}</el-button>
       </template>
     </el-dialog>
 
@@ -1326,6 +1326,7 @@ const TECH_TASK_PENDING_KEY = 'ai_bid_technical_task_pending'
 const lastAutoExtractParseKey = ref('')
 const wordPresetVisible = ref(false)
 const wordPresetSaving = ref(false)
+const wordPresetNextAction = ref(null)
 const fullGenerating = ref(false)
 const exportingWord = ref(false)
 const wordPreset = reactive({ mode: '', wordCount: null })
@@ -2673,6 +2674,7 @@ async function generateTechnicalOutline() {
       if (technicalOutlines.value.length) {
         technicalStep.value = 4
         resetWordPresetSelection()
+        wordPresetNextAction.value = null
         wordPresetVisible.value = true
         ElMessage.success('技术方案目录已生成，请继续调整总字数')
       } else {
@@ -2825,12 +2827,18 @@ function removeSelectedKnowledgeBase(id, target = 'full') {
   setCurrentKnowledgeIdsByTarget(next, target)
 }
 
-function openWordPresetDialog() {
+function openWordPresetDialog(nextAction = null) {
   if (!technicalOutlines.value.length) {
     ElMessage.warning('请先生成目录')
     return
   }
+  resetWordPresetSelection()
+  wordPresetNextAction.value = nextAction
   wordPresetVisible.value = true
+}
+
+function technicalNeedsWordPreset() {
+  return technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.some((node) => Number(node?.wordCount || node?.targetWordCount || 0) <= 0)
 }
 
 function resetWordPresetSelection() {
@@ -2862,8 +2870,15 @@ async function applyTechnicalWordPreset() {
     hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
     technicalStep.value = 4
     wordPresetVisible.value = false
+    const nextAction = wordPresetNextAction.value
+    wordPresetNextAction.value = null
     await refreshWorkflow()
-    ElMessage.success('篇幅已设置，可以开始生成正文')
+    if (nextAction) {
+      ElMessage.success('篇幅已设置，请确认生成设置')
+      openTechnicalFullGenerateDialog(nextAction)
+    } else {
+      ElMessage.success('篇幅已设置，可以开始生成正文')
+    }
   } finally {
     wordPresetSaving.value = false
   }
@@ -2894,6 +2909,11 @@ function openTechnicalFullGenerateDialog(action = 'GENERATE') {
     else if (hasOtherAiTaskRunning.value) ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
     else if (isTechnicalBusy.value) ElMessage.warning('技术方案正在生成中，完成后再操作')
     else if (isRewrite) ElMessage.warning('暂无可重编的章节')
+    return
+  }
+  if (!isRewrite && technicalNeedsWordPreset()) {
+    openWordPresetDialog(action)
+    ElMessage.warning('请先设置每个末级章节的目标字数')
     return
   }
   fullGenerateAction.value = action
@@ -3376,6 +3396,7 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
       const needWordPreset = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.some((node) => !Number(node?.wordCount || node?.targetWordCount || 0))
       if (needWordPreset && !wordPresetVisible.value) {
         resetWordPresetSelection()
+        wordPresetNextAction.value = null
         wordPresetVisible.value = true
       }
       await refreshWorkflow()
