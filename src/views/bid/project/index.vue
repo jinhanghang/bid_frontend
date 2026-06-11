@@ -4229,6 +4229,7 @@ function clearTechnicalOutlinePending(projectId) {
   const id = projectId ? String(projectId) : technicalOutlinePendingProjectId.value
   if (!id || String(technicalOutlinePendingProjectId.value || '') === id) {
     technicalOutlinePendingProjectId.value = ''
+    technicalGeneratingOutline.value = false
     localStorage.removeItem(TECH_OUTLINE_PENDING_KEY)
   }
   clearInterval(technicalOutlinePoller.value)
@@ -4250,12 +4251,40 @@ function startTechnicalOutlinePolling(projectId) {
   }, 5000)
 }
 
+function isTechnicalOutlineGeneratingStatus(status) {
+  return ['OUTLINE_GENERATING'].includes(String(status || '').toUpperCase())
+}
+
+function technicalOutlineFailureMessage(solution) {
+  const remark = String(solution?.remark || '').trim()
+  if (remark && remark.includes('目录生成失败')) return remark
+  return '技术方案目录生成失败，请稍后重试'
+}
+
 async function checkTechnicalOutlineReady(projectId, silent = true) {
   if (!projectId || document.hidden) return false
   try {
     const solution = await getBidProjectTechnicalSolution(projectId)
     const outlines = getTechnicalOutlinesFromSolution(solution)
-    if (!outlines.length) return false
+    const status = String(solution?.status || '').toUpperCase()
+
+    if (!outlines.length) {
+      // 后端异步生成失败后会把方案状态从 OUTLINE_GENERATING 恢复为 INFO_READY/OUTLINE_READY 等可重试状态。
+      // 旧逻辑只判断“有没有目录”，导致前端 localStorage 中的 pending 状态一直不清理，页面长期停在“正在生成技术方案目录”。
+      // 这里按后端状态兜底：只要已经不是 OUTLINE_GENERATING 且没有目录，就结束前端生成态，并提示可重试。
+      if (!isTechnicalOutlineGeneratingStatus(status)) {
+        clearTechnicalOutlinePending(projectId)
+        if (String(selectedProject.value?.id || '') === String(projectId)) {
+          technicalSolution.value = solution
+          technicalOutlines.value = []
+          technicalGeneratingOutline.value = false
+          technicalStep.value = Math.max(technicalStep.value, 3)
+          await refreshWorkflow()
+          ElMessage.error(technicalOutlineFailureMessage(solution))
+        }
+      }
+      return false
+    }
 
     clearTechnicalOutlinePending(projectId)
 
