@@ -155,13 +155,13 @@
           </div>
 
           <div v-else class="parse-pending">
-            <el-empty description="当前项目尚未解析，请点击开始读标">
+            <el-empty description="当前项目尚未解析，请进入技术方案，选择AI等级后在“智能读取”区域点击开始解析">
               <el-button
                 type="primary"
                 :loading="readTenderLoading"
                 @click="startReadTenderForSelected"
               >
-                {{ String(selectedProject?.parseStatus || '').toUpperCase() === 'FAILED' ? '重新读标' : '开始读标' }}
+                去技术方案解析
               </el-button>
             </el-empty>
           </div>
@@ -712,8 +712,6 @@
                   <el-empty description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                 </el-scrollbar>
                 <div class="tech-preview-actions">
-                  <el-button :type="technicalMode === 'PRECISE' ? 'primary' : 'default'" plain :disabled="isCurrentTechnicalOutlineGenerating" @click="technicalMode = 'PRECISE'">精准模式</el-button>
-                  <el-button :type="technicalMode === 'RICH' ? 'primary' : 'default'" plain :disabled="isCurrentTechnicalOutlineGenerating" @click="technicalMode = 'RICH'">丰富模式</el-button>
                   <el-button type="primary" :loading="isCurrentTechnicalOutlineGenerating" :disabled="isCurrentTechnicalOutlineGenerating" @click="generateTechnicalOutline">
                     {{ isCurrentTechnicalOutlineGenerating ? '目录生成中' : '生成目录' }}
                   </el-button>
@@ -2122,25 +2120,8 @@ async function startReadTenderForSelected() {
     ElMessage.warning('请先选择项目')
     return
   }
-  if (!hasTenderFile.value) {
-    ElMessage.warning('当前项目未上传招标文件，请先上传招标文件')
-    return
-  }
-  readTenderLoading.value = true
-  try {
-    workflow.value = await startReadTenderProject(selectedProject.value.id)
-    selectedProject.value = workflow.value?.project || selectedProject.value
-    const status = String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()
-    if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
-      ElMessage.info(workflow.value?.parseTask?.message || '读标解析任务已在排队或执行中')
-    } else {
-      ElMessage.success('已开始读标')
-    }
-    activeDoc.value = 'PARSE_REPORT'
-    await loadProjects(selectedProject.value.id)
-  } finally {
-    readTenderLoading.value = false
-  }
+  ElMessage.warning('请进入技术方案，选择AI等级后在“智能读取”区域点击开始解析')
+  await openDocumentByType('TECHNICAL_SOLUTION')
 }
 
 async function startReadTenderFromTechnical() {
@@ -2152,10 +2133,15 @@ async function startReadTenderFromTechnical() {
     ElMessage.warning('当前项目未上传招标文件，请先上传招标文件')
     return
   }
+  const selectedAiLevel = normalizeAiLevel(technicalForm.aiLevel) || normalizeAiLevel(technicalSolution.value?.aiLevel)
+  if (!selectedAiLevel) {
+    ElMessage.warning('请先选择AI等级，再开始解析')
+    return
+  }
   const currentDoc = activeDoc.value || 'TECHNICAL_SOLUTION'
   readTenderLoading.value = true
   try {
-    workflow.value = await startReadTenderProject(selectedProject.value.id)
+    workflow.value = await startReadTenderProject(selectedProject.value.id, { aiLevel: selectedAiLevel })
     selectedProject.value = workflow.value?.project || selectedProject.value
     const status = String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()
     if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
@@ -2241,13 +2227,13 @@ async function openDocument(doc) {
   activeDoc.value = doc.type
 }
 
-function openDocumentByType(type) {
+async function openDocumentByType(type) {
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先新建或选择一个项目')
     return
   }
   const doc = workflowDocuments.value.find((item) => item.type === type)
-  if (doc) openDocument(doc)
+  if (doc) await openDocument(doc)
 }
 
 async function confirmDeleteProject(project) {

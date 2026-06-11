@@ -141,8 +141,8 @@ export function uploadTenderToExistingProject(id, formData) {
 /**
  * AI标书：开始读标解析
  */
-export function startReadTenderProject(id) {
-  return request.post(`/bid-project/${id}/workflow/start-read`, null, {
+export function startReadTenderProject(id, data = {}) {
+  return request.post(`/bid-project/${id}/workflow/start-read`, data || {}, {
     timeout: NO_TIMEOUT
   })
 }
