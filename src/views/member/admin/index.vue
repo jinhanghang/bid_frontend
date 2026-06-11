@@ -195,12 +195,12 @@
 
       <el-tab-pane v-if="canManageModels" label="模型管理" name="models">
         <div class="toolbar model-toolbar">
-          <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景 / 备注" clearable @keyup.enter="loadModels" />
+          <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景 / 备注" clearable @keyup.enter="searchModels" />
           <el-select v-model="modelQuery.modelType" placeholder="模型类型" clearable>
             <el-option label="Chat" value="chat" />
             <el-option label="Rerank" value="rerank" />
           </el-select>
-          <el-button type="primary" @click="loadModels">搜索</el-button>
+          <el-button type="primary" @click="searchModels">搜索</el-button>
           <el-button plain @click="openDiagnose">配置体检</el-button>
           <el-button type="primary" plain @click="openModelDialog()">新增模型</el-button>
         </div>
@@ -218,7 +218,7 @@
           </div>
         </div>
 
-        <el-table :data="models" class="ui-table" height="500">
+        <el-table :data="models" class="ui-table" height="500" v-loading="modelLoading">
           <el-table-column prop="provider" label="服务商" width="110" />
           <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
           <el-table-column label="类型" width="100">
@@ -245,6 +245,12 @@
             </template>
           </el-table-column>
         </el-table>
+        <PageFooterPager
+          :total="modelPager.total"
+          v-model:page="modelPager.current"
+          v-model:size="modelPager.size"
+          @change="loadModels"
+        />
       </el-tab-pane>
 
     </el-tabs>
@@ -453,6 +459,7 @@ const logs = ref([])
 const models = ref([])
 const usageStatsLoading = ref(false)
 const securityAuditLoading = ref(false)
+const modelLoading = ref(false)
 const usageStats = ref({})
 const securityAudit = ref({ status: '', items: [] })
 
@@ -465,6 +472,7 @@ const usageStatsQuery = reactive({ dates: [], scene: '' })
 const orderPager = reactive({ current: 1, size: 10, total: 0 })
 const accountPager = reactive({ current: 1, size: 10, total: 0 })
 const logPager = reactive({ current: 1, size: 10, total: 0 })
+const modelPager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
 const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
@@ -604,9 +612,25 @@ async function runQuotaAudit() {
 
 async function loadModels() {
   if (!canManageModels.value) return
-  const params = { current: 1, size: 100, keyword: modelQuery.keyword, modelType: modelQuery.modelType }
-  const res = await pageAiModels(params)
-  models.value = (res?.records || []).filter((item) => String(item.modelType || '').toLowerCase() !== 'embedding')
+  modelLoading.value = true
+  try {
+    const params = {
+      current: modelPager.current,
+      size: modelPager.size,
+      keyword: modelQuery.keyword,
+      modelType: modelQuery.modelType
+    }
+    const res = await pageAiModels(params)
+    models.value = res?.records || []
+    modelPager.total = Number(res?.total || 0)
+  } finally {
+    modelLoading.value = false
+  }
+}
+
+function searchModels() {
+  modelPager.current = 1
+  loadModels()
 }
 
 function emptyPlan() {
@@ -687,6 +711,9 @@ async function removeModel(row) {
   await ElMessageBox.confirm(`确定删除模型【${row.modelName}】吗？删除后业务不会再选用该模型。`, '删除确认', { type: 'warning' })
   await deleteAiModel(row.id)
   ElMessage.success('删除成功')
+  if (models.value.length <= 1 && modelPager.current > 1) {
+    modelPager.current -= 1
+  }
   await loadModels()
 }
 
