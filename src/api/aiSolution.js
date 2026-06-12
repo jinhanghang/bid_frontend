@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import { getToken } from '@/utils/storage'
 import { createRequestId } from '@/utils/requestId'
+import { buildStreamRequestError, normalizeStreamErrorMessage } from '@/utils/streamError'
 
 // AI生成/解析/导出属于长耗时接口，不设置前端超时；由后端任务状态控制结果。
 const NO_TIMEOUT = 0
@@ -184,8 +185,7 @@ async function streamFetch(url, options = {}, handlers = {}) {
     signal: handlers.signal || options.signal
   })
   if (!response.ok || !response.body) {
-    const text = await response.text().catch(() => '')
-    throw new Error(text || `请求失败：${response.status}`)
+    throw await buildStreamRequestError(response)
   }
 
   const reader = response.body.getReader()
@@ -227,7 +227,7 @@ function handleSseChunk(chunk, handlers) {
   })
   const data = dataLines.join('\n')
   if (!data) return eventName
-  if (eventName === 'error') handlers.onError?.(data)
+  if (eventName === 'error') handlers.onError?.(normalizeStreamErrorMessage(data))
   else if (eventName === 'done') handlers.onDoneEvent?.(data)
   else handlers.onMessage?.(data)
   return eventName

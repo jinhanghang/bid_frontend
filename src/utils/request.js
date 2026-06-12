@@ -9,6 +9,13 @@ let loginExpiredRedirecting = false
 const LOGIN_REQUIRED_CODE = 200001
 const AI_GENERIC_ERROR_MESSAGE = 'AI任务执行失败，请稍后重试或检查模型配置/额度'
 
+function createRequestError(message, alreadyNotified = false) {
+  const error = new Error(message || '接口请求失败')
+  error.safeMessage = message || '接口请求失败'
+  error.__alreadyNotified = alreadyNotified
+  return error
+}
+
 
 function normalizeTraceId(traceId) {
   const value = String(traceId || '').trim()
@@ -128,11 +135,12 @@ service.interceptors.response.use(
       const message = withTraceId(safeResponseMessage(response.config, body.message, '接口请求失败'), body.traceId)
       if (isLoginRequiredCode(body.code)) {
         handleLoginExpired(message || '登录已过期，请重新登录')
-        return Promise.reject(new Error(message))
+        return Promise.reject(createRequestError(message, true))
       }
 
-      if (!response.config?.silentError) ElMessage.error(message)
-      return Promise.reject(new Error(message))
+      const alreadyNotified = !response.config?.silentError
+      if (alreadyNotified) ElMessage.error(message)
+      return Promise.reject(createRequestError(message, alreadyNotified))
     }
     return body
   },
@@ -142,16 +150,19 @@ service.interceptors.response.use(
 
     if (status === 401) {
       handleLoginExpired(message || '登录已过期，请重新登录')
-      return Promise.reject(error)
+      return Promise.reject(createRequestError(message || '登录已过期，请重新登录', true))
     }
 
     if (status === 403) {
-      if (!error?.config?.silentError) ElMessage.error(isAiModuleRequest(error?.config) ? message : withTraceId('没有权限访问该功能', error?.response?.data?.traceId))
-      return Promise.reject(error)
+      const finalMessage = isAiModuleRequest(error?.config) ? message : withTraceId('没有权限访问该功能', error?.response?.data?.traceId)
+      const alreadyNotified = !error?.config?.silentError
+      if (alreadyNotified) ElMessage.error(finalMessage)
+      return Promise.reject(createRequestError(finalMessage, alreadyNotified))
     }
 
-    if (!error?.config?.silentError) ElMessage.error(message)
-    return Promise.reject(error)
+    const alreadyNotified = !error?.config?.silentError
+    if (alreadyNotified) ElMessage.error(message)
+    return Promise.reject(createRequestError(message, alreadyNotified))
   }
 )
 

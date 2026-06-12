@@ -592,6 +592,8 @@ import {
 } from '@/api/aiDocument'
 import { downloadFileResource, getCurrentUserRunningAiTask, streamSection, updateSectionContent } from '@/api/aiSolution'
 import { formatDateTime } from '@/utils/format'
+import { notifyRequestError } from '@/utils/errorNotify'
+import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
 import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
 import AiModelTrace from '@/components/ai/AiModelTrace.vue'
@@ -982,7 +984,7 @@ async function loadDocumentQualityCheck() {
   try {
     docQualityCheckData.value = normalizeQualityCheckPayload(await getDocumentQualityCheck(currentDoc.value.id))
   } catch (e) {
-    ElMessage.error(e?.message || '加载质量检查失败')
+    notifyRequestError(e, '加载质量检查失败')
   } finally {
     docQualityCheckLoading.value = false
   }
@@ -1005,7 +1007,7 @@ async function loadDocumentWordCountStats() {
     docWordCountStats.value = wordRes || { items: [] }
     docDuplicateCheckData.value = duplicateRes || { duplicates: [] }
   } catch (e) {
-    ElMessage.error(e?.message || '加载字数检查失败')
+    notifyRequestError(e, '加载字数检查失败')
   } finally {
     docWordCountLoading.value = false
   }
@@ -1023,7 +1025,7 @@ async function onCompressDocumentDuplicates() {
     ElMessage.success('重复内容已压缩')
     await loadDocumentWordCountStats()
   } catch (e) {
-    ElMessage.error(e?.message || '压缩重复内容失败')
+    notifyRequestError(e, '压缩重复内容失败')
   } finally {
     docDuplicateCompressing.value = false
   }
@@ -1037,7 +1039,7 @@ async function openDocumentReviewDrawer() {
   try {
     docConsistencyPackage.value = await getDocumentConsistencyPackage(currentDoc.value.id)
   } catch (e) {
-    ElMessage.error(e?.message || '加载全文统一口径失败')
+    notifyRequestError(e, '加载全文统一口径失败')
   } finally {
     docReviewLoading.value = false
   }
@@ -1054,7 +1056,7 @@ async function runDocumentAiReviewNow() {
       ElMessage.warning('AI二次审稿完成，但审稿记录未保存，请检查增量SQL和后端日志')
     }
   } catch (e) {
-    ElMessage.error(e?.message || 'AI二次审稿失败')
+    notifyRequestError(e, 'AI二次审稿失败')
   } finally {
     docReviewLoading.value = false
   }
@@ -1731,7 +1733,7 @@ async function waitDocumentExportTask(exportId) {
     const task = await getDocumentExportTask(exportId)
     const status = String(task?.status || '').toLowerCase()
     if (status === 'success') return task
-    if (status === 'failed') throw new Error(task?.errorMsg || '导出失败，请稍后重试')
+    if (status === 'failed') throw new Error(normalizeStreamErrorMessage(task?.errorMsg, '导出失败，请稍后重试'))
     await sleep(i < 6 ? 2000 : 5000)
   }
   throw new Error('导出任务仍在执行，请稍后到下载中心查看')

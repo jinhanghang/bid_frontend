@@ -1154,6 +1154,8 @@
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElButton, ElCheckbox, ElIcon, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, ElTooltip } from '@/plugins/element-plus-api'
+import { notifyRequestError } from '@/utils/errorNotify'
+import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { ArrowLeft, Close, Delete, Document, EditPen, Menu, Plus, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import {
   addOutlineNode,
@@ -1873,7 +1875,7 @@ async function loadWordCountStats() {
     wordCountStats.value = wordRes || { items: [] }
     duplicateCheckData.value = duplicateRes || { duplicates: [] }
   } catch (e) {
-    ElMessage.error(e?.message || '加载字数检查失败')
+    notifyRequestError(e, '加载字数检查失败')
   } finally {
     wordCountLoading.value = false
   }
@@ -1890,7 +1892,7 @@ async function onCompressDuplicates() {
     ElMessage.success('重复内容已压缩')
     await loadWordCountStats()
   } catch (e) {
-    ElMessage.error(e?.message || '压缩重复内容失败')
+    notifyRequestError(e, '压缩重复内容失败')
   } finally {
     duplicateCompressing.value = false
   }
@@ -1904,7 +1906,7 @@ async function openReviewDrawer() {
   try {
     consistencyPackage.value = await getSolutionConsistencyPackage(currentSolution.value.id)
   } catch (e) {
-    ElMessage.error(e?.message || '加载全文统一口径失败')
+    notifyRequestError(e, '加载全文统一口径失败')
   } finally {
     reviewLoading.value = false
   }
@@ -1917,7 +1919,7 @@ async function runAiReviewNow() {
     reviewResult.value = await runSolutionAiReview(currentSolution.value.id)
     ElMessage.success('AI二次审稿完成')
   } catch (e) {
-    ElMessage.error(e?.message || 'AI二次审稿失败')
+    notifyRequestError(e, 'AI二次审稿失败')
   } finally {
     reviewLoading.value = false
   }
@@ -2526,11 +2528,11 @@ function pollParseTask(taskId) {
         parseLoading.value = false
 
         if (task.status === 'CANCELED') {
-          ElMessage.warning(task.errorMessage || '解析任务已取消')
+          ElMessage.warning(task.errorMessage ? normalizeStreamErrorMessage(task.errorMessage, '解析任务已取消') : '解析任务已取消')
         } else if (task.purchaseRequirement || task.solutionName || task.scoreRequirement) {
           ElMessage.warning('部分内容已提取，但解析任务未成功，请重新上传标书后再生成目录')
         } else {
-          ElMessage.error(task.errorMessage || '解析失败')
+          ElMessage.error(task.errorMessage ? normalizeStreamErrorMessage(task.errorMessage, '解析失败') : '解析失败')
         }
       }
     } catch (e) {
@@ -2631,7 +2633,7 @@ async function onGenerateOutline() {
 
     if (parseTask.value.status !== 'SUCCESS') {
       if (parseTask.value.status === 'FAILED') {
-        ElMessage.error(parseTask.value.errorMessage || '标书解析失败，不能生成目录，请重新上传标书')
+        ElMessage.error(parseTask.value.errorMessage ? normalizeStreamErrorMessage(parseTask.value.errorMessage, '标书解析失败，不能生成目录，请重新上传标书') : '标书解析失败，不能生成目录，请重新上传标书')
       } else if (parseTask.value.status === 'CANCELED') {
         ElMessage.warning('解析任务已取消，请重新上传标书')
       } else {
@@ -3838,7 +3840,7 @@ async function waitSolutionExportTask(exportId) {
     const task = await getSolutionExportTask(exportId)
     const status = String(task?.status || '').toLowerCase()
     if (status === 'success') return task
-    if (status === 'failed') throw new Error(task?.errorMsg || '导出失败，请稍后重试')
+    if (status === 'failed') throw new Error(normalizeStreamErrorMessage(task?.errorMsg, '导出失败，请稍后重试'))
     await sleep(i < 6 ? 2000 : 5000)
   }
   throw new Error('导出任务仍在执行，请稍后到下载中心查看')

@@ -1568,6 +1568,8 @@ import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, rea
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from '@/plugins/element-plus-api'
+import { notifyRequestError } from '@/utils/errorNotify'
+import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
@@ -2435,7 +2437,7 @@ async function loadTechnicalWordCountStats() {
     technicalWordCountStats.value = wordRes || { items: [] }
     technicalDuplicateCheckData.value = duplicateRes || { duplicates: [] }
   } catch (e) {
-    ElMessage.error(e?.message || '加载字数检查失败')
+    notifyRequestError(e, '加载字数检查失败')
   } finally {
     technicalWordCountLoading.value = false
   }
@@ -2459,7 +2461,7 @@ async function onCompressTechnicalDuplicates() {
     ElMessage.success('重复内容已压缩')
     await loadTechnicalWordCountStats()
   } catch (e) {
-    ElMessage.error(e?.message || '压缩重复内容失败')
+    notifyRequestError(e, '压缩重复内容失败')
   } finally {
     technicalDuplicateCompressing.value = false
   }
@@ -2473,7 +2475,7 @@ async function openTechnicalReviewDrawer() {
   try {
     technicalConsistencyPackage.value = await getBidProjectTechnicalConsistencyPackage(selectedProject.value.id)
   } catch (e) {
-    ElMessage.error(e?.message || '加载全文统一口径失败')
+    notifyRequestError(e, '加载全文统一口径失败')
   } finally {
     technicalReviewLoading.value = false
   }
@@ -2486,7 +2488,7 @@ async function runTechnicalAiReviewNow() {
     technicalReviewResult.value = await reviewBidProjectTechnicalByAi(selectedProject.value.id)
     ElMessage.success('AI二次审稿完成')
   } catch (e) {
-    ElMessage.error(e?.message || 'AI二次审稿失败')
+    notifyRequestError(e, 'AI二次审稿失败')
   } finally {
     technicalReviewLoading.value = false
   }
@@ -4206,7 +4208,7 @@ async function waitTechnicalExportTask(projectId, exportId) {
     const task = await getBidProjectTechnicalExportTask(projectId, exportId)
     const status = String(task?.status || '').toLowerCase()
     if (status === 'success') return task
-    if (status === 'failed') throw new Error(task?.errorMsg || '导出失败，请稍后重试')
+    if (status === 'failed') throw new Error(normalizeStreamErrorMessage(task?.errorMsg, '导出失败，请稍后重试'))
     await sleep(i < 6 ? 2000 : 5000)
   }
   throw new Error('导出任务仍在执行，请稍后到下载中心查看')

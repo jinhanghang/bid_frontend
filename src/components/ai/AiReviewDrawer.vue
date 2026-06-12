@@ -120,6 +120,7 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { deleteAiReviewRecord, getAiReviewRecord, pageAiReviewRecords } from '@/api/aiReviewRecord'
 import { formatDateTime } from '@/utils/format'
+import { notifyRequestError } from '@/utils/errorNotify'
 import AiModelTrace from '@/components/ai/AiModelTrace.vue'
 
 const props = defineProps({
@@ -189,7 +190,7 @@ async function openRecordDetail(row) {
     activeRecord.value = await getAiReviewRecord(row.id)
     detailVisible.value = true
   } catch (e) {
-    ElMessage.error(e?.message || '加载审稿记录失败')
+    notifyRequestError(e, '加载审稿记录失败')
   }
 }
 
@@ -203,7 +204,7 @@ async function removeRecord(row) {
     ElMessage.success('审稿记录已删除')
     await loadRecords()
   } catch (e) {
-    ElMessage.error(e?.message || '删除审稿记录失败')
+    notifyRequestError(e, '删除审稿记录失败')
   }
 }
 

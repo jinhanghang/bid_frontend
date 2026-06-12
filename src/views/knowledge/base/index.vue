@@ -505,6 +505,7 @@ import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import { createRequestId } from '@/utils/requestId'
+import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import {
   createKnowledgeBase,
   createKnowledgeFile,
@@ -1239,7 +1240,7 @@ async function pollAskTask() {
       stopAskTaskPolling()
       askDialog.loading = false
       if (res?.status === 'FAILED') {
-        ElMessage.error(res?.errorMsg || '知识库问答任务失败')
+        ElMessage.error(normalizeStreamErrorMessage(res?.errorMsg, '知识库问答任务失败'))
       } else if (askAnswer.value) {
         ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
       }

@@ -52,7 +52,9 @@
               <template #default="{ row }">{{ row.finishedNodes || 0 }}/{{ row.totalNodes || 0 }}<span v-if="row.failedNodes">，失败{{ row.failedNodes }}</span></template>
             </el-table-column>
             <el-table-column prop="message" label="消息" min-width="220" show-overflow-tooltip />
-            <el-table-column prop="errorMessage" label="失败原因" min-width="220" show-overflow-tooltip />
+            <el-table-column label="失败原因" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ safeErrorMessage(row.errorMessage) }}</template>
+            </el-table-column>
             <el-table-column label="创建时间" width="180">
               <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
             </el-table-column>
@@ -74,6 +76,7 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { pageAiTasks } from '@/api/aiTaskCenter'
 import { formatDateTime } from '@/utils/format'
+import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 
 const loading = ref(false)
@@ -157,6 +160,11 @@ function statusTagType(value) {
 function safePercent(value) {
   const n = Number(value || 0)
   return Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0))
+}
+
+function safeErrorMessage(value) {
+  if (!value) return '-'
+  return normalizeStreamErrorMessage(value, '任务失败，请稍后重试或联系管理员')
 }
 </script>
 
