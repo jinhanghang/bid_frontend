@@ -154,8 +154,15 @@
                     <span class="state-dot"></span>
                     {{ fileStatusLabel(row) }}
                   </span>
-                  <el-tooltip v-if="row.errorMsg" :content="row.errorMsg" placement="top">
-                    <el-tag class="error-tag" type="danger" effect="light" size="small">错误</el-tag>
+                  <el-tooltip v-if="hasFileStatusTip(row)" :content="fileStatusTip(row)" placement="top">
+                    <el-tag
+                      class="error-tag"
+                      :type="fileStatusTipTagType(row)"
+                      effect="light"
+                      size="small"
+                    >
+                      {{ fileStatusTipLabel(row) }}
+                    </el-tag>
                   </el-tooltip>
                 </template>
               </el-table-column>
@@ -342,7 +349,7 @@
     </el-dialog>
 
     <!-- 知识库问答 -->
-    <el-dialog v-model="askDialog.visible" title="知识库问答" width="860px" destroy-on-close>
+    <el-dialog v-model="askDialog.visible" title="知识库问答" width="860px">
       <el-form label-width="90px">
         <el-form-item label="问题">
           <el-input
@@ -353,11 +360,16 @@
           />
         </el-form-item>
         <el-form-item label="引用数量">
-          <el-input-number v-model="askForm.topK" :min="1" :max="10" />
+          <el-input-number v-model="askForm.topK" :min="1" :max="ASK_TOP_K_MAX" />
         </el-form-item>
       </el-form>
 
       <div class="dialog-actions">
+        <el-button
+          v-if="askSessionDirty"
+          :disabled="askDialog.loading || askDialog.previewLoading"
+          @click="startNewAskSession"
+        >新问题</el-button>
         <el-button :loading="askDialog.previewLoading" @click="previewAskEvidence">先预览依据</el-button>
         <el-button type="primary" :loading="askDialog.loading" :disabled="!askPreview.hasEvidence" @click="submitAskTaskFlow">确认依据并生成回答</el-button>
       </div>
@@ -398,6 +410,15 @@
         show-icon
         :closable="false"
         title="当前知识库未检索到相关资料，系统已停止无依据生成"
+      />
+
+      <el-alert
+        v-if="askLastError"
+        class="ask-alert"
+        type="error"
+        show-icon
+        :closable="false"
+        :title="askLastError"
       />
 
       <div v-if="askAnswer" class="answer-box" :class="{ 'answer-box--warning': askLowConfidence }">
@@ -505,7 +526,6 @@ import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import { createRequestId } from '@/utils/requestId'
-import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import {
   createKnowledgeBase,
   createKnowledgeFile,
@@ -584,6 +604,8 @@ const searchForm = reactive({
   topK: 5
 })
 
+const ASK_TOP_K_MAX = 5
+
 const askForm = reactive({
   question: '',
   topK: 5
@@ -596,6 +618,8 @@ const askLowConfidence = ref(false)
 const askEvidenceCount = ref(0)
 const askAnswerCheck = ref(null)
 const askTaskId = ref('')
+const askLastError = ref('')
+const askSessionBaseId = ref('')
 
 const askPreview = reactive({
   searched: false,
@@ -654,6 +678,7 @@ function canManageKnowledgeBase(base) {
 
 const hasProcessingFiles = computed(() => files.value.some(isFileProcessing))
 const baseNoMore = computed(() => basePager.total > 0 && bases.value.length >= basePager.total)
+const askSessionDirty = computed(() => hasAskSessionState())
 
 const baseRules = computed(() => {
   const rules = {
@@ -828,7 +853,14 @@ function onBaseListScroll() {
 
 function selectBase(row) {
   if (!row) return
+  const previousId = selectedBase.value?.id ? String(selectedBase.value.id) : ''
+  const nextId = row?.id ? String(row.id) : ''
   selectedBase.value = row
+  if (previousId && nextId && previousId !== nextId) {
+    resetAskSession({ clearQuestion: true, stopPolling: true })
+  } else if (!askSessionBaseId.value && nextId) {
+    askSessionBaseId.value = nextId
+  }
   loadFiles()
 }
 
@@ -1090,20 +1122,18 @@ function openAskDialog() {
     ElMessage.warning('请先选择知识库')
     return
   }
+  const baseId = currentKnowledgeBaseId()
   askDialog.visible = true
-  askDialog.asked = false
-  askAnswer.value = ''
-  askReferences.value = []
-  askLowConfidence.value = false
-  askEvidenceCount.value = 0
-  askAnswerCheck.value = null
-  askTaskId.value = ''
-  resetAskPreview()
-  askReviewForm.reviewStatus = 'PENDING'
-  askReviewForm.reviewOpinion = ''
-  askFeedbackForm.feedbackType = 'USEFUL'
-  askFeedbackForm.reason = ''
-  askReviewForm.finalAnswer = ''
+
+  // 问答任务是异步执行的，弹窗关闭不等于取消任务。
+  // 重新打开弹窗时必须保留正在执行的任务、已预览依据、已生成回答或失败原因。
+  if (askSessionBaseId.value && askSessionBaseId.value !== baseId) {
+    resetAskSession({ clearQuestion: true, stopPolling: true })
+    return
+  }
+  if (!askSessionBaseId.value) {
+    askSessionBaseId.value = baseId
+  }
 }
 
 async function submitSearch() {
@@ -1131,6 +1161,66 @@ async function submitSearch() {
   }
 }
 
+function currentKnowledgeBaseId() {
+  return selectedBase.value?.id ? String(selectedBase.value.id) : ''
+}
+
+function hasAskSessionState() {
+  return Boolean(
+    askDialog.loading ||
+    askDialog.previewLoading ||
+    askDialog.asked ||
+    askTaskId.value ||
+    askAnswer.value ||
+    askReferences.value.length ||
+    askPreview.searched ||
+    askLastError.value
+  )
+}
+
+function resetAskSession(options = {}) {
+  const { clearQuestion = false, stopPolling = true } = options
+  if (stopPolling) {
+    stopAskTaskPolling()
+  }
+  askDialog.loading = false
+  askDialog.previewLoading = false
+  askDialog.asked = false
+  askAnswer.value = ''
+  askReferences.value = []
+  askLowConfidence.value = false
+  askEvidenceCount.value = 0
+  askAnswerCheck.value = null
+  askTaskId.value = ''
+  askLastError.value = ''
+  resetAskPreview()
+  askReviewForm.reviewStatus = 'PENDING'
+  askReviewForm.reviewOpinion = ''
+  askReviewForm.finalAnswer = ''
+  askFeedbackForm.feedbackType = 'USEFUL'
+  askFeedbackForm.reason = ''
+  if (clearQuestion) {
+    askForm.question = ''
+    askForm.topK = 5
+  }
+  askSessionBaseId.value = currentKnowledgeBaseId()
+}
+
+function startNewAskSession() {
+  if (askDialog.loading || askDialog.previewLoading) {
+    ElMessage.warning('当前问答任务正在执行，请等待完成后再开始新问题')
+    return
+  }
+  resetAskSession({ clearQuestion: true, stopPolling: true })
+}
+
+function normalizeAskTopK() {
+  const value = Number(askForm.topK || 1)
+  const normalized = Math.min(Math.max(Number.isFinite(value) ? Math.floor(value) : 1, 1), ASK_TOP_K_MAX)
+  askForm.topK = normalized
+  return normalized
+}
+
 function resetAskPreview() {
   askPreview.searched = false
   askPreview.hasEvidence = false
@@ -1145,12 +1235,24 @@ async function previewAskEvidence() {
     ElMessage.warning('请输入问题')
     return
   }
+  if (askDialog.loading) {
+    ElMessage.warning('当前问答任务正在执行，请等待完成后再预览')
+    return
+  }
+  askSessionBaseId.value = currentKnowledgeBaseId()
+  askLastError.value = ''
+  askDialog.asked = false
+  askAnswer.value = ''
+  askAnswerCheck.value = null
+  askLowConfidence.value = false
+  askEvidenceCount.value = 0
+  askTaskId.value = ''
   askDialog.previewLoading = true
   try {
     const res = await previewAskKnowledge({
       knowledgeBaseIds: [selectedBase.value.id],
       question: askForm.question,
-      topK: askForm.topK
+      topK: normalizeAskTopK()
     })
     askPreview.searched = true
     askPreview.hasEvidence = Boolean(res?.hasEvidence)
@@ -1181,8 +1283,10 @@ async function submitAskTaskFlow() {
     ElMessage.warning('当前没有有效依据，已停止生成')
     return
   }
+  askSessionBaseId.value = currentKnowledgeBaseId()
   askDialog.loading = true
   askDialog.asked = true
+  askLastError.value = ''
   askAnswer.value = ''
   askAnswerCheck.value = null
   let submitted = false
@@ -1190,7 +1294,7 @@ async function submitAskTaskFlow() {
     const res = await submitAskTask({
       knowledgeBaseIds: [selectedBase.value.id],
       question: askForm.question,
-      topK: askForm.topK,
+      topK: normalizeAskTopK(),
       requestId: createRequestId('kb_ask_task')
     })
     askTaskId.value = res?.taskId || ''
@@ -1236,24 +1340,46 @@ async function pollAskTask() {
     if (response) {
       applyAskResponse(response)
     }
-    if (['SUCCESS', 'FAILED', 'CANCELLED'].includes(String(res?.status || '').toUpperCase())) {
+    const status = String(res?.status || '').toUpperCase()
+    if (['SUCCESS', 'FAILED', 'CANCELLED'].includes(status)) {
       stopAskTaskPolling()
       askDialog.loading = false
-      if (res?.status === 'FAILED') {
-        ElMessage.error(normalizeStreamErrorMessage(res?.errorMsg, '知识库问答任务失败'))
+      if (status === 'FAILED') {
+        askLastError.value = safeAskTaskError(res?.errorMsg)
+        ElMessage.error(askLastError.value)
+      } else if (status === 'CANCELLED') {
+        askLastError.value = '知识问答任务已取消'
+        ElMessage.warning(askLastError.value)
       } else if (askAnswer.value) {
-        ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
+        if (askDialog.visible) {
+          ElMessage.success(`知识问答已生成，引用 ${askEvidenceCount.value} 条资料`)
+        } else {
+          ElMessage.success('知识问答已生成，重新打开问答窗口可查看结果')
+        }
       }
     }
   } catch (e) {
     stopAskTaskPolling()
     askDialog.loading = false
+    askLastError.value = '获取知识问答任务状态失败，请稍后重试'
   } finally {
     askTaskPolling.value = false
   }
 }
 
+
+function safeAskTaskError(message) {
+  const text = String(message || '').trim()
+  if (!text) return 'AI服务调用异常，请稍后重试'
+  if (text.length > 80) return 'AI服务调用异常，请稍后重试'
+  if (/request_id|requestId|trace|Exception|Error:|java\.|stack|timeout|DashScope|百炼|Chat接口|model|Connection reset|SocketException|HTTP状态码|调用失败|调用异常/i.test(text)) {
+    return 'AI服务调用异常，请稍后重试'
+  }
+  return text
+}
+
 function applyAskResponse(res = {}) {
+  askLastError.value = ''
   askAnswer.value = res?.answer || ''
   askReferences.value = res?.references || []
   askLowConfidence.value = Boolean(res?.lowConfidence)
@@ -1344,6 +1470,30 @@ function fileStatusClass(row = {}) {
   if (label === '解析中' || label === '待向量化') return 'processing'
   if (label === '入库失败') return 'danger'
   return 'waiting'
+}
+
+function isFileParseSuccessWithIndexError(row = {}) {
+  return fileStatusLabel(row) === '解析成功' && Boolean(row.errorMsg)
+}
+
+function hasFileStatusTip(row = {}) {
+  return Boolean(row.errorMsg)
+}
+
+function fileStatusTipLabel(row = {}) {
+  return isFileParseSuccessWithIndexError(row) ? '索引异常' : '错误'
+}
+
+function fileStatusTipTagType(row = {}) {
+  return isFileParseSuccessWithIndexError(row) ? 'warning' : 'danger'
+}
+
+function fileStatusTip(row = {}) {
+  if (!row.errorMsg) return ''
+  if (isFileParseSuccessWithIndexError(row)) {
+    return '文件内容已解析成功，但检索索引同步异常；可能影响检索和问答命中。请检查 OpenSearch 配置或点击重新入库。'
+  }
+  return row.errorMsg
 }
 
 function formatFileSize(size) {

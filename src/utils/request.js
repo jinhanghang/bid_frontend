@@ -7,7 +7,7 @@ let loginExpiredNotified = false
 let loginExpiredRedirecting = false
 
 const LOGIN_REQUIRED_CODE = 200001
-const AI_GENERIC_ERROR_MESSAGE = 'AI任务执行失败，请稍后重试或检查模型配置/额度'
+const AI_GENERIC_ERROR_MESSAGE = 'AI服务调用异常，请稍后重试'
 
 function createRequestError(message, alreadyNotified = false) {
   const error = new Error(message || '接口请求失败')
@@ -69,7 +69,7 @@ function handleLoginExpired(message = '登录已过期，请重新登录') {
 
 function isAiModuleRequest(config) {
   const url = String(config?.url || '')
-  return url.includes('/ai-solution') || url.includes('/ai-document') || url.includes('/technical-solution')
+  return url.includes('/ai-solution') || url.includes('/ai-document') || url.includes('/technical-solution') || url.includes('/knowledge-vector')
 }
 
 function isAiExportRequest(config) {
@@ -91,7 +91,7 @@ function isRawAiFailureMessage(message) {
   const text = String(message || '')
   if (!text) return true
   if (text.length > 80) return true
-  return /HTTP状态码|request_id|requestId|trace|Exception|Error:|java\.|stack|timeout|exceeded|Quota|exhausted|DashScope|百炼|Chat接口|model|403|500|调用失败/i.test(text)
+  return /HTTP状态码|request_id|requestId|trace|Exception|Error:|java\.|stack|timeout|exceeded|Quota|exhausted|DashScope|百炼|Chat接口|model|Connection reset|SocketException|403|500|调用失败|调用异常/i.test(text)
 }
 
 function safeResponseMessage(config, message, fallback = '接口请求失败') {
