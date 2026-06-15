@@ -9,8 +9,13 @@
       </div>
       <div class="quota-card">
         <div class="quota-num">{{ formatNumber(summary.paidRemainWords) }}</div>
-        <div class="quota-label">付费剩余</div>
-        <div class="quota-desc">包月 / 包年充值后增加</div>
+        <div class="quota-label">
+          付费剩余
+          <el-tooltip :content="summary.paidRemainDescription || '付费剩余=有效付费套餐、企业套餐、后台增加额度的剩余额度；不包含免费额度和预占释放额度'" placement="top">
+            <span class="quota-help">?</span>
+          </el-tooltip>
+        </div>
+        <div class="quota-desc">有效付费套餐 / 企业套餐 / 后台增加额度</div>
       </div>
       <div class="quota-card">
         <div class="quota-num">{{ summary.memberExpireTime ? formatDate(summary.memberExpireTime) : '长期' }}</div>
@@ -183,7 +188,7 @@ async function buy(plan) {
 function isSystemPlan(plan) {
   const code = String(plan?.planCode || '').toUpperCase()
   const type = String(plan?.planType || '').toLowerCase()
-  return code === 'FREE' || code === 'ADMIN_ADJUST' || type === 'free' || type === 'admin_adjust'
+  return code === 'FREE' || code === 'ADMIN_ADJUST' || code === 'QUOTA_RELEASE' || type === 'free' || type === 'admin_adjust' || type === 'system_release'
 }
 
 function sceneText(value) {
@@ -296,6 +301,7 @@ h1 { margin-top: 12px; font-size: 30px; color: #0f172a; }
 .quota-card { padding: 20px; }
 .quota-num { color: #2563eb; font-size: 24px; font-weight: 900; }
 .quota-label { margin-top: 8px; font-weight: 800; color: #1e293b; }
+.quota-help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 999px; background: #e0edff; color: #2563eb; font-size: 12px; cursor: help; }
 .quota-desc { margin-top: 6px; color: #94a3b8; font-size: 13px; }
 .content-card { margin-top: 0; padding: 18px; min-width: 0; overflow: hidden; }
 .section-head { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; min-width: 0; }

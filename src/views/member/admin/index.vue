@@ -73,10 +73,18 @@
         <el-table :data="accounts" class="ui-table" height="520">
           <el-table-column prop="fullName" label="姓名" min-width="120" />
           <el-table-column prop="phone" label="手机号" min-width="130" />
-          <el-table-column prop="groupKey" label="企业" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="enterpriseName" label="企业" min-width="160" show-overflow-tooltip />
           <el-table-column label="剩余总字数" width="130"><template #default="{ row }">{{ formatNumber(row.availableWords) }}</template></el-table-column>
           <el-table-column label="免费剩余" width="120"><template #default="{ row }">{{ formatNumber(row.freeRemainWords) }}</template></el-table-column>
-          <el-table-column label="付费剩余" width="120"><template #default="{ row }">{{ formatNumber(row.paidRemainWords) }}</template></el-table-column>
+          <el-table-column label="付费剩余" width="140">
+            <template #header>
+              <span>付费剩余</span>
+              <el-tooltip content="付费剩余=有效付费套餐、企业套餐、后台增加额度的剩余额度；不包含免费额度和预占释放额度" placement="top">
+                <span class="quota-help">?</span>
+              </el-tooltip>
+            </template>
+            <template #default="{ row }">{{ formatNumber(row.paidRemainWords) }}</template>
+          </el-table-column>
           <el-table-column prop="memberExpireTime" label="会员到期" min-width="160" />
           <el-table-column label="操作" width="120" fixed="right">
             <template #default="{ row }"><el-button link type="primary" @click="openAdjust(row)">调整额度</el-button></template>
@@ -480,7 +488,10 @@ const auditDialog = reactive({ visible: false, loading: false, result: null })
 const modelDialog = reactive({ visible: false, form: emptyModel() })
 const diagnoseDialog = reactive({ visible: false, loading: false, records: [] })
 
-const canManageModels = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []).includes('SUPERADMIN'))
+const canManageModels = computed(() => {
+  const roles = normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || [])
+  return roles.includes('SUPERADMIN') || roles.includes('PLATFORMADMIN')
+})
 const totalAuditIssueCount = computed(() => {
   const r = auditDialog.result || {}
   return Number(r.balanceIssueCount || 0) + Number(r.chainIssueCount || 0) + Number(r.negativeMemberIssueCount || 0) + Number(r.openReservationIssueCount || 0)
@@ -914,6 +925,7 @@ p { margin-top: 8px; color: #64748b; }
 .switch-line { display: flex; align-items: center; gap: 10px; }
 .form-tip { color: #64748b; font-size: 12px; }
 .muted { color: #94a3b8; }
+.quota-help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 999px; background: #e0edff; color: #2563eb; font-size: 12px; cursor: help; }
 .plus { color: #16a34a; font-weight: 800; }
 .minus { color: #ef4444; font-weight: 800; }
 :deep(.ui-table .el-table__header-wrapper th .cell) { white-space: nowrap; }
@@ -945,4 +957,5 @@ p { margin-top: 8px; color: #64748b; }
   .usage-panel-grid { grid-template-columns: 1fr; }
 }
 </style>
+
 
