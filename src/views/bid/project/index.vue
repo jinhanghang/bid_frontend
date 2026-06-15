@@ -575,6 +575,7 @@
                         <OutlineTree
                           :nodes="technicalOutlines"
                           mode="generate"
+                          :selected-id="selectedTechnicalLeaf?.id"
                           @preview="selectTechnicalLeaf"
                           @section-generate="openTechnicalSectionDialog"
                         />
@@ -1698,6 +1699,8 @@ const exportingWord = ref(false)
 const wordPreset = reactive({ mode: '', wordCount: null })
 const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const selectedTechnicalLeaf = ref(null)
+const technicalAutoPreviewFollow = ref(true)
+const technicalManualSelectedLeafId = ref('')
 const technicalEditMode = ref(false)
 const technicalEditTab = ref('word')
 const technicalDeleteIds = ref([])
@@ -1904,6 +1907,8 @@ function resetTechnicalWorkspace() {
   technicalSolution.value = null
   technicalOutlines.value = []
   selectedTechnicalLeaf.value = null
+  technicalAutoPreviewFollow.value = true
+  technicalManualSelectedLeafId.value = ''
   sectionNode.value = null
   sectionDialogVisible.value = false
   sectionStreamingText.value = ''
@@ -4497,19 +4502,38 @@ function getTechnicalLeafContent(node) {
     || ''
 }
 
+function markTechnicalManualSelection(node) {
+  if (!node?.id) return
+  technicalManualSelectedLeafId.value = String(node.id)
+  technicalAutoPreviewFollow.value = false
+}
+
+function clearTechnicalManualSelection() {
+  technicalManualSelectedLeafId.value = ''
+  technicalAutoPreviewFollow.value = true
+}
+
 async function selectTechnicalLeaf(node) {
   const canLeave = await confirmDiscardTechnicalSectionContentChanges()
   if (!canLeave) return
   selectedTechnicalLeaf.value = node || null
+  if (node?.id) markTechnicalManualSelection(node)
+  else clearTechnicalManualSelection()
   technicalSectionContentEditMode.value = false
   technicalSectionContentDraft.value = getTechnicalLeafContent(node) || ''
 }
 
 function syncSelectedTechnicalLeaf() {
-  if (!selectedTechnicalLeaf.value?.id) return
-  const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
-  if (latest) selectedTechnicalLeaf.value = latest
-  else selectedTechnicalLeaf.value = null
+  const selectedId = selectedTechnicalLeaf.value?.id || technicalManualSelectedLeafId.value
+  if (!selectedId) return
+  const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedId)
+  if (latest) {
+    selectedTechnicalLeaf.value = latest
+    if (technicalManualSelectedLeafId.value) technicalManualSelectedLeafId.value = String(latest.id)
+  } else {
+    selectedTechnicalLeaf.value = null
+    clearTechnicalManualSelection()
+  }
 }
 
 function syncTechnicalOverallRequirement() {
@@ -5004,6 +5028,10 @@ async function saveTechnicalSectionContent() {
 }
 
 function selectFirstGeneratedTechnicalLeaf() {
+  if (!technicalAutoPreviewFollow.value && selectedTechnicalLeaf.value?.id) {
+    syncSelectedTechnicalLeaf()
+    return
+  }
   const leaf = technicalLeafNodes.value.find(isTechnicalLeafDone) || technicalLeafNodes.value[0]
   if (leaf) selectedTechnicalLeaf.value = leaf
 }
@@ -5012,8 +5040,13 @@ function selectLatestTechnicalPreviewLeaf() {
   const leaves = technicalLeafNodes.value || []
   if (!leaves.length) return
 
-  // 全文生成时每秒刷新一次目录。优先让右侧预览自动跟随“正在生成”的章节；
-  // 如果当前没有正在生成的章节，则选中最后一个已有正文的章节，让用户不用一直盯着空白页。
+  // 全文生成期间会定时刷新目录。用户已经手动点选章节时，必须保留用户选择；
+  // 只有用户尚未手动选择时，才自动跟随正在生成或最后生成的章节。
+  if (!technicalAutoPreviewFollow.value && selectedTechnicalLeaf.value?.id) {
+    syncSelectedTechnicalLeaf()
+    return
+  }
+
   const generating = leaves.find((node) => ['GENERATING', 'LOCKED'].includes(String(node?.contentStatus || '').toUpperCase()))
   const generated = [...leaves].reverse().find(isTechnicalLeafDone)
   const target = generating || generated || leaves[0]
@@ -5047,12 +5080,14 @@ function openTechnicalSectionDialog(node) {
   const targetWordCount = Number(node.targetWordCount || node.wordCount || node.section?.targetWordCount || 0)
   if (targetWordCount <= 0) {
     selectedTechnicalLeaf.value = node
+    markTechnicalManualSelection(node)
     openWordPresetDialog(buildSectionWordPresetAction(node.id))
     ElMessage.warning('请先设置方案篇幅，确认后继续生成本段')
     return
   }
   sectionNode.value = node
   selectedTechnicalLeaf.value = node
+  markTechnicalManualSelection(node)
   Object.assign(sectionForm, {
     title: node.title,
     targetWordCount,
@@ -5173,7 +5208,8 @@ const OutlineTree = defineComponent({
     nodes: { type: Array, default: () => [] },
     mode: { type: String, default: 'view' },
     simple: { type: Boolean, default: false },
-    selected: { type: Array, default: () => [] }
+    selected: { type: Array, default: () => [] },
+    selectedId: { type: [String, Number], default: '' }
   },
   emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate'],
   setup(props, { emit }) {
@@ -5188,6 +5224,7 @@ const OutlineTree = defineComponent({
           }
         })
         : null
+      const isSelected = props.mode === 'generate' && !hasChildren && String(props.selectedId || '') === String(node.id || '')
       const title = h('span', { class: ['tree-title', hasChildren ? 'parent' : 'leaf'] }, node.title)
       const controls = []
       if (props.mode === 'word') {
@@ -5224,7 +5261,7 @@ const OutlineTree = defineComponent({
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap' }, [
-        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
+        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : '', isSelected ? 'selected' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
         hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
@@ -7777,6 +7814,10 @@ const WritingDirectionEditor = defineComponent({
 .tree-row.clickable:hover {
   background: #f8fafc;
 }
+.tree-row.selected {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
 .tree-dot {
   width: 16px;
   color: #ef4444;
@@ -7931,6 +7972,11 @@ const WritingDirectionEditor = defineComponent({
 
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.clickable:hover) {
   background: #f8fafc !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.selected) {
+  background: #eff6ff !important;
+  box-shadow: inset 3px 0 0 #3b82f6 !important;
 }
 
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-dot) {
@@ -8122,6 +8168,11 @@ const WritingDirectionEditor = defineComponent({
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.generate-row) {
   min-height: 40px !important;
   padding-right: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.generate-row.selected) {
+  background: #eff6ff !important;
+  box-shadow: inset 3px 0 0 #3b82f6 !important;
 }
 
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title) {
