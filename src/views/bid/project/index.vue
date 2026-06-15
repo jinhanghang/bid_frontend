@@ -3806,6 +3806,18 @@ function setWordPreset(mode, wordCount) {
   wordPreset.wordCount = wordCount
 }
 
+function buildSectionWordPresetAction(nodeId) {
+  return nodeId ? `SECTION:${nodeId}` : null
+}
+
+function isSectionWordPresetAction(action) {
+  return String(action || '').startsWith('SECTION:')
+}
+
+function parseSectionWordPresetAction(action) {
+  return String(action || '').replace(/^SECTION:/, '')
+}
+
 async function applyTechnicalWordPreset() {
   if (!selectedProject.value?.id) return
   if (!wordPresetSelectionValid.value) {
@@ -3829,6 +3841,17 @@ async function applyTechnicalWordPreset() {
     wordPresetNextAction.value = null
     await refreshWorkflow()
     if (nextAction) {
+      if (isSectionWordPresetAction(nextAction)) {
+        const sectionId = parseSectionWordPresetAction(nextAction)
+        const latest = findTechnicalOutlineNodeById(technicalOutlines.value, sectionId)
+        if (latest) {
+          ElMessage.success('篇幅已设置，请确认本段生成设置')
+          openTechnicalSectionDialog(latest)
+        } else {
+          ElMessage.success('篇幅已设置，可以开始生成正文')
+        }
+        return
+      }
       ElMessage.success('篇幅已设置，请确认生成设置')
       openTechnicalFullGenerateDialog(nextAction)
     } else {
@@ -4383,17 +4406,11 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
       technicalOutlines.value = outlines.map(mapSolutionOutlineNode)
       technicalStep.value = Math.max(technicalStep.value, 4)
       technicalGeneratingOutline.value = false
-      const needWordPreset = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.some((node) => !Number(node?.wordCount || node?.targetWordCount || 0))
-      if (needWordPreset && !wordPresetVisible.value) {
-        resetWordPresetSelection()
-        wordPresetNextAction.value = null
-        wordPresetVisible.value = true
-      }
       await refreshWorkflow()
     }
 
     if (!silent) {
-      ElMessage.success('技术方案目录已生成，请继续调整总字数')
+      ElMessage.success('技术方案目录已生成，请点击“开始生成”或单章节“生成”后设置目标字数')
     }
     return true
   } catch (e) {
@@ -5030,8 +5047,8 @@ function openTechnicalSectionDialog(node) {
   const targetWordCount = Number(node.targetWordCount || node.wordCount || node.section?.targetWordCount || 0)
   if (targetWordCount <= 0) {
     selectedTechnicalLeaf.value = node
-    openWordPresetDialog(null)
-    ElMessage.warning('请先设置方案篇幅，再生成单个章节')
+    openWordPresetDialog(buildSectionWordPresetAction(node.id))
+    ElMessage.warning('请先设置方案篇幅，确认后继续生成本段')
     return
   }
   sectionNode.value = node
