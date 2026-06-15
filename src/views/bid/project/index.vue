@@ -1932,7 +1932,7 @@ function resetBidDocumentWorkspace() {
   Object.assign(companyMaterialDialog, { visible: false, loading: false, saving: false, selectedId: null })
 }
 
-const workflowDocuments = computed(() => workflow.value?.documents || defaultDocuments(selectedProject.value))
+const workflowDocuments = computed(() => buildWorkflowDocuments())
 const parseReportText = computed(() => workflow.value?.parseReportText || selectedProject.value?.parseReportText || '')
 const parseProgress = computed(() => Number(workflow.value?.parseTask?.progress || 0))
 const hasTenderFile = computed(() => Boolean(
@@ -2612,12 +2612,77 @@ async function loadGlobalAiRunningTask() {
   }
 }
 
+
+function technicalDisplayStatus(project) {
+  const projectId = String(project?.id || '')
+  const selectedId = String(selectedProject.value?.id || '')
+  const pendingOutlineId = String(technicalOutlinePendingProjectId.value || '')
+
+  // 目录生成是异步任务，项目列表接口的 technicalStatus 可能仍是 WAIT_CREATE。
+  // 左侧项目卡片和文档标签必须优先使用当前页面运行态，避免中间区域已显示“生成目录中”，左侧仍显示“待制作”。
+  if (projectId && pendingOutlineId && projectId === pendingOutlineId) {
+    return 'OUTLINE_GENERATING'
+  }
+
+  if (projectId && selectedId && projectId === selectedId) {
+    const solutionStatus = String(technicalSolution.value?.status || '').toUpperCase()
+    if (solutionStatus) return solutionStatus
+
+    const runningTask = technicalSolution.value?.runningTask
+    const runningStatus = String(runningTask?.status || '').toUpperCase()
+    if (['WAITING', 'RUNNING'].includes(runningStatus)) return 'CONTENT_GENERATING'
+
+    if (technicalGeneratingOutline.value) return 'OUTLINE_GENERATING'
+    if (technicalOutlines.value.length) {
+      const allDone = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.every(isTechnicalLeafDone)
+      return allDone ? 'DONE' : 'OUTLINE_READY'
+    }
+  }
+
+  return String(project?.technicalStatus || 'WAIT_CREATE').toUpperCase()
+}
+
+function patchSelectedProjectTechnicalStatus(status) {
+  const value = String(status || '').toUpperCase()
+  const id = String(selectedProject.value?.id || '')
+  if (!id || !value) return
+
+  selectedProject.value = { ...selectedProject.value, technicalStatus: value }
+  if (workflow.value?.project && String(workflow.value.project.id || '') === id) {
+    workflow.value = {
+      ...workflow.value,
+      project: { ...workflow.value.project, technicalStatus: value }
+    }
+  }
+  const index = projects.value.findIndex((item) => String(item.id || '') === id)
+  if (index >= 0) {
+    projects.value.splice(index, 1, { ...projects.value[index], technicalStatus: value })
+  }
+}
+
+function buildWorkflowDocuments() {
+  const base = Array.isArray(workflow.value?.documents) && workflow.value.documents.length
+    ? workflow.value.documents
+    : defaultDocuments(selectedProject.value)
+
+  return base.map((item) => {
+    if (item?.type !== 'TECHNICAL_SOLUTION') return item
+    const status = technicalDisplayStatus(selectedProject.value)
+    return {
+      ...item,
+      status,
+      statusLabel: statusLabel('TECHNICAL_SOLUTION', status),
+      statusType: statusType(status)
+    }
+  })
+}
+
 function defaultDocuments(project) {
   const parseStatus = String(project?.parseStatus || 'WAIT_PARSE').toUpperCase()
   return [
     doc('PARSE_REPORT', '解析报告', '招标解读', parseStatus, true),
     doc('BID_DOCUMENT', '投标文件', '商务标', project?.bidDocStatus || 'WAIT_PARSE', true),
-    doc('TECHNICAL_SOLUTION', '技术方案', '方案', project?.technicalStatus || 'WAIT_PARSE', true)
+    doc('TECHNICAL_SOLUTION', '技术方案', '方案', technicalDisplayStatus(project), true)
   ]
 }
 
@@ -2641,21 +2706,24 @@ function statusLabel(type, status) {
     if (value === 'FAILED') return '解析失败'
     return '待解析'
   }
-  if (value === 'DONE') return '已完成'
-  if (value === 'WAIT_CREATE') return '待制作'
+  if (value === 'DONE' || value === 'CONTENT_READY') return '已完成'
+  if (value === 'OUTLINE_GENERATING') return '目录生成中'
+  if (value === 'OUTLINE_READY') return '目录已生成'
+  if (value === 'CONTENT_GENERATING' || value === 'GENERATING') return '方案生成中'
   if (value === 'FILLING') return '制作中'
-  if (value === 'GENERATING') return '生成中'
   if (value === 'PARTIAL') return '部分完成'
   if (value === 'FAILED') return '失败'
-  return '待解析'
+  if (value === 'WAIT_CREATE' || value === 'INFO_READY') return '待制作'
+  if (value === 'WAIT_PARSE') return '待解析'
+  return '待制作'
 }
 
 function statusType(status) {
   const value = String(status || '').toUpperCase()
-  if (value === 'SUCCESS' || value === 'DONE') return 'success'
-  if (value === 'PARSING' || value === 'EXTRACTING' || value === 'FILLING' || value === 'GENERATING') return 'warning'
+  if (value === 'SUCCESS' || value === 'DONE' || value === 'CONTENT_READY') return 'success'
+  if (['PARSING', 'EXTRACTING', 'FILLING', 'GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING'].includes(value)) return 'warning'
   if (value === 'FAILED') return 'danger'
-  if (value === 'WAIT_CREATE') return 'primary'
+  if (value === 'WAIT_CREATE' || value === 'INFO_READY' || value === 'OUTLINE_READY') return 'primary'
   return 'info'
 }
 
@@ -2669,7 +2737,7 @@ function statusDotClass(project) {
 
 function projectStatusSummary(project) {
   if (!project) return '解析：待解析｜技术：待制作'
-  return `解析：${statusLabel('PARSE_REPORT', project.parseStatus)}｜技术：${statusLabel('TECHNICAL_SOLUTION', project.technicalStatus)}`
+  return `解析：${statusLabel('PARSE_REPORT', project.parseStatus)}｜技术：${statusLabel('TECHNICAL_SOLUTION', technicalDisplayStatus(project))}`
 }
 
 function onKeywordInput() {
@@ -3514,6 +3582,7 @@ async function generateTechnicalOutline() {
   const projectId = selectedProject.value.id
   technicalGeneratingOutline.value = true
   markTechnicalOutlinePending(projectId)
+  patchSelectedProjectTechnicalStatus('OUTLINE_GENERATING')
   // 点击生成目录后，立即切换到“生成预览目录”步骤，并在右侧显示生成中状态，避免用户误以为页面卡住。
   technicalStep.value = Math.max(technicalStep.value, 3)
 
