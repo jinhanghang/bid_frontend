@@ -41,6 +41,10 @@ export function getParseTask(taskId) {
   return request({ url: `/ai-solution/parse/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT })
 }
 
+export function cancelParseTask(taskId) {
+  return request({ url: `/ai-solution/parse/task/${taskId}/cancel`, method: 'post', timeout: NO_TIMEOUT })
+}
+
 export function saveRequirement(id, data) {
   return request({ url: `/ai-solution/${id}/requirement`, method: 'put', data })
 }
@@ -95,6 +99,10 @@ export function rewriteFull(id, data = {}) {
 
 export function getGenerationTask(taskId) {
   return request({ url: `/ai-solution/task/${taskId}`, method: 'get', timeout: NO_TIMEOUT, silentError: true })
+}
+
+export function cancelGenerationTask(taskId) {
+  return request({ url: `/ai-solution/task/${taskId}/cancel`, method: 'post', timeout: NO_TIMEOUT })
 }
 
 export function getCurrentUserRunningAiTask() {

@@ -143,6 +143,9 @@
                     <div class="upload-status" :class="parseTask.status?.toLowerCase()">
                       {{ parseTask.message || statusLabel(parseTask.status) }} {{ parseTask.progress || 0 }}%
                     </div>
+                    <div v-if="isParseTaskRunning" class="upload-task-actions">
+                      <el-button size="small" type="warning" plain :loading="parseCanceling" @click.stop="cancelCurrentParseTask">取消解析</el-button>
+                    </div>
                   </template>
                   <template v-else>
                     <el-icon class="upload-icon"><UploadFilled /></el-icon>
@@ -311,6 +314,20 @@
             <el-scrollbar class="detail-scroll">
               <el-progress :percentage="generatePercent" :show-text="false" color="#ff4d4f" />
               <div v-if="runningTaskText" class="task-running-tip">{{ runningTaskText }}</div>
+              <div v-if="currentGenerationTaskVisible" class="ai-task-status-card" :class="{ warning: hasOtherSolutionRunningTask && !currentGenerationTask }">
+                <div>
+                  <strong>{{ currentGenerationTaskStatusTitle }}</strong>
+                  <span>{{ currentGenerationTaskDetail }}</span>
+                </div>
+                <el-button
+                  v-if="canCancelCurrentGenerationTask"
+                  size="small"
+                  type="warning"
+                  plain
+                  :loading="generationCanceling"
+                  @click="cancelCurrentGenerationTask"
+                >取消任务</el-button>
+              </div>
               <OutlineTree :nodes="currentSolution.outlines" mode="generate" @preview="selectSectionPreview" @section-generate="openSectionDialog" />
             </el-scrollbar>
             <div class="detail-actions">
@@ -1161,6 +1178,8 @@ import {
   addOutlineNode,
   applyWordCountPreset,
   batchUpdateOutlineWordCount,
+  cancelGenerationTask,
+  cancelParseTask,
   createSolution,
   createRequirementItem,
   createRequirementScoreItem,
@@ -1249,12 +1268,15 @@ let outlineStatusPollingBusy = false
 const createStep = ref(0)
 const parseTask = ref(null)
 const parseLoading = ref(false)
+const parseCanceling = ref(false)
+const generationCanceling = ref(false)
 const outlineGenerating = ref(false)
 const creatingDraft = ref(false)
 const previewOutlinesLocal = ref([])
 const previewOutlines = computed(() => mode.value === 'create' ? previewOutlinesLocal.value : (currentSolution.value?.outlines || []))
 const outlineLeafCount = computed(() => flattenLeaf(previewOutlines.value).length)
 const parseDone = computed(() => parseTask.value?.status === 'SUCCESS')
+const isParseTaskRunning = computed(() => ['WAITING', 'PARSING', 'EXTRACTING'].includes(String(parseTask.value?.status || '').toUpperCase()))
 const outlineFinishedStatuses = ['OUTLINE_READY', 'WORD_COUNT_SET', 'CONTENT_GENERATING', 'CONTENT_PARTIAL', 'CONTENT_READY', 'DONE']
 const outlineGeneratingStatuses = ['OUTLINE_GENERATING']
 const hasOutlineFromBackend = computed(() => Array.isArray(currentSolution.value?.outlines) && currentSolution.value.outlines.length > 0)
@@ -1590,6 +1612,32 @@ const shellClass = computed(() => ({
 const hasRunningTask = computed(() => {
   const status = currentSolution.value?.runningTask?.status
   return status === 'WAITING' || status === 'RUNNING'
+})
+const currentGenerationTask = computed(() => {
+  const localTask = currentSolution.value?.runningTask
+  if (localTask && ['WAITING', 'RUNNING'].includes(String(localTask.status || '').toUpperCase())) return localTask
+  if (isGlobalAiTaskForCurrentSolution.value && isGlobalAiTaskRunning.value) return globalRunningTask.value
+  return null
+})
+const currentGenerationTaskVisible = computed(() => !!currentGenerationTask.value || hasOtherSolutionRunningTask.value)
+const currentGenerationTaskStatusTitle = computed(() => {
+  if (hasOtherSolutionRunningTask.value && !currentGenerationTask.value) return '已有其他 AI 任务占用'
+  const status = String(currentGenerationTask.value?.status || '').toUpperCase()
+  if (status === 'WAITING') return '任务排队中'
+  if (status === 'RUNNING') return '任务执行中'
+  return '任务处理中'
+})
+const currentGenerationTaskDetail = computed(() => {
+  if (hasOtherSolutionRunningTask.value && !currentGenerationTask.value) return otherSolutionRunningMessage.value
+  const task = currentGenerationTask.value
+  if (!task) return ''
+  const type = task.taskType === 'REWRITE_FULL' ? '重编全文' : (task.taskType === 'GENERATE_FULL' ? '生成全文' : (task.taskType || 'AI生成'))
+  const nodes = Number(task.totalNodes || 0) > 0 ? `，进度 ${task.finishedNodes || 0}/${task.totalNodes || 0} 章` : ''
+  return `${type}${nodes}。${safeTaskMessage(task.message, '任务正在执行，请稍候')}`
+})
+const canCancelCurrentGenerationTask = computed(() => {
+  const task = currentGenerationTask.value
+  return !!task?.id && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
 })
 const runningSolutionStatuses = ['CONTENT_GENERATING']
 function isSolutionGenerating(item) {
@@ -2533,6 +2581,30 @@ async function handleTenderFileChange(uploadFile) {
   }
 }
 
+async function cancelCurrentParseTask() {
+  const taskId = parseTask.value?.id
+  if (!taskId || parseCanceling.value) return
+  try {
+    await ElMessageBox.confirm('取消后当前解析结果不会继续回填，后续可重新上传文件解析。是否取消？', '取消解析任务', { type: 'warning', confirmButtonText: '取消解析', cancelButtonText: '继续等待' })
+  } catch (e) {
+    return
+  }
+  parseCanceling.value = true
+  try {
+    const task = await cancelParseTask(taskId)
+    parseTask.value = task || parseTask.value
+    clearInterval(parseTimer)
+    parseTimer = null
+    parseLoading.value = false
+    ElMessage.warning('解析任务已取消')
+    if (currentSolution.value?.id) await refreshCurrent(currentSolution.value.id)
+  } catch (e) {
+    notifyRequestError(e, '取消解析失败，请稍后重试')
+  } finally {
+    parseCanceling.value = false
+  }
+}
+
 function pollParseTask(taskId) {
   clearInterval(parseTimer)
 
@@ -3379,6 +3451,32 @@ function startSolutionTaskPolling(taskId) {
 
 function safeTaskMessage(message, fallback) {
   return normalizeStreamErrorMessage(message, fallback)
+}
+
+async function cancelCurrentGenerationTask() {
+  const task = currentGenerationTask.value
+  if (!task?.id || generationCanceling.value) return
+  try {
+    await ElMessageBox.confirm('取消后后台会在当前模型调用结束后的检查点停止，并保留可重试状态。是否取消？', '取消 AI 任务', { type: 'warning', confirmButtonText: '取消任务', cancelButtonText: '继续等待' })
+  } catch (e) {
+    return
+  }
+  generationCanceling.value = true
+  try {
+    const latest = await cancelGenerationTask(task.id)
+    clearSolutionTaskPending(task.id)
+    globalRunningTask.value = null
+    setCurrentFullGenerating(latest?.solutionId || task.solutionId, false)
+    if (isActiveSolution(latest?.solutionId || task.solutionId)) {
+      await refreshCurrent(latest?.solutionId || task.solutionId)
+    }
+    await loadList()
+    ElMessage.warning(safeTaskMessage(latest?.message || latest?.errorMessage, 'AI 任务已取消'))
+  } catch (e) {
+    notifyRequestError(e, '取消任务失败，请稍后重试')
+  } finally {
+    generationCanceling.value = false
+  }
 }
 
 async function pollGenerationTask(taskId, silent = true) {
@@ -4564,6 +4662,8 @@ const WritingDirectionEditor = defineComponent({
 .upload-name { margin: 12px 0; color: #4b5563; font-size: 15px; }
 .upload-status { color: #16a34a; }
 .upload-status.failed { color: #ef4444; }
+.upload-status.canceled { color: #f59e0b; }
+.upload-task-actions { margin-top: 10px; }
 .inline-title { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; font-weight: 700; }
 .outline-mode { margin-bottom: 10px; display: block; }
 .preview-head { display: flex; align-items: center; justify-content: space-between; height: 42px; padding: 0 14px; border-bottom: 1px solid #e5e7eb; }

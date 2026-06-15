@@ -566,6 +566,20 @@
                       </div>
                       <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                       <template v-else>
+                        <div v-if="isTechnicalRunningByBackend || hasOtherAiTaskRunning" class="tech-task-status-card" :class="{ waiting: isTechnicalTaskWaiting, running: isTechnicalTaskRunning, conflict: hasOtherAiTaskRunning }">
+                          <div class="tech-task-status-main">
+                            <el-tag size="small" :type="hasOtherAiTaskRunning ? 'warning' : (isTechnicalTaskWaiting ? 'info' : 'primary')">{{ hasOtherAiTaskRunning ? '任务占用' : (isTechnicalTaskWaiting ? '排队中' : '执行中') }}</el-tag>
+                            <div>
+                              <strong>{{ hasOtherAiTaskRunning ? '已有其他 AI 长任务正在执行' : technicalRunningTaskTypeLabel }}</strong>
+                              <p>{{ hasOtherAiTaskRunning ? '请等待当前用户其他 AI 任务完成后再发起新的技术方案生成。' : technicalRunningTaskMessage }}</p>
+                              <small>{{ technicalRunningTaskTip }}</small>
+                            </div>
+                          </div>
+                          <div v-if="isTechnicalRunningByBackend" class="tech-task-status-side">
+                            <span>{{ technicalRunningTaskProgress }}%</span>
+                            <el-button size="small" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">取消任务</el-button>
+                          </div>
+                        </div>
                         <el-progress
                           :percentage="technicalGeneratePercent"
                           :show-text="false"
@@ -1595,6 +1609,7 @@ import {
   generateBidProjectTechnicalFull,
   generateBidProjectTechnicalOutline,
   getBidProjectTechnicalTask,
+  cancelBidProjectTechnicalTask,
   getBidProjectTechnicalSolution,
   getBidProjectTechnicalVersion,
   listBidProjectTechnicalVersions,
@@ -1685,6 +1700,7 @@ const technicalTaskPending = reactive({ projectId: '', taskId: '' })
 const technicalTaskPollingBusy = ref(false)
 const technicalTaskPollErrorCount = ref(0)
 const technicalTaskPollTick = ref(0)
+const technicalTaskCanceling = ref(false)
 const globalAiRunningTask = ref(null)
 let globalAiTaskPoller = null
 const GLOBAL_AI_TASK_POLL_INTERVAL_MS = 10000
@@ -2100,19 +2116,34 @@ const canExportTechnicalWord = computed(() => {
   if (technicalSolution.value?.canExport === true) return true
   return technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.every(isTechnicalLeafDone)
 })
-const isTechnicalRunningByBackend = computed(() => {
-  const status = String(technicalSolution.value?.runningTask?.status || '').toUpperCase()
-  return ['WAITING', 'RUNNING'].includes(status)
-})
 const isGlobalAiTaskRunning = computed(() => ['WAITING', 'RUNNING'].includes(String(globalAiRunningTask.value?.status || '').toUpperCase()))
 const isGlobalAiTaskForCurrentTechnicalSolution = computed(() => {
   const currentSolutionId = String(technicalSolution.value?.id || '')
   return !!currentSolutionId && String(globalAiRunningTask.value?.solutionId || '') === currentSolutionId
 })
+const technicalRunningTask = computed(() => {
+  const currentTask = technicalSolution.value?.runningTask
+  if (currentTask && ['WAITING', 'RUNNING'].includes(String(currentTask.status || '').toUpperCase())) return currentTask
+  if (isGlobalAiTaskForCurrentTechnicalSolution.value && isGlobalAiTaskRunning.value) return globalAiRunningTask.value
+  return currentTask || null
+})
+const technicalRunningTaskStatus = computed(() => String(technicalRunningTask.value?.status || '').toUpperCase())
+const isTechnicalTaskWaiting = computed(() => technicalRunningTaskStatus.value === 'WAITING')
+const isTechnicalTaskRunning = computed(() => technicalRunningTaskStatus.value === 'RUNNING')
+const isTechnicalRunningByBackend = computed(() => ['WAITING', 'RUNNING'].includes(technicalRunningTaskStatus.value))
 const hasOtherAiTaskRunning = computed(() => isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentTechnicalSolution.value)
 const isTechnicalRewriteRunning = computed(() => {
-  const task = technicalSolution.value?.runningTask
+  const task = technicalRunningTask.value
   return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
+})
+const technicalRunningTaskTypeLabel = computed(() => technicalTaskTypeLabel(technicalRunningTask.value?.taskType))
+const technicalRunningTaskProgress = computed(() => Math.min(100, Math.max(0, Number(technicalRunningTask.value?.progress || 0))))
+const technicalRunningTaskMessage = computed(() => safeTechnicalTaskMessage(technicalRunningTask.value?.message || technicalRunningTask.value?.errorMessage, isTechnicalTaskWaiting.value ? '任务排队中' : '任务执行中'))
+const technicalRunningTaskTip = computed(() => {
+  if (hasOtherAiTaskRunning.value) return '已有其他 AI 长任务正在执行，当前页面会暂停新的生成入口。'
+  if (isTechnicalTaskWaiting.value) return '任务已进入队列，系统会自动开始执行，请不要重复提交。'
+  if (isTechnicalTaskRunning.value) return '任务正在后台执行，页面可继续查看进度，关闭页面不会中断任务。'
+  return ''
 })
 const isTechnicalBusy = computed(() => {
   return technicalGeneratingOutline.value
@@ -4192,8 +4223,54 @@ function startTechnicalTaskPolling(projectId, taskId) {
   }, TECHNICAL_TASK_POLL_INTERVAL_MS)
 }
 
+function technicalTaskTypeLabel(taskType) {
+  const type = String(taskType || '').toUpperCase()
+  if (type === 'REWRITE_FULL') return '重编全文'
+  if (type === 'GENERATE_FULL') return '生成正文'
+  if (type.includes('SECTION')) return '单章节生成'
+  if (type.includes('OUTLINE')) return '生成目录'
+  if (type.includes('EXPORT')) return '导出任务'
+  return 'AI任务'
+}
+
 function safeTechnicalTaskMessage(message, fallback) {
   return normalizeStreamErrorMessage(message, fallback)
+}
+
+async function cancelCurrentTechnicalTask() {
+  const task = technicalRunningTask.value
+  const projectId = selectedProject.value?.id
+  if (!projectId || !task?.id) {
+    ElMessage.warning('当前没有可取消的技术方案生成任务')
+    return
+  }
+  if (!['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
+    ElMessage.warning('当前任务已结束，无需取消')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('取消后系统会释放未结算的预占额度；如果模型调用已经发出，后台会在当前调用返回后停止继续生成。是否取消当前任务？', '取消AI生成任务', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '继续等待'
+    })
+  } catch (e) {
+    return
+  }
+  technicalTaskCanceling.value = true
+  try {
+    const canceled = await cancelBidProjectTechnicalTask(projectId, task.id)
+    globalAiRunningTask.value = null
+    clearTechnicalTaskPending(projectId, task.id)
+    fullGenerating.value = false
+    await loadTechnicalSolution()
+    await refreshWorkflow()
+    ElMessage.success(safeTechnicalTaskMessage(canceled?.message, '任务已取消'))
+  } catch (e) {
+    ElMessage.warning('取消任务失败，请稍后重试或到任务中心查看状态')
+  } finally {
+    technicalTaskCanceling.value = false
+  }
 }
 
 async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
@@ -8601,6 +8678,62 @@ const WritingDirectionEditor = defineComponent({
 .requirement-edit-form :deep(.el-textarea__inner) {
   line-height: 1.7;
 }
+.tech-task-status-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+.tech-task-status-card.waiting {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+.tech-task-status-card.conflict {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.tech-task-status-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.tech-task-status-main strong {
+  display: block;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.tech-task-status-main p {
+  margin: 2px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tech-task-status-main small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tech-task-status-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.tech-task-status-side span {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 @media (max-width: 1200px) {
   .requirement-extract-summary,
   .quality-stat-grid,

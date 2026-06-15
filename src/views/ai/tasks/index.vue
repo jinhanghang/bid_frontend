@@ -5,7 +5,10 @@
         <h2>AI任务中心</h2>
         <p>统一查看解析、生成、导出等长耗时任务，便于排查失败和运行状态。</p>
       </div>
-      <el-button type="primary" :loading="loading" @click="loadTasks">刷新</el-button>
+      <div class="header-actions">
+        <el-switch v-model="autoRefresh" active-text="自动刷新" inactive-text="手动刷新" @change="scheduleAutoRefresh" />
+        <el-button type="primary" :loading="loading" @click="loadTasks">刷新</el-button>
+      </div>
     </div>
 
     <div class="page-body ai-task-body">
@@ -25,6 +28,7 @@
               <el-option label="成功" value="SUCCESS" />
               <el-option label="部分成功" value="PARTIAL" />
               <el-option label="失败" value="FAILED" />
+              <el-option label="已取消" value="CANCELED" />
             </el-select>
           </div>
         </div>
@@ -59,6 +63,20 @@
             <el-table-column label="创建时间" width="180">
               <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
             </el-table-column>
+            <el-table-column label="操作" width="110" fixed="right" align="center">
+              <template #default="{ row }">
+                <el-button
+                  v-if="isCancelable(row)"
+                  link
+                  type="danger"
+                  :loading="cancelingId === row.id"
+                  @click="cancelTask(row)"
+                >取消</el-button>
+                <el-tooltip v-else :content="row.cancelTip || '当前任务不支持取消'" placement="top">
+                  <span class="task-action-disabled">-</span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
 
@@ -74,28 +92,36 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { pageAiTasks } from '@/api/aiTaskCenter'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { cancelAiTask, pageAiTasks } from '@/api/aiTaskCenter'
 import { formatDateTime } from '@/utils/format'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import PageFooterPager from '@/components/PageFooterPager.vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const loading = ref(false)
 const tasks = ref([])
 const total = ref(0)
 const tableHeight = ref(420)
+const cancelingId = ref('')
+const autoRefresh = ref(true)
+const hasRunningTasks = computed(() => tasks.value.some((task) => isRunningStatus(task.status)))
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', taskCategory: '', status: '' })
 let searchTimer = null
+let autoRefreshTimer = null
 
 onMounted(() => {
   updateTableHeight()
   window.addEventListener('resize', updateTableHeight)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   loadTasks()
 })
 
 onBeforeUnmount(() => {
   clearTimeout(searchTimer)
+  clearTimeout(autoRefreshTimer)
   window.removeEventListener('resize', updateTableHeight)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 
 function updateTableHeight() {
@@ -132,6 +158,58 @@ async function loadTasks() {
   } finally {
     loading.value = false
     updateTableHeight()
+    scheduleAutoRefresh()
+  }
+}
+
+
+function scheduleAutoRefresh() {
+  clearTimeout(autoRefreshTimer)
+  if (!autoRefresh.value || document.hidden || !hasRunningTasks.value) return
+  autoRefreshTimer = setTimeout(() => {
+    if (!loading.value && autoRefresh.value && !document.hidden) {
+      loadTasks()
+    }
+  }, 8000)
+}
+
+function onVisibilityChange() {
+  if (document.hidden) {
+    clearTimeout(autoRefreshTimer)
+    return
+  }
+  if (autoRefresh.value && hasRunningTasks.value) {
+    loadTasks()
+  }
+}
+
+function isRunningStatus(value) {
+  const status = String(value || '').toUpperCase()
+  return ['WAITING', 'PENDING', 'RUNNING', 'PARSING', 'EXTRACTING'].includes(status)
+}
+
+function isCancelable(row) {
+  return !!row?.cancelable && ['PARSE', 'GENERATE'].includes(String(row.taskCategory || '').toUpperCase()) && isRunningStatus(row.status)
+}
+
+async function cancelTask(row) {
+  if (!row?.id || !isCancelable(row)) return
+  try {
+    await ElMessageBox.confirm(
+      '取消后后台会在当前安全检查点停止任务，已发出的模型调用不会被强制中断。确定取消该任务吗？',
+      '取消AI任务',
+      { type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '再等等' }
+    )
+  } catch (e) {
+    return
+  }
+  cancelingId.value = row.id
+  try {
+    await cancelAiTask(row.taskCategory, row.id)
+    ElMessage.success('已提交取消请求')
+    await loadTasks()
+  } finally {
+    cancelingId.value = ''
   }
 }
 
@@ -153,6 +231,7 @@ function statusTagType(value) {
   const status = String(value || '').toUpperCase()
   if (status === 'SUCCESS') return 'success'
   if (status === 'FAILED') return 'danger'
+  if (status === 'CANCELED') return 'info'
   if (status === 'PARTIAL') return 'warning'
   if (status === 'RUNNING' || status === 'WAITING' || status === 'PENDING') return 'warning'
   return 'info'
@@ -221,6 +300,7 @@ function safeErrorMessage(value) {
 }
 
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
 .page-header h2 { margin: 0; font-size: 22px; }
 .page-header p { margin: 6px 0 0; color: #64748b; }
 .toolbar-left { display: flex; align-items: center; gap: 12px; }
@@ -228,4 +308,5 @@ function safeErrorMessage(value) {
 .toolbar-select { width: 150px; }
 .task-title { font-weight: 700; color: #1f2937; }
 .task-sub { margin-top: 4px; font-size: 12px; color: #94a3b8; }
+.task-action-disabled { color: #94a3b8; cursor: help; }
 </style>

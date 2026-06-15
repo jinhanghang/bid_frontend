@@ -249,6 +249,15 @@ export function getBidProjectTechnicalTask(id, taskId) {
   return request.get(`/bid-project/${id}/technical-solution/task/${taskId}`)
 }
 
+/**
+ * AI标书：取消技术方案生成任务
+ */
+export function cancelBidProjectTechnicalTask(id, taskId) {
+  return request.post(`/bid-project/${id}/technical-solution/task/${taskId}/cancel`, null, {
+    timeout: NO_TIMEOUT
+  })
+}
+
 
 /**
  * AI标书：技术方案历史版本列表
