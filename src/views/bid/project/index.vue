@@ -3521,7 +3521,8 @@ async function loadTechnicalSolution(options = {}) {
 
 function hydrateTechnicalOutlinesFromSolution(solution) {
   const outlines = getTechnicalOutlinesFromSolution(solution)
-  technicalOutlines.value = outlines.map(mapSolutionOutlineNode)
+  const nextOutlines = outlines.map(mapSolutionOutlineNode)
+  syncTechnicalOutlineTree(nextOutlines)
   if (technicalOutlines.value.length) {
     // 已经有目录时，直接进入“调整总字数”阶段；如果已有正文，则进入“生成方案”阶段。
     const leaves = flattenTechnicalLeaves(technicalOutlines.value)
@@ -3554,6 +3555,79 @@ function mapSolutionOutlineNode(node) {
     section: node.section || null,
     children: (node.children || []).map(mapSolutionOutlineNode)
   }
+}
+
+function syncTechnicalOutlineTree(nextOutlines) {
+  const normalized = Array.isArray(nextOutlines) ? nextOutlines : []
+  if (!normalized.length) {
+    if (technicalOutlines.value.length) technicalOutlines.value = []
+    return
+  }
+  if (!technicalOutlines.value.length) {
+    technicalOutlines.value = normalized
+    return
+  }
+  const currentSignature = technicalOutlineTreeSignature(technicalOutlines.value)
+  const nextSignature = technicalOutlineTreeSignature(normalized)
+  if (currentSignature === nextSignature) return
+  reconcileTechnicalOutlineArray(technicalOutlines.value, normalized)
+}
+
+function technicalOutlineTreeSignature(nodes = []) {
+  const parts = []
+  const walk = (items = []) => {
+    items.forEach((node) => {
+      const content = getTechnicalLeafContent(node) || ''
+      parts.push([
+        normalizeId(node?.id),
+        String(node?.title || ''),
+        String(node?.headingType || ''),
+        Number(node?.targetWordCount || node?.wordCount || 0),
+        Number(node?.actualWordCount || node?.section?.actualWordCount || 0),
+        String(node?.contentStatus || ''),
+        String(node?.section?.generateStatus || ''),
+        String(node?.section?.updatedAt || node?.section?.updateTime || node?.updatedAt || node?.updateTime || ''),
+        content.length,
+        content.slice(0, 24),
+        content.slice(-24),
+        Array.isArray(node?.children) ? node.children.length : 0
+      ].join('¦'))
+      walk(node?.children || [])
+    })
+  }
+  walk(nodes)
+  return parts.join('§')
+}
+
+function reconcileTechnicalOutlineArray(targetArray, sourceArray) {
+  const targetById = new Map()
+  ;(targetArray || []).forEach((node) => {
+    const key = normalizeId(node?.id)
+    if (key) targetById.set(key, node)
+  })
+  const nextArray = (sourceArray || []).map((sourceNode) => {
+    const key = normalizeId(sourceNode?.id)
+    const targetNode = key ? targetById.get(key) : null
+    if (!targetNode) return sourceNode
+    reconcileTechnicalOutlineNode(targetNode, sourceNode)
+    return targetNode
+  })
+  targetArray.splice(0, targetArray.length, ...nextArray)
+}
+
+function reconcileTechnicalOutlineNode(targetNode, sourceNode) {
+  Object.keys(targetNode || {}).forEach((key) => {
+    if (key !== 'children' && !Object.prototype.hasOwnProperty.call(sourceNode, key)) {
+      delete targetNode[key]
+    }
+  })
+  Object.keys(sourceNode || {}).forEach((key) => {
+    if (key === 'children') return
+    targetNode[key] = sourceNode[key]
+  })
+  const sourceChildren = Array.isArray(sourceNode?.children) ? sourceNode.children : []
+  if (!Array.isArray(targetNode.children)) targetNode.children = []
+  reconcileTechnicalOutlineArray(targetNode.children, sourceChildren)
 }
 
 function normalizeAiLevel(value) {
@@ -5288,8 +5362,10 @@ const OutlineTree = defineComponent({
   },
   emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate'],
   setup(props, { emit }) {
+    const nodeKey = (node, depth = 0) => String(node?.id || `${depth}-${node?.title || 'node'}`)
     const renderNode = (node, depth = 0) => {
       const hasChildren = node.children?.length
+      const key = nodeKey(node, depth)
       const checkbox = props.mode === 'delete'
         ? h(ElCheckbox, {
           modelValue: props.selected.includes(node.id),
@@ -5335,9 +5411,9 @@ const OutlineTree = defineComponent({
         }
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
-      return h('div', { class: 'tree-node-wrap' }, [
-        h('div', { class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : '', isSelected ? 'selected' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
-        hasChildren ? h('div', { class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
+      return h('div', { class: 'tree-node-wrap', key }, [
+        h('div', { key: `${key}-row`, class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : '', isSelected ? 'selected' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
+        hasChildren ? h('div', { key: `${key}-children`, class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
     return () => h('div', { class: 'outline-tree' }, props.nodes.map((node) => renderNode(node, 0)))
@@ -5349,8 +5425,10 @@ const WritingDirectionEditor = defineComponent({
   props: { nodes: { type: Array, default: () => [] }, streamingId: { type: [Number, String], default: null } },
   emits: ['ai-write', 'save'],
   setup(props, { emit }) {
+    const nodeKey = (node, depth = 0) => String(node?.id || `${depth}-${node?.title || 'node'}`)
     const renderNode = (node, depth = 0) => {
       const hasChildren = node.children?.length
+      const key = nodeKey(node, depth)
       const children = hasChildren ? node.children.map((child) => renderNode(child, depth + 1)) : []
       const editor = !hasChildren ? h('div', { class: 'direction-editor', style: { marginLeft: `${depth * 20 + 28}px` } }, [
         h('div', { class: 'mini-card-title' }, [
@@ -5364,8 +5442,8 @@ const WritingDirectionEditor = defineComponent({
         ]),
         h(ElInput, { modelValue: node.writingRequirement || '', type: 'textarea', rows: 3, maxlength: 10000, showWordLimit: true, placeholder: '请输入编写要求', 'onUpdate:modelValue': (v) => { node.writingRequirement = v } })
       ]) : null
-      return h('div', { class: 'direction-node' }, [
-        h('div', { class: 'tree-row', style: { paddingLeft: `${depth * 20}px` } }, [h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), h(ElInput, { modelValue: node.title, class: 'title-input', 'onUpdate:modelValue': (v) => { node.title = v } }), h(ElButton, { size: 'small', onClick: () => emit('save', node) }, () => '保存')]),
+      return h('div', { class: 'direction-node', key }, [
+        h('div', { key: `${key}-row`, class: 'tree-row', style: { paddingLeft: `${depth * 20}px` } }, [h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), h(ElInput, { modelValue: node.title, class: 'title-input', 'onUpdate:modelValue': (v) => { node.title = v } }), h(ElButton, { size: 'small', onClick: () => emit('save', node) }, () => '保存')]),
         editor,
         children
       ])
@@ -8029,6 +8107,7 @@ const WritingDirectionEditor = defineComponent({
 
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-node-wrap) {
   width: 100% !important;
+  contain: layout paint style !important;
 }
 
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row) {
