@@ -17,6 +17,7 @@
               <el-option label="资料解析" value="PARSE" />
               <el-option label="AI生成" value="GENERATE" />
               <el-option label="文档导出" value="EXPORT" />
+              <el-option label="知识库问答" value="ASK" />
             </el-select>
             <el-select v-model="query.status" clearable placeholder="状态" class="toolbar-select" @change="onFilterChange">
               <el-option label="等待中" value="WAITING" />
@@ -139,7 +140,7 @@ function formatTime(value) {
 }
 
 function categoryLabel(value) {
-  const map = { PARSE: '解析', GENERATE: '生成', EXPORT: '导出' }
+  const map = { PARSE: '解析', GENERATE: '生成', EXPORT: '导出', ASK: '问答' }
   return map[String(value || '').toUpperCase()] || value || '-'
 }
 

@@ -25,9 +25,6 @@ export function deleteCompanyMaterial(id) {
   return request.delete(`/company-material/${id}`)
 }
 
-export function getCompanyMaterialSummary(params) {
-  return request.get('/company-material/summary', { params })
-}
 
 export function addCompanyMaterialToKnowledge(id, data) {
   return request.post(`/company-material/${id}/to-knowledge`, data || {})
