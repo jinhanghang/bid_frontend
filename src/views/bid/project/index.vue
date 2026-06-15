@@ -1687,6 +1687,18 @@ const technicalTaskPollErrorCount = ref(0)
 const technicalTaskPollTick = ref(0)
 const globalAiRunningTask = ref(null)
 let globalAiTaskPoller = null
+const GLOBAL_AI_TASK_POLL_INTERVAL_MS = 10000
+const GLOBAL_AI_TASK_MIN_INTERVAL_MS = 3500
+const TECHNICAL_TASK_POLL_INTERVAL_MS = 6000
+const TECHNICAL_OUTLINE_POLL_INTERVAL_MS = 6000
+let globalAiRunningTaskPromise = null
+let lastGlobalAiRunningTaskAt = 0
+let technicalSolutionRequestPromise = null
+let technicalSolutionRequestProjectId = ''
+let workflowRefreshPromise = null
+let workflowRefreshProjectId = ''
+const technicalOutlinePollingBusy = ref(false)
+const technicalOutlinePollErrorCount = ref(0)
 const technicalSolutionLoadErrorCount = ref(0)
 const TECH_OUTLINE_PENDING_KEY = 'ai_bid_technical_outline_pending_project_id'
 const TECH_TASK_PENDING_KEY = 'ai_bid_technical_task_pending'
@@ -2593,7 +2605,7 @@ onBeforeUnmount(() => {
 
 function handleBidProjectVisibilityChange() {
   if (document.hidden) return
-  loadGlobalAiRunningTask()
+  loadGlobalAiRunningTask({ force: true })
   if (technicalOutlinePendingProjectId.value) {
     checkTechnicalOutlineReady(technicalOutlinePendingProjectId.value, true)
   }
@@ -2606,15 +2618,32 @@ function startGlobalAiTaskPolling() {
   clearInterval(globalAiTaskPoller)
   globalAiTaskPoller = setInterval(() => {
     if (!document.hidden) loadGlobalAiRunningTask()
-  }, 5000)
+  }, GLOBAL_AI_TASK_POLL_INTERVAL_MS)
 }
 
-async function loadGlobalAiRunningTask() {
-  try {
-    globalAiRunningTask.value = await getCurrentUserRunningAiTask()
-  } catch (e) {
-    globalAiRunningTask.value = null
+async function loadGlobalAiRunningTask(options = {}) {
+  const force = Boolean(options?.force)
+  const now = Date.now()
+  if (!force && globalAiRunningTaskPromise) return globalAiRunningTaskPromise
+  if (!force && now - lastGlobalAiRunningTaskAt < GLOBAL_AI_TASK_MIN_INTERVAL_MS) {
+    return globalAiRunningTask.value
   }
+
+  globalAiRunningTaskPromise = (async () => {
+    try {
+      const task = await getCurrentUserRunningAiTask()
+      globalAiRunningTask.value = task
+      return task
+    } catch (e) {
+      globalAiRunningTask.value = null
+      return null
+    } finally {
+      lastGlobalAiRunningTaskAt = Date.now()
+      globalAiRunningTaskPromise = null
+    }
+  })()
+
+  return globalAiRunningTaskPromise
 }
 
 
@@ -2866,10 +2895,30 @@ async function toggleProjectFold(project) {
   expandedProjectId.value = projectId
 }
 
-async function refreshWorkflow() {
-  if (!selectedProject.value?.id) return
-  await selectProject(selectedProject.value.id, false)
-  autoFillTechnicalRequirementAfterParse(false)
+async function refreshWorkflow(options = {}) {
+  const projectId = selectedProject.value?.id
+  if (!projectId) return null
+  const normalizedProjectId = String(projectId)
+  const force = Boolean(options?.force)
+  if (!force && workflowRefreshPromise && workflowRefreshProjectId === normalizedProjectId) {
+    return workflowRefreshPromise
+  }
+
+  workflowRefreshProjectId = normalizedProjectId
+  workflowRefreshPromise = (async () => {
+    await selectProject(projectId, false)
+    autoFillTechnicalRequirementAfterParse(false)
+    return workflow.value
+  })()
+
+  try {
+    return await workflowRefreshPromise
+  } finally {
+    if (workflowRefreshProjectId === normalizedProjectId) {
+      workflowRefreshProjectId = ''
+      workflowRefreshPromise = null
+    }
+  }
 }
 
 
@@ -3431,22 +3480,43 @@ function materialTypeLabel(type) {
   return map[String(type || '').toUpperCase()] || '其他资料'
 }
 
-async function loadTechnicalSolution() {
-  if (!selectedProject.value?.id) return
-  try {
-    technicalSolution.value = await getBidProjectTechnicalSolution(selectedProject.value.id)
-    technicalSolutionLoadErrorCount.value = 0
-    hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
-    syncTechnicalOverallRequirement()
-  } catch (e) {
-    // 查询超时/网络抖动时保留旧目录和旧任务状态，不清空页面。
-    // 清空会造成“切换页面后生成状态没了”的错觉。
-    technicalSolutionLoadErrorCount.value += 1
-    if (!technicalSolution.value && !technicalOutlines.value.length) {
-      technicalSolution.value = null
-      technicalOutlines.value = []
-    }
+async function loadTechnicalSolution(options = {}) {
+  const projectId = selectedProject.value?.id
+  if (!projectId) return null
+  const normalizedProjectId = String(projectId)
+  const force = Boolean(options?.force)
+  if (!force && technicalSolutionRequestPromise && technicalSolutionRequestProjectId === normalizedProjectId) {
+    return technicalSolutionRequestPromise
   }
+
+  technicalSolutionRequestProjectId = normalizedProjectId
+  technicalSolutionRequestPromise = (async () => {
+    try {
+      const solution = await getBidProjectTechnicalSolution(projectId)
+      if (String(selectedProject.value?.id || '') !== normalizedProjectId) return solution
+      technicalSolution.value = solution
+      technicalSolutionLoadErrorCount.value = 0
+      hydrateTechnicalOutlinesFromSolution(technicalSolution.value)
+      syncTechnicalOverallRequirement()
+      return solution
+    } catch (e) {
+      // 查询超时/网络抖动时保留旧目录和旧任务状态，不清空页面。
+      // 清空会造成“切换页面后生成状态没了”的错觉。
+      technicalSolutionLoadErrorCount.value += 1
+      if (!technicalSolution.value && !technicalOutlines.value.length) {
+        technicalSolution.value = null
+        technicalOutlines.value = []
+      }
+      return null
+    } finally {
+      if (technicalSolutionRequestProjectId === normalizedProjectId) {
+        technicalSolutionRequestProjectId = ''
+        technicalSolutionRequestPromise = null
+      }
+    }
+  })()
+
+  return technicalSolutionRequestPromise
 }
 
 function hydrateTechnicalOutlinesFromSolution(solution) {
@@ -4045,7 +4115,7 @@ function startTechnicalTaskPolling(projectId, taskId) {
   pollTechnicalGenerationTask(projectId, taskId, true)
   technicalTaskPoller.value = setInterval(() => {
     pollTechnicalGenerationTask(projectId, taskId, true)
-  }, 5000)
+  }, TECHNICAL_TASK_POLL_INTERVAL_MS)
 }
 
 function safeTechnicalTaskMessage(message, fallback) {
@@ -4366,7 +4436,7 @@ function startTechnicalOutlinePolling(projectId) {
   clearInterval(technicalOutlinePoller.value)
   technicalOutlinePoller.value = setInterval(() => {
     checkTechnicalOutlineReady(projectId, true)
-  }, 5000)
+  }, TECHNICAL_OUTLINE_POLL_INTERVAL_MS)
 }
 
 function isTechnicalOutlineGeneratingStatus(status) {
@@ -4380,9 +4450,11 @@ function technicalOutlineFailureMessage(solution) {
 }
 
 async function checkTechnicalOutlineReady(projectId, silent = true) {
-  if (!projectId || document.hidden) return false
+  if (!projectId || document.hidden || technicalOutlinePollingBusy.value) return false
+  technicalOutlinePollingBusy.value = true
   try {
     const solution = await getBidProjectTechnicalSolution(projectId)
+    technicalOutlinePollErrorCount.value = 0
     const outlines = getTechnicalOutlinesFromSolution(solution)
     const status = String(solution?.status || '').toUpperCase()
 
@@ -4419,7 +4491,10 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
     }
     return true
   } catch (e) {
+    technicalOutlinePollErrorCount.value += 1
     return false
+  } finally {
+    technicalOutlinePollingBusy.value = false
   }
 }
 

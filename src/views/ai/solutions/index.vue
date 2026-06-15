@@ -1236,6 +1236,15 @@ const solutionTaskPollingBusy = ref(false)
 const solutionTaskPollErrorCount = ref(0)
 const solutionTaskPollTick = ref(0)
 const globalRunningTask = ref(null)
+const GLOBAL_TASK_POLL_INTERVAL_MS = 10000
+const GLOBAL_TASK_MIN_INTERVAL_MS = 3500
+const SOLUTION_TASK_POLL_INTERVAL_MS = 6000
+const OUTLINE_STATUS_POLL_INTERVAL_MS = 6000
+let globalRunningTaskPromise = null
+let lastGlobalRunningTaskAt = 0
+let currentDetailRequestPromise = null
+let currentDetailRequestSolutionId = ''
+let outlineStatusPollingBusy = false
 
 const createStep = ref(0)
 const parseTask = ref(null)
@@ -1685,7 +1694,7 @@ onBeforeUnmount(() => {
 
 function handleSolutionVisibilityChange() {
   if (document.hidden) return
-  loadGlobalRunningTask()
+  loadGlobalRunningTask({ force: true })
   if (solutionTaskPending.taskId) {
     pollGenerationTask(solutionTaskPending.taskId, true)
   }
@@ -1697,15 +1706,32 @@ function startGlobalTaskPolling() {
   clearInterval(globalTaskTimer)
   globalTaskTimer = setInterval(() => {
     if (!document.hidden) loadGlobalRunningTask()
-  }, 5000)
+  }, GLOBAL_TASK_POLL_INTERVAL_MS)
 }
 
-async function loadGlobalRunningTask() {
-  try {
-    globalRunningTask.value = await getCurrentUserRunningAiTask()
-  } catch (e) {
-    globalRunningTask.value = null
+async function loadGlobalRunningTask(options = {}) {
+  const force = Boolean(options?.force)
+  const now = Date.now()
+  if (!force && globalRunningTaskPromise) return globalRunningTaskPromise
+  if (!force && now - lastGlobalRunningTaskAt < GLOBAL_TASK_MIN_INTERVAL_MS) {
+    return globalRunningTask.value
   }
+
+  globalRunningTaskPromise = (async () => {
+    try {
+      const task = await getCurrentUserRunningAiTask()
+      globalRunningTask.value = task
+      return task
+    } catch (e) {
+      globalRunningTask.value = null
+      return null
+    } finally {
+      lastGlobalRunningTaskAt = Date.now()
+      globalRunningTaskPromise = null
+    }
+  })()
+
+  return globalRunningTaskPromise
 }
 
 async function loadList(options = {}) {
@@ -2326,7 +2352,8 @@ function pollOutlineStatus(solutionId) {
   clearInterval(outlineTimer)
 
   const tick = async () => {
-    if (document.hidden) return
+    if (document.hidden || outlineStatusPollingBusy) return
+    outlineStatusPollingBusy = true
     try {
       const data = await getSolution(solutionId)
       if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
@@ -2363,11 +2390,13 @@ function pollOutlineStatus(solutionId) {
       // 目录生成期间详情查询可能偶发失败，不能清掉“目录生成中”状态。
       // 后端任务仍可能在继续执行，保留轮询，下一次成功后再刷新页面。
       outlineGenerating.value = true
+    } finally {
+      outlineStatusPollingBusy = false
     }
   }
 
   tick()
-  outlineTimer = setInterval(tick, 5000)
+  outlineTimer = setInterval(tick, OUTLINE_STATUS_POLL_INTERVAL_MS)
 }
 
 function calcCreateStep(solution, task) {
@@ -2789,14 +2818,32 @@ function toggleEditMode() {
   if (editMode.value) editTab.value = 'word'
 }
 
-async function refreshCurrent(expectedSolutionId = currentSolution.value?.id) {
+async function refreshCurrent(expectedSolutionId = currentSolution.value?.id, options = {}) {
   const solutionId = normalizeId(expectedSolutionId)
-  if (!solutionId) return
-  const data = await getSolution(solutionId)
-  if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return
-  applySolutionDetail(data)
-  resumeRunningTaskIfNeeded()
-  resumeParseTaskIfNeeded()
+  if (!solutionId) return null
+  const force = Boolean(options?.force)
+  if (!force && currentDetailRequestPromise && currentDetailRequestSolutionId === solutionId) {
+    return currentDetailRequestPromise
+  }
+
+  currentDetailRequestSolutionId = solutionId
+  currentDetailRequestPromise = (async () => {
+    const data = await getSolution(solutionId)
+    if (activeSolutionId.value && String(activeSolutionId.value) !== String(solutionId)) return data
+    applySolutionDetail(data)
+    resumeRunningTaskIfNeeded()
+    resumeParseTaskIfNeeded()
+    return data
+  })()
+
+  try {
+    return await currentDetailRequestPromise
+  } finally {
+    if (currentDetailRequestSolutionId === solutionId) {
+      currentDetailRequestSolutionId = ''
+      currentDetailRequestPromise = null
+    }
+  }
 }
 
 async function onNodeWordChange({ node, value }) {
@@ -3327,7 +3374,7 @@ function startSolutionTaskPolling(taskId) {
   pollGenerationTask(taskId, true)
   taskTimer = setInterval(() => {
     pollGenerationTask(taskId, true)
-  }, 5000)
+  }, SOLUTION_TASK_POLL_INTERVAL_MS)
 }
 
 function safeTaskMessage(message, fallback) {
