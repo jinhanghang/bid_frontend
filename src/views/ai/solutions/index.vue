@@ -1666,6 +1666,7 @@ watch(
 )
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', handleSolutionVisibilityChange)
   await loadGlobalRunningTask()
   await loadList()
   restoreSolutionTaskPending()
@@ -1673,6 +1674,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleSolutionVisibilityChange)
   clearTimeout(searchTimer)
   clearInterval(parseTimer)
   clearInterval(taskTimer)
@@ -1680,6 +1682,16 @@ onBeforeUnmount(() => {
   clearInterval(requirementExtractTimer)
   clearInterval(globalTaskTimer)
 })
+
+function handleSolutionVisibilityChange() {
+  if (document.hidden) return
+  loadGlobalRunningTask()
+  if (solutionTaskPending.taskId) {
+    pollGenerationTask(solutionTaskPending.taskId, true)
+  }
+  resumeParseTaskIfNeeded()
+  resumeOutlineTaskIfNeeded()
+}
 
 function startGlobalTaskPolling() {
   clearInterval(globalTaskTimer)
@@ -3318,6 +3330,10 @@ function startSolutionTaskPolling(taskId) {
   }, 5000)
 }
 
+function safeTaskMessage(message, fallback) {
+  return normalizeStreamErrorMessage(message, fallback)
+}
+
 async function pollGenerationTask(taskId, silent = true) {
   if (!taskId || solutionTaskPollingBusy.value) return
   if (document.hidden) return
@@ -3357,11 +3373,11 @@ async function pollGenerationTask(taskId, silent = true) {
       if (status === 'FAILED') {
         ElMessage.error('生成失败，请稍后重试')
       } else if (status === 'CANCELED') {
-        ElMessage.warning(task.message || '生成已取消')
+        ElMessage.warning(safeTaskMessage(task.message, '生成已取消'))
       } else if (status === 'PARTIAL') {
         ElMessage.warning('部分章节未生成完成，请重试未完成章节')
       } else {
-        ElMessage.success(task.message || '生成完成')
+        ElMessage.success(safeTaskMessage(task.message, '生成完成'))
       }
     }
   } catch (e) {
@@ -3829,6 +3845,8 @@ async function onExport() {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
     notifySolutionExportSuccess({ id: task.fileId, originalName: task.originalName }, a.download)
+  } catch (e) {
+    notifyRequestError(e, '导出失败，请稍后重试')
   } finally {
     exportLoading.value = false
   }

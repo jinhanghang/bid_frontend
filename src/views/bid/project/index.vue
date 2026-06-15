@@ -2566,6 +2566,7 @@ function requirementTypeTagType(type) {
 }
 
 onMounted(async () => {
+  document.addEventListener('visibilitychange', handleBidProjectVisibilityChange)
   await loadGlobalAiRunningTask()
   await loadProjects()
   startPolling()
@@ -2575,6 +2576,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', handleBidProjectVisibilityChange)
   clearTimeout(timer.value)
   clearTimeout(enterpriseKeywordTimer.value)
   clearInterval(poller.value)
@@ -2583,6 +2585,17 @@ onBeforeUnmount(() => {
   clearInterval(globalAiTaskPoller)
   clearInterval(technicalRequirementExtractTimer)
 })
+
+function handleBidProjectVisibilityChange() {
+  if (document.hidden) return
+  loadGlobalAiRunningTask()
+  if (technicalOutlinePendingProjectId.value) {
+    checkTechnicalOutlineReady(technicalOutlinePendingProjectId.value, true)
+  }
+  if (technicalTaskPending.projectId && technicalTaskPending.taskId) {
+    pollTechnicalGenerationTask(technicalTaskPending.projectId, technicalTaskPending.taskId, true)
+  }
+}
 
 function startGlobalAiTaskPolling() {
   clearInterval(globalAiTaskPoller)
@@ -3938,6 +3951,10 @@ function startTechnicalTaskPolling(projectId, taskId) {
   }, 5000)
 }
 
+function safeTechnicalTaskMessage(message, fallback) {
+  return normalizeStreamErrorMessage(message, fallback)
+}
+
 async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   if (!projectId || !taskId || technicalTaskPollingBusy.value) return
   if (document.hidden) return
@@ -3972,10 +3989,10 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
     }
 
     if (!silent) {
-      if (status === 'FAILED') ElMessage.error('生成失败，请稍后重试')
-      else if (status === 'PARTIAL') ElMessage.warning(task?.message || '部分章节未生成完成，请继续生成或重编失败章节')
-      else if (status === 'CANCELED') ElMessage.warning(task?.message || '生成已取消')
-      else ElMessage.success(task?.message || '技术方案正文生成完成')
+      if (status === 'FAILED') ElMessage.error(safeTechnicalTaskMessage(task?.message || task?.errorMessage, '生成失败，请稍后重试'))
+      else if (status === 'PARTIAL') ElMessage.warning(safeTechnicalTaskMessage(task?.message, '部分章节未生成完成，请继续生成或重编失败章节'))
+      else if (status === 'CANCELED') ElMessage.warning(safeTechnicalTaskMessage(task?.message, '生成已取消'))
+      else ElMessage.success(safeTechnicalTaskMessage(task?.message, '技术方案正文生成完成'))
     }
   } catch (e) {
     // 生成中的查询接口偶发超时，不能把本地“生成中”状态清掉。
@@ -4197,6 +4214,8 @@ async function exportTechnical() {
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
     notifyTechnicalWordExportSuccess({ id: task.fileId, originalName: task.originalName }, a.download)
+  } catch (e) {
+    notifyRequestError(e, '导出失败，请稍后重试')
   } finally {
     exportingWord.value = false
   }
