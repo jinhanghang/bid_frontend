@@ -1473,11 +1473,12 @@ function fileStatusClass(row = {}) {
 }
 
 function isFileParseSuccessWithIndexError(row = {}) {
-  return fileStatusLabel(row) === '解析成功' && Boolean(row.errorMsg)
+  return fileStatusLabel(row) === '解析成功' && Boolean(String(row.errorMsg || '').trim())
 }
 
 function hasFileStatusTip(row = {}) {
-  return Boolean(row.errorMsg)
+  if (isFileProcessing(row)) return false
+  return Boolean(String(row.errorMsg || '').trim())
 }
 
 function fileStatusTipLabel(row = {}) {
@@ -1489,11 +1490,13 @@ function fileStatusTipTagType(row = {}) {
 }
 
 function fileStatusTip(row = {}) {
-  if (!row.errorMsg) return ''
+  const errorMsg = String(row.errorMsg || '').trim()
+  if (!errorMsg) return ''
+  if (isFileProcessing(row)) return ''
   if (isFileParseSuccessWithIndexError(row)) {
     return '文件内容已解析成功，但检索索引同步异常；可能影响检索和问答命中。请检查 OpenSearch 配置或点击重新入库。'
   }
-  return row.errorMsg
+  return errorMsg
 }
 
 function formatFileSize(size) {
