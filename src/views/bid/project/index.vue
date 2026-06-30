@@ -602,6 +602,7 @@
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalWordCountDrawer">字数检查</el-button>
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalReviewDrawer">AI审稿</el-button>
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend" @click="openTechnicalVersionDialog">历史版本</el-button>
+                      <el-button v-if="technicalRetryableLeafCount > 0" class="detail-action-btn" size="large" type="warning" plain :disabled="!canRetryTechnicalFailedSections" @click="openTechnicalFullGenerateDialog('RETRY_FAILED')" :loading="fullGenerating || isTechnicalRunningByBackend">重试失败章节({{ technicalRetryableLeafCount }})</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
@@ -1642,6 +1643,7 @@ import {
   downloadFileResource,
   pageBidProjects,
   rewriteBidProjectTechnicalFull,
+  retryBidProjectTechnicalFailedSections,
   startReadTenderProject,
   streamBidProjectTechnicalSection,
   streamBidProjectTechnicalWritingDirection,
@@ -2041,6 +2043,15 @@ const technicalOutlineLeafCount = computed(() => {
 
 const technicalLeafNodes = computed(() => flattenTechnicalLeaves(technicalOutlines.value))
 const technicalFinishedLeafCount = computed(() => technicalLeafNodes.value.filter(isTechnicalLeafDone).length)
+const technicalRetryableLeafNodes = computed(() => technicalLeafNodes.value.filter(isTechnicalLeafRetryable))
+const technicalRetryableLeafCount = computed(() => technicalRetryableLeafNodes.value.length)
+const canRetryTechnicalFailedSections = computed(() => {
+  return !!selectedProject.value?.id
+    && technicalOutlines.value.length > 0
+    && technicalRetryableLeafCount.value > 0
+    && !isCurrentTechnicalOutlineGenerating.value
+    && !isTechnicalBusy.value
+})
 const technicalGeneratePercent = computed(() => {
   const task = technicalSolution.value?.runningTask
   if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
@@ -4009,6 +4020,12 @@ function technicalNeedsWordPreset() {
   return technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.some((node) => Number(node?.wordCount || node?.targetWordCount || 0) <= 0)
 }
 
+function technicalNeedsWordPresetForAction(action) {
+  const normalized = String(action || '').toUpperCase()
+  const nodes = normalized === 'RETRY_FAILED' ? technicalRetryableLeafNodes.value : technicalLeafNodes.value
+  return nodes.length > 0 && nodes.some((node) => Number(node?.wordCount || node?.targetWordCount || 0) <= 0)
+}
+
 function resetWordPresetSelection() {
   wordPreset.mode = ''
   wordPreset.wordCount = null
@@ -4093,16 +4110,19 @@ function resetFullGenerateBlindSetting() {
 
 function openTechnicalFullGenerateDialog(action = 'GENERATE') {
   if (!requireSelectedTechnicalAiLevel()) return
-  const isRewrite = String(action || '').toUpperCase() === 'REWRITE'
-  const allowed = isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value
+  const normalizedAction = String(action || '').toUpperCase()
+  const isRewrite = normalizedAction === 'REWRITE'
+  const isRetryFailed = normalizedAction === 'RETRY_FAILED'
+  const allowed = isRetryFailed ? canRetryTechnicalFailedSections.value : (isRewrite ? canRewriteTechnicalAll.value : canGenerateTechnicalContent.value)
   if (!allowed) {
     if (!technicalOutlines.value.length) ElMessage.warning('请先生成目录')
     else if (hasOtherAiTaskRunning.value) ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
     else if (isTechnicalBusy.value) ElMessage.warning('技术方案正在生成中，完成后再操作')
+    else if (isRetryFailed) ElMessage.warning('当前没有失败或未完成章节需要重试')
     else if (isRewrite) ElMessage.warning('暂无可重编的章节')
     return
   }
-  if (!isRewrite && technicalNeedsWordPreset()) {
+  if (!isRewrite && technicalNeedsWordPresetForAction(normalizedAction)) {
     openWordPresetDialog(action)
     ElMessage.warning('请先设置每个末级章节的目标字数')
     return
@@ -4117,7 +4137,8 @@ function openTechnicalFullGenerateDialog(action = 'GENERATE') {
 
 async function confirmTechnicalFullGenerate() {
   fullGenerateSettingVisible.value = false
-  await startTechnicalFullGenerate(fullGenerateAction.value === 'REWRITE', true)
+  const action = String(fullGenerateAction.value || 'GENERATE').toUpperCase()
+  await startTechnicalFullGenerate(action === 'REWRITE', true, { retryFailedOnly: action === 'RETRY_FAILED' })
 }
 
 function fullGeneratePreferenceText() {
@@ -4159,7 +4180,7 @@ async function applyTechnicalFullGeneratePreferences() {
   await loadTechnicalSolution()
 }
 
-async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) {
+async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false, options = {}) {
   if (!requireSelectedTechnicalAiLevel()) return
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
@@ -4194,9 +4215,11 @@ async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false) 
       anonymous: !!fullGenerateForm.blindBidEnabled,
       anonymousRequirement: fullGenerateForm.blindBidRequirement || ''
     }
-    const task = rewrite
-      ? await rewriteBidProjectTechnicalFull(selectedProject.value.id, payload)
-      : await generateBidProjectTechnicalFull(selectedProject.value.id, payload)
+    const task = options?.retryFailedOnly
+      ? await retryBidProjectTechnicalFailedSections(selectedProject.value.id, payload)
+      : (rewrite
+        ? await rewriteBidProjectTechnicalFull(selectedProject.value.id, payload)
+        : await generateBidProjectTechnicalFull(selectedProject.value.id, payload))
 
     if (task?.id) {
       globalAiRunningTask.value = task
@@ -4258,6 +4281,7 @@ function startTechnicalTaskPolling(projectId, taskId) {
 
 function technicalTaskTypeLabel(taskType) {
   const type = String(taskType || '').toUpperCase()
+  if (type === 'RETRY_FAILED') return '重试失败章节'
   if (type === 'REWRITE_FULL') return '重编全文'
   if (type === 'GENERATE_FULL') return '生成正文'
   if (type.includes('SECTION')) return '单章节生成'
@@ -5606,6 +5630,13 @@ function isOutlineGenerated(node) {
 function isOutlineFailed(node) {
   const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
   return status === 'FAILED'
+}
+
+function isTechnicalLeafRetryable(node) {
+  if (!node || isTechnicalLeafDone(node)) return false
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  const partialStatus = ['CONTENT_PARTIAL', 'CONTENT_GENERATING'].includes(String(technicalSolution.value?.status || '').toUpperCase())
+  return ['FAILED', 'STALE', 'GENERATING', 'LOCKED'].includes(status) || (technicalFinishedLeafCount.value > 0 && partialStatus)
 }
 
 function outlineActualWordCount(node) {

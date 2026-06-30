@@ -129,6 +129,14 @@
             </div>
             <el-button :disabled="!hasOutline || isOperationLocked" :loading="wordSaving" @click="onApplyWordPreset">应用</el-button>
             <el-button type="primary" :loading="fullGenerating" :disabled="!hasOutline || isOperationLocked" @click="onGenerateFull(false)">生成全文</el-button>
+            <el-button
+              v-if="retryableDocumentLeaves.length"
+              type="warning"
+              plain
+              :loading="fullGenerating"
+              :disabled="!canRetryDocumentFailedSections"
+              @click="onRetryFailedDocumentSections"
+            >重试失败章节({{ retryableDocumentLeaves.length }})</el-button>
             <el-button plain :loading="fullGenerating" :disabled="!hasOutline || isOperationLocked" @click="onGenerateFull(true)">重编</el-button>
             <el-button v-if="hasRunningTask" type="danger" plain :loading="taskCanceling" @click="onCancelDocumentTask">取消</el-button>
           </div>
@@ -140,6 +148,10 @@
             :show-text="false"
             :stroke-width="4"
           />
+          <div v-if="retryableDocumentLeaves.length && !hasRunningTask" class="failed-section-card">
+            <span>存在 {{ retryableDocumentLeaves.length }} 个失败/未完成章节：</span>
+            <strong>{{ retryableDocumentTitleText }}</strong>
+          </div>
         </section>
 
         <el-alert
@@ -588,6 +600,7 @@ import {
   listDocumentTypes,
   pageDocuments,
   rewriteDocumentFull,
+  retryFailedDocumentSections,
   saveDocumentForm,
   uploadDocumentReference,
   autoFillDocumentFromReference
@@ -667,6 +680,10 @@ const currentType = computed(() => documentTypes.value.find((item) => item.type 
 const currentFields = computed(() => (currentType.value?.fields || []).filter((field) => !isBasicDuplicateField(field)))
 const outlineTree = computed(() => currentDoc.value?.outlines || [])
 const leafNodes = computed(() => flattenLeaves(outlineTree.value))
+const documentDoneLeafCount = computed(() => leafNodes.value.filter(isDocumentLeafDone).length)
+const retryableDocumentLeaves = computed(() => leafNodes.value.filter(isDocumentLeafRetryable))
+const retryableDocumentTitleText = computed(() => briefDocumentNodeList(retryableDocumentLeaves.value))
+const canRetryDocumentFailedSections = computed(() => !!currentDoc.value?.id && retryableDocumentLeaves.value.length > 0 && !isOperationLocked.value && !fullGenerating.value)
 const hasOutline = computed(() => outlineTree.value.length > 0)
 const isOutlineGenerating = computed(() => outlineLoading.value || isOutlineGeneratingStatus(currentDoc.value?.status))
 const hasRunningTask = computed(() => ['WAITING', 'RUNNING'].includes(String(runningTask.value?.status || '').toUpperCase()))
@@ -719,8 +736,20 @@ const OutlineNodeList = defineComponent({
   },
   emits: ['select'],
   setup(props, { emit }) {
-    const statusLabel = (node) => node?.section?.content ? '已生成' : '待生成'
-    const statusType = (node) => node?.section?.content ? 'success' : 'info'
+    const statusLabel = (node) => {
+      const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+      if (status === 'FAILED') return '失败'
+      if (['GENERATING', 'LOCKED'].includes(status)) return '生成中'
+      if (status === 'STALE') return '待重试'
+      return node?.section?.content ? '已生成' : '待生成'
+    }
+    const statusType = (node) => {
+      const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+      if (status === 'FAILED') return 'danger'
+      if (['GENERATING', 'LOCKED'].includes(status)) return 'warning'
+      if (node?.section?.content) return 'success'
+      return 'info'
+    }
     const nodeBadgeText = (depth, isLeaf) => {
       if (isLeaf) return '条'
       if (depth === 0) return '章'
@@ -1530,6 +1559,29 @@ async function onGenerateFull(rewrite) {
   }
 }
 
+async function onRetryFailedDocumentSections() {
+  await loadGlobalRunningTask()
+  if (hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
+    return
+  }
+  if (!canRetryDocumentFailedSections.value) return
+  if (!currentDoc.value?.id) return
+  fullGenerating.value = true
+  try {
+    await saveDocumentForm(currentDoc.value.id, buildFormPayload())
+    const task = await retryFailedDocumentSections(currentDoc.value.id, { writingStyle: form.writingStyle })
+    runningTask.value = task
+    globalRunningTask.value = task
+    pollGenerationTask(task.id)
+    ElMessage.info('已开始重试失败章节')
+  } catch (e) {
+    notifyRequestError(e, '重试失败章节失败')
+  } finally {
+    fullGenerating.value = false
+  }
+}
+
 async function onCancelDocumentTask() {
   const taskId = runningTask.value?.id
   if (!taskId || taskCanceling.value) return
@@ -1784,6 +1836,26 @@ async function onDelete(item) {
   if (currentDoc.value?.id === item.id) resetWorkspace()
   await loadDocuments()
   ElMessage.success('已删除，记录已进入回收站')
+}
+
+function isDocumentLeafDone(node) {
+  if (!node) return false
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  if (['GENERATING', 'STALE', 'FAILED', 'LOCKED'].includes(status)) return false
+  return status === 'SUCCESS' || !!String(node?.section?.content || '').trim()
+}
+
+function isDocumentLeafRetryable(node) {
+  if (!node || isDocumentLeafDone(node)) return false
+  const status = String(node?.contentStatus || node?.section?.generateStatus || '').toUpperCase()
+  const partialStatus = ['CONTENT_PARTIAL', 'CONTENT_GENERATING'].includes(String(currentDoc.value?.status || '').toUpperCase())
+  return ['FAILED', 'STALE', 'GENERATING', 'LOCKED'].includes(status) || (documentDoneLeafCount.value > 0 && partialStatus)
+}
+
+function briefDocumentNodeList(nodes, limit = 5) {
+  const list = (nodes || []).slice(0, limit).map((node) => `「${node?.title || '未命名章节'}」`)
+  const remain = Math.max(0, (nodes || []).length - limit)
+  return remain > 0 ? `${list.join('、')} 等 ${nodes.length} 个章节` : list.join('、')
 }
 
 function flattenLeaves(nodes = []) {
@@ -3369,6 +3441,20 @@ function fallbackTypes() {
   left: 16px;
   right: 16px;
   bottom: -1px;
+}
+
+.failed-section-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  color: #8c5a00;
+  font-size: 12px;
+}
+
+.failed-section-card strong {
+  font-weight: 600;
 }
 
 .generate-dock .task-progress :deep(.el-progress-bar__outer) {

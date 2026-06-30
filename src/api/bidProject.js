@@ -243,6 +243,17 @@ export function rewriteBidProjectTechnicalFull(id, data = {}) {
 }
 
 /**
+ * AI标书：技术方案只重试失败/未完成章节
+ */
+export function retryBidProjectTechnicalFailedSections(id, data = {}) {
+  const payload = { ...(data || {}), retryFailedOnly: true }
+  if (!payload.requestId) payload.requestId = createRequestId(`bid_${id}_tech_retry_failed`)
+  return request.post(`/bid-project/${id}/technical-solution/content/generate-full`, payload, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
  * AI标书：技术方案生成任务详情
  */
 export function getBidProjectTechnicalTask(id, taskId) {

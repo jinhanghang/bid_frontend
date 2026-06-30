@@ -81,6 +81,12 @@ export function rewriteDocumentFull(id, data = {}) {
   return request({ url: `/ai-document/${id}/content/rewrite-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
 }
 
+export function retryFailedDocumentSections(id, data = {}) {
+  const payload = { ...(data || {}), retryFailedOnly: true }
+  if (!payload.requestId) payload.requestId = createRequestId(`document_${id}_retry_failed`)
+  return request({ url: `/ai-document/${id}/content/generate-full`, method: 'post', data: payload, timeout: NO_TIMEOUT })
+}
+
 export function getDocumentGenerationTask(taskId) {
   return request({ url: `/ai-document/task/${taskId}`, method: 'get', silentError: true })
 }
