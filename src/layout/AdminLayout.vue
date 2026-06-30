@@ -85,7 +85,6 @@ import {
   Download,
   Files,
   House,
-  MagicStick,
   Notebook,
   Refresh,
   Tickets
@@ -123,7 +122,6 @@ const quota = reactive({
 
 const productMenus = computed(() => [
   { title: '首页', path: '/dashboard', icon: House },
-  { title: 'AI方案', path: '/ai/solutions', icon: MagicStick },
   { title: 'AI文档', path: '/ai/documents', icon: Notebook },
   { title: 'AI任务', path: '/ai/tasks', icon: DataBoard },
   { title: 'AI标书', path: '/ai-bid', icon: Files },

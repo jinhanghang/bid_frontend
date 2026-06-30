@@ -270,7 +270,7 @@ export function reviewSolutionByAi(id) {
 }
 
 
-// 兼容 AI方案页面使用的命名：AI方案审稿
+// 兼容内部生成引擎使用的命名：生成成果审稿
 export function runSolutionAiReview(id) {
   return reviewSolutionByAi(id)
 }

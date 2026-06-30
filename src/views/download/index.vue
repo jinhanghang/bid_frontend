@@ -4,7 +4,7 @@
       <div class="page-title-row">
         <span class="title-mark"></span>
         <span>下载中心</span>
-        <span class="title-tip">AI方案 / AI标书 / AI文档导出的 Word / PDF 成果文件统一在这里下载。</span>
+        <span class="title-tip">AI标书 / AI文档导出的 Word / PDF 成果文件统一在这里下载。</span>
       </div>
 
       <div class="toolbar-row">
@@ -26,7 +26,7 @@
           @change="reloadFirstPage"
           @clear="reloadFirstPage"
         >
-          <el-option label="AI方案" value="ai_solution" />
+          <el-option label="历史生成成果" value="ai_solution" />
           <el-option label="AI标书" value="bid_tech" />
           <el-option label="AI文档" value="ai_document" />
         </el-select>
@@ -182,7 +182,7 @@ function isFileAvailable(row) {
 
 function sourceTypeLabel(row) {
   const source = String(row?.sourceType || '').toLowerCase()
-  if (source === 'ai_solution') return 'AI方案'
+  if (source === 'ai_solution') return '历史生成成果'
   if (source === 'bid_tech' || source === 'bid') return 'AI标书'
   if (source === 'ai_document') return 'AI文档'
   return '其他'

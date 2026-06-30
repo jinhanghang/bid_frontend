@@ -198,7 +198,7 @@ export function enterTechnicalSolution(id) {
 }
 
 /**
- * AI标书：技术方案详情（后台内部方案，不跳 AI方案菜单）
+ * AI标书：技术方案详情（后台内部生成成果，不跳独立产品入口）
  */
 export function getBidProjectTechnicalSolution(id) {
   return request.get(`/bid-project/${id}/technical-solution`)

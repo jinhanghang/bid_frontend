@@ -218,7 +218,7 @@
           <div class="model-flow-steps">
             <span>套餐/项目选择 AI等级</span>
             <em>→</em>
-            <span>AI方案 / AI文档 / 知识库问答传入场景</span>
+            <span>AI文档 / AI标书 / 知识库问答传入场景</span>
             <em>→</em>
             <span>模型管理按“场景 + 等级”解析真实模型</span>
             <em>→</em>
@@ -337,7 +337,7 @@
 
     <el-dialog v-model="diagnoseDialog.visible" title="模型配置体检" width="1080px" destroy-on-close>
       <el-alert type="info" :closable="false" show-icon class="model-alert">
-        体检不会真实调用大模型，只检查当前配置在 AI方案、AI文档、知识库问答等场景下最终会命中哪个 Chat 模型。
+        体检不会真实调用大模型，只检查当前配置在 AI文档、AI标书、知识库问答等场景下最终会命中哪个 Chat 模型。
       </el-alert>
       <el-table v-loading="diagnoseDialog.loading" :data="diagnoseDialog.records" class="ui-table" height="560">
         <el-table-column prop="sceneName" label="业务场景" min-width="170" show-overflow-tooltip />
@@ -784,7 +784,7 @@ function quotaIssueTypeText(value) {
 
 function quotaSceneText(value) {
   const map = {
-    ai_solution: 'AI方案',
+    ai_solution: '历史生成成果',
     ai_document: 'AI文档',
     ai_bid: 'AI标书',
     register: '注册赠送',
@@ -842,9 +842,9 @@ function scopeText(row) {
 function effectModulesText(row) {
   const type = String(row?.modelType || '').toLowerCase()
   if (type === 'rerank') return '知识库检索排序增强预留'
-  if (!row?.sceneCode) return 'AI方案、AI文档、知识库问答通用兜底'
-  if (row.sceneCode === 'SOLUTION_AI_REVIEW') return 'AI方案、AI文档、AI标书审稿链路'
-  if (String(row.sceneCode).startsWith('SOLUTION_')) return 'AI方案、AI文档、AI标书生成链路'
+  if (!row?.sceneCode) return 'AI文档、AI标书、知识库问答通用兜底'
+  if (row.sceneCode === 'SOLUTION_AI_REVIEW') return 'AI文档、AI标书审稿链路'
+  if (String(row.sceneCode).startsWith('SOLUTION_')) return 'AI文档、AI标书生成链路'
   if (row.sceneCode === 'KNOWLEDGE_RETRIEVAL_SUMMARY') return '知识库问答总结'
   return '通用AI生成'
 }

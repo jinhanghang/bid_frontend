@@ -190,7 +190,7 @@
                 <div class="panel-head">
                   <div>
                     <h3>营业执照</h3>
-                    <p>维护企业注册信息，后续标书、AI方案可直接引用。</p>
+                    <p>维护企业注册信息，后续 AI标书、AI文档可直接引用。</p>
                   </div>
                 </div>
                 <el-form label-position="top" class="archive-form" :disabled="!canEditCurrentArchive">

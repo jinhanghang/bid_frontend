@@ -11,7 +11,6 @@ const TemplateVariableManage = () => import('@/views/bid/templateVariables/index
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const MaterialLibraryLayout = () => import('@/views/material/MaterialLibraryLayout.vue')
 const ImageLibraryManage = () => import('@/views/material/image/index.vue')
-const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiDocument = () => import('@/views/ai/documents/index.vue')
 const AiTasks = () => import('@/views/ai/tasks/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
@@ -58,7 +57,7 @@ const routes = [
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
       { path: 'bid/company-materials', redirect: '/materials/company' },
 
-      { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
+      { path: 'ai/solutions', redirect: '/ai-bid' },
       { path: 'ai/documents', component: AiDocument, meta: { title: 'AI文档生成', requiresBusiness: true } },
       { path: 'ai/tasks', component: AiTasks, meta: { title: 'AI任务中心' } },
       { path: 'ai/models', component: GenericCrudView, meta: { title: '模型配置', configKey: 'aiModel', roles: [ROLE_SUPER_ADMIN] } },

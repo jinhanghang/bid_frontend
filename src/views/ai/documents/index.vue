@@ -2970,7 +2970,7 @@ function fallbackTypes() {
 </style>
 
 
-<!-- AI文档大纲与正文区域最终样式：参考 AI方案目录树，固定右侧状态列，当前章节提示改为信息图标悬浮展示。 -->
+<!-- AI文档大纲与正文区域最终样式：参考内部生成引擎目录树，固定右侧状态列，当前章节提示改为信息图标悬浮展示。 -->
 <style scoped>
 .outline-panel {
   padding: 18px 20px;
@@ -3241,7 +3241,7 @@ function fallbackTypes() {
 }
 </style>
 
-<!-- AI文档工作台最终细化：目录按 AI方案树形目录展示，去掉内部滚动条，生成区收敛为工具条。 -->
+<!-- AI文档工作台最终细化：目录按内部生成引擎树形目录展示，去掉内部滚动条，生成区收敛为工具条。 -->
 <style scoped>
 .work-header {
   margin-bottom: 12px;
@@ -3656,7 +3656,7 @@ function fallbackTypes() {
 }
 </style>
 
-<!-- AI文档工作台最终减法：去掉整体页面滚动条，目录按 AI方案行式目录展示，当前章节压缩到单行。 -->
+<!-- AI文档工作台最终减法：去掉整体页面滚动条，目录按内部生成引擎行式目录展示，当前章节压缩到单行。 -->
 <style>
 .ai-doc-page {
   height: calc(100vh - 76px) !important;

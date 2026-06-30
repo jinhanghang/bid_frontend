@@ -6,7 +6,7 @@
           <div class="welcome-title">恒鼎·智慧AI工作台</div>
           <div class="welcome-sub">
             <template v-if="isPersonalWorkspace">
-              当前账号还没有绑定企业，可先使用 AI方案、AI文档、AI标书、个人知识库等个人空间功能；企业资料、团队协作和企业级共享资料需要提交企业申请并审核通过后使用。
+              当前账号还没有绑定企业，可先使用 AI文档、AI标书、个人知识库等个人空间功能；企业资料、团队协作和企业级共享资料需要提交企业申请并审核通过后使用。
             </template>
             <template v-else>
               从项目创建、资料准备、AI生成到正式 Word/PDF 导出，集中查看当前企业的标书业务进展。
@@ -24,7 +24,7 @@
         <div class="enterprise-options">
           <div class="enterprise-option">
             <div class="option-title">可以先用个人空间</div>
-            <div class="option-desc">AI方案、AI文档、AI标书、个人知识库、下载中心等数据会按当前账号隔离保存，不会进入任何企业。</div>
+            <div class="option-desc">AI文档、AI标书、个人知识库、下载中心等数据会按当前账号隔离保存，不会进入任何企业。</div>
           </div>
           <div class="enterprise-option">
             <div class="option-title">需要企业后再申请</div>

@@ -1912,7 +1912,7 @@ const aiLevels = [
   { value: 'FLAGSHIP', label: '旗舰版', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
 ]
 
-// AI标书项目复用 AI方案引擎，方案类型不能只在界面上显示。
+// AI标书项目复用内部生成引擎，方案类型不能只在界面上显示。
 // 这里让二级类型跟随一级类型变化，避免选择“工程”时还只能选“系统集成/软件开发”等 IT 子类型。
 const technicalSubTypeMap = {
   SERVICE: ['物业管理', '审计服务', '广告印刷', '车辆维修', '医疗服务', '咨询服务', '运维服务'],
@@ -3918,7 +3918,7 @@ function collectTechnicalFullGenerateKnowledgeIds() {
   ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIds || ''))
   ids.push(...normalizeKnowledgeIds(workflow.value?.knowledgeIdList || []))
 
-  // 技术方案本质上复用 AI方案，历史章节上可能已经保存过知识库选择。
+  // 技术方案本质上复用内部生成引擎，历史章节上可能已经保存过知识库选择。
   const walk = (nodes = []) => {
     nodes.forEach((node) => {
       ids.push(...normalizeKnowledgeIds(node.knowledgeIds || ''))
@@ -7019,7 +7019,7 @@ const WritingDirectionEditor = defineComponent({
 /* ============================================================
    v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
    这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
-   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .tech-detail-top {
   padding: 18px 20px 12px !important;
@@ -7251,7 +7251,7 @@ const WritingDirectionEditor = defineComponent({
 /* ============================================================
    v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
    这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
-   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .tech-detail-top {
   padding: 18px 20px 12px !important;
@@ -7334,7 +7334,7 @@ const WritingDirectionEditor = defineComponent({
 </style>
 
 <style scoped>
-/* v18：技术方案进入目录/正文阶段后，按 AI方案详情页布局展示：左侧目录，右侧结果预览。 */
+/* v18：技术方案进入目录/正文阶段后，按 生成成果详情区布局展示：左侧目录，右侧结果预览。 */
 .bid-tech-body.generated {
   grid-template-columns: minmax(0, 50%) minmax(0, 50%);
 }
@@ -7524,7 +7524,7 @@ const WritingDirectionEditor = defineComponent({
 /* ============================================================
    v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
    这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
-   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .tech-detail-top {
   padding: 18px 20px 12px !important;
@@ -7637,7 +7637,7 @@ const WritingDirectionEditor = defineComponent({
 /* ============================================================
    v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
    这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
-   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .tech-detail-top {
   padding: 18px 20px 12px !important;
@@ -7721,7 +7721,7 @@ const WritingDirectionEditor = defineComponent({
 
 
 <style scoped>
-/* v19：目录/正文阶段严格贴近 AI方案详情页：无步骤条，左目录右结果，知识库进入“方案设置”弹窗。 */
+/* v19：目录/正文阶段严格贴近 生成成果详情区：无步骤条，左目录右结果，知识库进入“方案设置”弹窗。 */
 .bid-tech-body.generated {
   height: 100%;
 }
@@ -7893,7 +7893,7 @@ const WritingDirectionEditor = defineComponent({
   width: 100%;
 }
 
-/* AI标书-技术方案：生成后布局按 AI方案详情页压缩成“左目录 + 右结果” */
+/* AI标书-技术方案：生成后布局按 生成成果详情区压缩成“左目录 + 右结果” */
 .solution-like-progress-wrap {
   padding: 8px 0 14px;
   border-bottom: 1px solid #eef2f8;
@@ -7943,7 +7943,7 @@ const WritingDirectionEditor = defineComponent({
 /* ============================================================
    v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
    这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
-   使标题、字数统计、正文预览继续贴近 AI方案详情页。
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .tech-detail-top {
   padding: 18px 20px 12px !important;
@@ -8025,7 +8025,7 @@ const WritingDirectionEditor = defineComponent({
 
 
 /* ============================================================
-   v27：目录树区域严格贴近 AI方案详情页。
+   v27：目录树区域严格贴近 生成成果详情区。
    只调整目录区样式，不改操作流程、不改接口、不改折叠/删除逻辑。
    ============================================================ */
 .ai-bid-page .bid-tech-body.generated .solution-like-progress-wrap {
@@ -8176,7 +8176,7 @@ const WritingDirectionEditor = defineComponent({
 }
 
 
-/* AI标书技术方案编辑区：直接复用 AI方案页面的交互样式 */
+/* AI标书技术方案编辑区：直接复用 内部生成引擎交互的交互样式 */
 .ai-solution-like-detail {
   height: 100%;
   display: flex;
@@ -8580,7 +8580,7 @@ const WritingDirectionEditor = defineComponent({
 </style>
 
 <style scoped>
-/* 统一 AI标书技术方案生成页样式：对齐 AI方案的目录树、字数列、状态列和右侧正文预览 */
+/* 统一 AI标书技术方案生成页样式：对齐 内部生成引擎的目录树、字数列、状态列和右侧正文预览 */
 .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
   padding: 18px 20px;
   border-bottom: 1px solid #e5e7eb;

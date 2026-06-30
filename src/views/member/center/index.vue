@@ -193,7 +193,7 @@ function isSystemPlan(plan) {
 
 function sceneText(value) {
   const map = {
-    ai_solution: 'AI方案',
+    ai_solution: '历史生成成果',
     ai_document: 'AI文档',
     ai_bid: 'AI标书',
     register: '注册赠送',
