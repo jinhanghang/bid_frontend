@@ -63,8 +63,9 @@
             <el-table-column label="创建时间" width="180">
               <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
             </el-table-column>
-            <el-table-column label="操作" width="110" fixed="right" align="center">
+            <el-table-column label="操作" width="150" fixed="right" align="center">
               <template #default="{ row }">
+                <el-button link type="primary" :loading="detailLoading && detailTaskId === row.id" @click="openTaskDetail(row)">详情</el-button>
                 <el-button
                   v-if="isCancelable(row)"
                   link
@@ -72,9 +73,6 @@
                   :loading="cancelingId === row.id"
                   @click="cancelTask(row)"
                 >取消</el-button>
-                <el-tooltip v-else :content="row.cancelTip || '当前任务不支持取消'" placement="top">
-                  <span class="task-action-disabled">-</span>
-                </el-tooltip>
               </template>
             </el-table-column>
           </el-table>
@@ -88,14 +86,87 @@
         />
       </div>
     </div>
+
+
+    <el-drawer
+      v-model="detailVisible"
+      title="任务详情"
+      size="720px"
+      destroy-on-close
+      class="task-detail-drawer"
+    >
+      <div v-loading="detailLoading" class="task-detail">
+        <template v-if="taskDetail?.task">
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="任务名称">{{ taskDetail.task.taskName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="任务状态">
+              <el-tag :type="statusTagType(taskDetail.task.status)" size="small">{{ statusLabel(taskDetail.task.status) }}</el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="业务类型">{{ taskDetail.bizLabel || categoryLabel(taskDetail.task.taskCategory) }}</el-descriptions-item>
+            <el-descriptions-item label="生成成果">{{ taskDetail.solutionName || taskDetail.solutionId || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="进度">{{ safePercent(taskDetail.task.progress) }}%</el-descriptions-item>
+            <el-descriptions-item label="节点">{{ taskDetail.task.finishedNodes || 0 }}/{{ taskDetail.task.totalNodes || 0 }}，失败 {{ taskDetail.task.failedNodes || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="开始时间">{{ formatTime(taskDetail.task.startTime) }}</el-descriptions-item>
+            <el-descriptions-item label="完成时间">{{ formatTime(taskDetail.task.finishTime) }}</el-descriptions-item>
+            <el-descriptions-item label="消息" :span="2">{{ taskDetail.task.message || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="失败原因" :span="2">{{ safeErrorMessage(taskDetail.task.errorMessage) }}</el-descriptions-item>
+          </el-descriptions>
+
+          <div class="detail-section-head">
+            <div>
+              <h3>失败 / 未完成章节</h3>
+              <p>{{ taskDetail.retryFailedTip || '查看失败章节原因，支持逐章重试。' }}</p>
+            </div>
+            <el-button
+              v-if="taskDetail.canRetryFailed && taskDetail.solutionId"
+              type="primary"
+              plain
+              :loading="retryingAll"
+              @click="retryAllFailedSections"
+            >重试全部失败章节</el-button>
+          </div>
+
+          <el-empty v-if="!taskDetail.failedSections?.length" description="暂无失败或未完成章节" />
+          <el-table v-else :data="taskDetail.failedSections" border stripe size="small" class="failed-section-table">
+            <el-table-column label="章节" min-width="180">
+              <template #default="{ row }">
+                <div class="section-title">{{ row.title || '未命名章节' }}</div>
+                <div class="section-sub">目标 {{ row.targetWordCount || 0 }} 字，实际 {{ row.actualWordCount || 0 }} 字</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="130">
+              <template #default="{ row }">
+                <el-tag size="small" type="warning">{{ row.contentStatus || row.generateStatus || '未完成' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="原因" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ safeErrorMessage(row.failureReason) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="center">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="!row.retryable"
+                  :loading="retryingSectionId === row.outlineId"
+                  @click="retrySingleSection(row)"
+                >重试本章</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </template>
+      </div>
+    </el-drawer>
+
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { cancelAiTask, pageAiTasks } from '@/api/aiTaskCenter'
+import { cancelAiTask, getAiTaskDetail, pageAiTasks } from '@/api/aiTaskCenter'
 import { formatDateTime } from '@/utils/format'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
+import { generateFull, streamSection } from '@/api/aiSolution'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -104,6 +175,12 @@ const tasks = ref([])
 const total = ref(0)
 const tableHeight = ref(420)
 const cancelingId = ref('')
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailTaskId = ref('')
+const taskDetail = ref(null)
+const retryingAll = ref(false)
+const retryingSectionId = ref('')
 const autoRefresh = ref(true)
 const hasRunningTasks = computed(() => tasks.value.some((task) => isRunningStatus(task.status)))
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', taskCategory: '', status: '' })
@@ -190,6 +267,78 @@ function isRunningStatus(value) {
 
 function isCancelable(row) {
   return !!row?.cancelable && ['PARSE', 'GENERATE'].includes(String(row.taskCategory || '').toUpperCase()) && isRunningStatus(row.status)
+}
+
+
+async function openTaskDetail(row) {
+  if (!row?.id || !row?.taskCategory) return
+  detailVisible.value = true
+  detailTaskId.value = row.id
+  await loadTaskDetail(row.taskCategory, row.id)
+}
+
+async function loadTaskDetail(taskCategory, taskId) {
+  detailLoading.value = true
+  try {
+    taskDetail.value = await getAiTaskDetail(taskCategory, taskId)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function retryAllFailedSections() {
+  const solutionId = taskDetail.value?.solutionId
+  if (!solutionId || retryingAll.value) return
+  try {
+    await ElMessageBox.confirm(
+      '将只重试失败或未完成章节，不覆盖已成功章节。确定继续？',
+      '重试失败章节',
+      { type: 'warning', confirmButtonText: '开始重试', cancelButtonText: '取消' }
+    )
+  } catch (e) {
+    return
+  }
+  retryingAll.value = true
+  try {
+    await generateFull(solutionId, { retryFailedOnly: true, requestId: `task_center_retry_${solutionId}_${Date.now()}` })
+    ElMessage.success('已提交失败章节重试任务')
+    await loadTasks()
+    if (taskDetail.value?.task?.taskCategory && taskDetail.value?.task?.id) {
+      await loadTaskDetail(taskDetail.value.task.taskCategory, taskDetail.value.task.id)
+    }
+  } catch (e) {
+    ElMessage.error(safeErrorMessage(e?.message || e))
+  } finally {
+    retryingAll.value = false
+  }
+}
+
+async function retrySingleSection(row) {
+  if (!row?.outlineId || retryingSectionId.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定重新生成章节“${row.title || '未命名章节'}”？本次只覆盖该章节正文。`,
+      '重试本章',
+      { type: 'warning', confirmButtonText: '开始重试', cancelButtonText: '取消' }
+    )
+  } catch (e) {
+    return
+  }
+  retryingSectionId.value = row.outlineId
+  try {
+    await streamSection(row.outlineId, { overwrite: true }, {
+      onError: (message) => { throw new Error(safeErrorMessage(message)) }
+    })
+    ElMessage.success('章节已重新生成')
+    await loadTasks()
+    if (taskDetail.value?.task?.taskCategory && taskDetail.value?.task?.id) {
+      await loadTaskDetail(taskDetail.value.task.taskCategory, taskDetail.value.task.id)
+    }
+  } catch (e) {
+    ElMessage.error(safeErrorMessage(e?.message || e))
+  } finally {
+    retryingSectionId.value = ''
+  }
 }
 
 async function cancelTask(row) {
@@ -309,4 +458,11 @@ function safeErrorMessage(value) {
 .task-title { font-weight: 700; color: #1f2937; }
 .task-sub { margin-top: 4px; font-size: 12px; color: #94a3b8; }
 .task-action-disabled { color: #94a3b8; cursor: help; }
+.task-detail { min-height: 240px; }
+.detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0 12px; }
+.detail-section-head h3 { margin: 0; font-size: 16px; color: #1f2937; }
+.detail-section-head p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+.failed-section-table { width: 100%; }
+.section-title { font-weight: 700; color: #1f2937; }
+.section-sub { margin-top: 4px; color: #94a3b8; font-size: 12px; }
 </style>

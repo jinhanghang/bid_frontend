@@ -5,6 +5,10 @@ export function pageAiTasks(params) {
 }
 
 
+export function getAiTaskDetail(taskCategory, taskId) {
+  return request({ url: `/ai-task-center/${taskCategory}/${taskId}/detail`, method: 'get', timeout: 0, silentError: true })
+}
+
 export function cancelAiTask(taskCategory, taskId) {
   return request({ url: `/ai-task-center/${taskCategory}/${taskId}/cancel`, method: 'post', timeout: 0 })
 }
