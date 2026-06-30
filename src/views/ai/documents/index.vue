@@ -130,6 +130,7 @@
             <el-button :disabled="!hasOutline || isOperationLocked" :loading="wordSaving" @click="onApplyWordPreset">应用</el-button>
             <el-button type="primary" :loading="fullGenerating" :disabled="!hasOutline || isOperationLocked" @click="onGenerateFull(false)">生成全文</el-button>
             <el-button plain :loading="fullGenerating" :disabled="!hasOutline || isOperationLocked" @click="onGenerateFull(true)">重编</el-button>
+            <el-button v-if="hasRunningTask" type="danger" plain :loading="taskCanceling" @click="onCancelDocumentTask">取消</el-button>
           </div>
           <el-progress
             v-if="runningTask"
@@ -583,6 +584,7 @@ import {
   getDocumentDuplicateCheck,
   compressDocumentDuplicateSections,
   reviewDocumentByAi,
+  cancelDocumentGenerationTask,
   listDocumentTypes,
   pageDocuments,
   rewriteDocumentFull,
@@ -611,6 +613,7 @@ const outlineLoading = ref(false)
 const wordSaving = ref(false)
 const wordPresetDialogVisible = ref(false)
 const fullGenerating = ref(false)
+const taskCanceling = ref(false)
 const exportLoading = ref(false)
 const sectionGenerating = ref(false)
 const sectionSaving = ref(false)
@@ -1524,6 +1527,35 @@ async function onGenerateFull(rewrite) {
     pollGenerationTask(task.id)
   } finally {
     fullGenerating.value = false
+  }
+}
+
+async function onCancelDocumentTask() {
+  const taskId = runningTask.value?.id
+  if (!taskId || taskCanceling.value) return
+  try {
+    await ElMessageBox.confirm('确认取消当前AI文档生成任务？已经发出的模型请求会在返回后停止保存和继续生成。', '取消生成任务', {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '继续生成'
+    })
+  } catch (e) {
+    return
+  }
+  taskCanceling.value = true
+  try {
+    const canceled = await cancelDocumentGenerationTask(taskId)
+    runningTask.value = canceled
+    globalRunningTask.value = null
+    clearInterval(taskTimer)
+    taskTimer = null
+    await refreshCurrentLight({ skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+    await loadDocuments()
+    ElMessage.warning(normalizeStreamErrorMessage(canceled?.message, '生成任务已取消'))
+  } catch (e) {
+    notifyRequestError(e, '取消任务失败，请稍后重试或到任务中心查看状态')
+  } finally {
+    taskCanceling.value = false
   }
 }
 

@@ -85,6 +85,10 @@ export function getDocumentGenerationTask(taskId) {
   return request({ url: `/ai-document/task/${taskId}`, method: 'get', silentError: true })
 }
 
+export function cancelDocumentGenerationTask(taskId) {
+  return request({ url: `/ai-document/task/${taskId}/cancel`, method: 'post', timeout: NO_TIMEOUT })
+}
+
 
 export function getDocumentExportCheck(id) {
   return request({ url: `/ai-document/${id}/export-check`, method: 'get', timeout: NO_TIMEOUT })
