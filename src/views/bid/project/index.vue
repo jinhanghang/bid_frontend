@@ -626,6 +626,7 @@
                     </div>
                     <div class="section-preview-actions">
                       <template v-if="technicalSectionContentEditMode">
+                        <el-button size="small" plain :disabled="!canInsertTechnicalImage" @click="openTechnicalImagePicker">插入图片</el-button>
                         <el-button size="small" :disabled="technicalSectionContentSaving" @click="cancelEditTechnicalSectionContent">取消</el-button>
                         <el-button size="small" type="primary" :loading="technicalSectionContentSaving" :disabled="!technicalSectionContentDirty" @click="saveTechnicalSectionContent">保存</el-button>
                       </template>
@@ -637,6 +638,14 @@
                           @click="copyTechnicalSectionContent"
                         >
                           复制正文
+                        </el-button>
+                        <el-button
+                          size="small"
+                          plain
+                          :disabled="!canInsertTechnicalImage"
+                          @click="openTechnicalImagePicker"
+                        >
+                          插入图片
                         </el-button>
                         <el-button
                           size="small"
@@ -697,6 +706,7 @@
                   />
                   <el-input
                     v-if="technicalSectionContentEditMode"
+                    ref="technicalSectionEditorRef"
                     v-model="technicalSectionContentDraft"
                     class="section-content-editor"
                     type="textarea"
@@ -708,7 +718,16 @@
                     @keydown.meta.s.prevent="saveTechnicalSectionContent"
                   />
                   <div v-if="technicalSectionContentEditMode" class="section-editor-tip">已启用手动编辑，按 Ctrl + S 可快速保存；切换章节或取消时会提醒是否放弃未保存修改。</div>
-                  <div v-else class="section-content-preview">{{ selectedTechnicalLeafDisplayContent }}</div>
+                  <SectionContentPreview
+                    v-else
+                    class="section-content-preview"
+                    :content="selectedTechnicalLeafDisplayContent"
+                    :editable="canEditTechnicalSectionContent && !isTechnicalRunningByBackend"
+                    @update-width="updateTechnicalImageWidth"
+                    @update-align="updateTechnicalImageAlign"
+                    @edit-caption="editTechnicalImageCaption"
+                    @delete-reference="deleteTechnicalImageReference"
+                  />
                 </div>
                 <div v-else class="result-main-empty">
                   <el-empty :description="selectedTechnicalLeaf ? '当前章节尚未生成正文，可点击目录行右侧生成本段' : '右侧用于预览章节正文。生成完成后会自动选中第一个已生成章节。'" :image-size="120" />
@@ -1575,6 +1594,8 @@
       </template>
     </el-dialog>
 
+    <ImageLibraryPicker v-model="imagePickerVisible" :chapter-title="selectedTechnicalLeaf?.title || ''" @insert="insertTechnicalImage" />
+
   </div>
 </template>
 
@@ -1584,6 +1605,8 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from '@/plugins/element-plus-api'
 import { notifyRequestError } from '@/utils/errorNotify'
+import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
+import SectionContentPreview from '@/components/SectionContentPreview.vue'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { pageEnterprises } from '@/api/enterprise'
@@ -1740,6 +1763,8 @@ const technicalStreamingOutlineId = ref(null)
 const technicalSectionContentEditMode = ref(false)
 const technicalSectionContentDraft = ref('')
 const technicalSectionContentSaving = ref(false)
+const technicalSectionEditorRef = ref(null)
+const imagePickerVisible = ref(false)
 const sectionNode = ref(null)
 const sectionDialogVisible = ref(false)
 const sectionGenerating = ref(false)
@@ -2086,6 +2111,14 @@ const canEditTechnicalSectionContent = computed(() => {
     && !isTechnicalBusy.value
     && !sectionGenerating.value
     && !sectionOptimizing.value
+})
+const canInsertTechnicalImage = computed(() => {
+  return !!selectedTechnicalLeaf.value?.id
+    && !!selectedTechnicalLeafContent.value
+    && !isTechnicalBusy.value
+    && !sectionGenerating.value
+    && !sectionOptimizing.value
+    && !technicalSectionContentSaving.value
 })
 const canOptimizeTechnicalSection = computed(() => {
   return !!selectedTechnicalLeaf.value?.id
@@ -5229,6 +5262,187 @@ async function onRestoreTechnicalVersionSection(section) {
   }
 }
 
+
+function openTechnicalImagePicker() {
+  if (!selectedTechnicalLeaf.value?.id) {
+    ElMessage.warning('请先选择要插图的章节')
+    return
+  }
+  if (!canInsertTechnicalImage.value) {
+    ElMessage.warning('当前章节暂不能插入图片，请等待生成任务完成')
+    return
+  }
+  if (!technicalSectionContentEditMode.value) {
+    startEditTechnicalSectionContent()
+  }
+  imagePickerVisible.value = true
+}
+
+function insertTechnicalImage(payload) {
+  if (!payload) return
+  const marker = payload.marker || buildImageMarker(payload)
+  if (!marker) {
+    ElMessage.warning('图片信息不完整，无法插入')
+    return
+  }
+  const current = String(technicalSectionContentDraft.value || '')
+  const prefix = current.trimEnd()
+  technicalSectionContentDraft.value = `${prefix}${prefix ? '\n\n' : ''}${marker}\n`
+  technicalSectionContentEditMode.value = true
+  nextTick(() => focusTechnicalSectionEditor(true))
+  ElMessage.success('图片已插入正文，请保存本章')
+}
+
+function buildImageMarker(payload) {
+  const image = payload?.image || payload
+  const fileId = image?.fileResourceId || image?.fileId
+  if (!fileId) return ''
+  const caption = sanitizeImageCaption(payload?.caption || image?.description || image?.imageName || image?.originalName || '图片')
+  const width = normalizeImageWidth(payload?.width || 680)
+  const align = normalizeImageAlign(payload?.align || 'center')
+  return buildTechnicalImageMarker({
+    fileId,
+    alt: caption,
+    width,
+    align,
+    imageId: image?.id || ''
+  })
+}
+
+function buildTechnicalImageMarker({ fileId, alt, width, align, imageId }) {
+  const safeAlt = sanitizeImageCaption(alt || '图片')
+  const params = new URLSearchParams()
+  params.set('width', String(normalizeImageWidth(width || 680)))
+  params.set('align', normalizeImageAlign(align || 'center'))
+  if (imageId) params.set('imageId', String(imageId))
+  return `![${safeAlt}](aibid-file://${fileId}?${params.toString()})`
+}
+
+function sanitizeImageCaption(value) {
+  return String(value || '图片')
+    .replace(/[\[\]()]|\r|\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120) || '图片'
+}
+
+function normalizeImageWidth(value) {
+  const width = Number(value || 680)
+  if (!Number.isFinite(width)) return 680
+  return Math.min(Math.max(Math.round(width), 120), 1200)
+}
+
+function normalizeImageAlign(value) {
+  return ['left', 'center', 'right'].includes(String(value || '')) ? String(value) : 'center'
+}
+
+function parseTechnicalImageMarker(line = '') {
+  const match = String(line || '').trim().match(/^!\[([^\]]*)\]\(aibid-file:\/\/([^)?\s]+)(?:\?([^)]*))?\)$/)
+  if (!match) return null
+  const query = {}
+  String(match[3] || '').split('&').forEach((item) => {
+    if (!item) return
+    const [key, value] = item.split('=')
+    if (!key) return
+    try {
+      query[decodeURIComponent(key)] = decodeURIComponent(value || '')
+    } catch (e) {
+      query[key] = value || ''
+    }
+  })
+  return {
+    alt: match[1],
+    fileId: match[2],
+    width: query.width || 680,
+    align: query.align || 'center',
+    imageId: query.imageId || ''
+  }
+}
+
+function findTechnicalImageLineIndex(lines, block) {
+  const lineIndex = Number(block?.lineIndex)
+  if (Number.isInteger(lineIndex) && lines[lineIndex]?.trim() === String(block?.rawLine || '').trim()) {
+    return lineIndex
+  }
+  if (block?.rawLine) {
+    const index = lines.findIndex((line) => line.trim() === String(block.rawLine).trim())
+    if (index >= 0) return index
+  }
+  if (block?.fileId) {
+    return lines.findIndex((line) => line.includes(`aibid-file://${block.fileId}`))
+  }
+  return -1
+}
+
+function applyTechnicalImageMarkerChange(block, nextLine, message = '图片设置已更新，请保存本章') {
+  const source = String(technicalSectionContentEditMode.value ? technicalSectionContentDraft.value : selectedTechnicalLeafContent.value || '')
+  const lines = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const index = findTechnicalImageLineIndex(lines, block)
+  if (index < 0) {
+    ElMessage.warning('未找到图片引用，请刷新后重试')
+    return
+  }
+  if (nextLine === null) {
+    lines.splice(index, 1)
+    if (lines[index] === '' && lines[index - 1] === '') lines.splice(index, 1)
+  } else {
+    lines[index] = nextLine
+  }
+  technicalSectionContentDraft.value = lines.join('\n')
+  technicalSectionContentEditMode.value = true
+  nextTick(() => focusTechnicalSectionEditor())
+  ElMessage.success(message)
+}
+
+function focusTechnicalSectionEditor(moveToEnd = false) {
+  const input = technicalSectionEditorRef.value?.textarea || technicalSectionEditorRef.value?.$el?.querySelector?.('textarea')
+  if (!input) return
+  input.focus()
+  if (moveToEnd) input.selectionStart = input.selectionEnd = input.value.length
+}
+
+function updateTechnicalImageWidth({ block, width }) {
+  const parsed = parseTechnicalImageMarker(block?.rawLine)
+  if (!parsed) return
+  applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, width }), '图片宽度已调整，请保存本章')
+}
+
+function updateTechnicalImageAlign({ block, align }) {
+  const parsed = parseTechnicalImageMarker(block?.rawLine)
+  if (!parsed) return
+  applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, align }), '图片对齐方式已调整，请保存本章')
+}
+
+async function editTechnicalImageCaption({ block }) {
+  const parsed = parseTechnicalImageMarker(block?.rawLine)
+  if (!parsed) return
+  try {
+    const { value } = await ElMessageBox.prompt('请输入图片说明，只修改当前章节中的说明，不会修改图片库原图。', '编辑图片说明', {
+      inputValue: parsed.alt || '',
+      inputPlaceholder: '例如：图 2-1 施工现场塔吊作业情况',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      inputValidator: (value) => String(value || '').trim().length > 0 || '图片说明不能为空'
+    })
+    applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, alt: value }), '图片说明已修改，请保存本章')
+  } catch (e) {
+    // 用户取消。
+  }
+}
+
+async function deleteTechnicalImageReference({ block }) {
+  try {
+    await ElMessageBox.confirm('只删除当前章节中的图片引用，不会删除资料库图片。确认删除？', '删除图片引用', {
+      type: 'warning',
+      confirmButtonText: '删除引用',
+      cancelButtonText: '取消'
+    })
+    applyTechnicalImageMarkerChange(block, null, '图片引用已删除，请保存本章')
+  } catch (e) {
+    // 用户取消。
+  }
+}
+
 async function saveTechnicalSectionContent() {
   if (!selectedTechnicalLeaf.value?.id) return
   const content = normalizeSectionContent(technicalSectionContentDraft.value)
@@ -8110,14 +8324,16 @@ const WritingDirectionEditor = defineComponent({
 }
 .section-preview-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
   margin-bottom: 18px;
 }
 .section-preview-title {
   min-width: 0;
-  flex: 1 1 auto;
+  width: 100%;
+  flex: none;
 }
 .section-preview-title h3 {
   margin: 0;
@@ -8125,7 +8341,8 @@ const WritingDirectionEditor = defineComponent({
   font-size: 22px;
   line-height: 1.45;
   font-weight: 800;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 .section-preview-meta {
   display: flex;
@@ -8138,16 +8355,19 @@ const WritingDirectionEditor = defineComponent({
 }
 .section-preview-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+  width: 100%;
   flex-shrink: 0;
 }
 .section-content-preview {
   font-size: 18px;
   line-height: 1.9;
   color: #0f2747;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 .section-content-editor :deep(.el-textarea__inner) {
   font-size: 16px;
@@ -8478,6 +8698,7 @@ const WritingDirectionEditor = defineComponent({
 .ai-bid-page .bid-tech-right .section-preview-title h3 {
   font-size: 22px;
   line-height: 1.45;
+  max-width: 100%;
 }
 
 .ai-bid-page .bid-tech-right .section-content-preview {
@@ -8485,6 +8706,7 @@ const WritingDirectionEditor = defineComponent({
   min-height: 0;
   overflow-y: auto;
   margin: 0;
+  padding-right: 6px;
   font-size: 17px;
   line-height: 1.9;
 }

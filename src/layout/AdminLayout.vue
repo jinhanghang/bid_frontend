@@ -84,7 +84,6 @@ import {
   Delete,
   Download,
   Files,
-  Folder,
   House,
   MagicStick,
   Notebook,
@@ -128,8 +127,7 @@ const productMenus = computed(() => [
   { title: 'AI文档', path: '/ai/documents', icon: Notebook },
   { title: 'AI任务', path: '/ai/tasks', icon: DataBoard },
   { title: 'AI标书', path: '/ai-bid', icon: Files },
-  { title: '知识库', path: '/knowledge/bases', icon: Folder },
-  { title: '资料库', path: '/materials', icon: Tickets },
+  { title: '资料库', path: '/materials/company', activePrefix: '/materials', icon: Tickets },
   { title: '标讯商机', path: '/tender/notice', icon: DataBoard },
   { title: '下载中心', path: '/download-center', icon: Download },
   { title: '回收站', path: '/recycle-bin', icon: Delete }
@@ -138,6 +136,7 @@ const productMenus = computed(() => [
 function isMenuActive(item) {
   if (item.path === '/dashboard') return route.path === '/dashboard' || route.path === '/'
   if (item.path === '/ai-bid') return route.path === '/ai-bid' || route.path.startsWith('/bid/projects')
+  if (item.activePrefix) return route.path === item.activePrefix || route.path.startsWith(`${item.activePrefix}/`)
   return route.path === item.path || route.path.startsWith(`${item.path}/`)
 }
 

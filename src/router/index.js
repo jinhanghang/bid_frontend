@@ -9,6 +9,8 @@ const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
+const MaterialLibraryLayout = () => import('@/views/material/MaterialLibraryLayout.vue')
+const ImageLibraryManage = () => import('@/views/material/image/index.vue')
 const AiSolution = () => import('@/views/ai/solutions/index.vue')
 const AiDocument = () => import('@/views/ai/documents/index.vue')
 const AiTasks = () => import('@/views/ai/tasks/index.vue')
@@ -36,7 +38,17 @@ const routes = [
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '首页' } },
       { path: 'ai-bid', component: BidProject, meta: { title: 'AI标书', requiresBusiness: true } },
-      { path: 'materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
+      {
+        path: 'materials',
+        component: MaterialLibraryLayout,
+        redirect: '/materials/company',
+        meta: { title: '资料库', requiresBusiness: true },
+        children: [
+          { path: 'company', component: CompanyMaterialManage, meta: { title: '企业资料', requiresBusiness: true } },
+          { path: 'images', component: ImageLibraryManage, meta: { title: '图片库', requiresBusiness: true } },
+          { path: 'knowledge', component: KnowledgeBase, meta: { title: '知识库', requiresBusiness: true } }
+        ]
+      },
       { path: 'download-center', component: DownloadCenter, meta: { title: '下载中心', requiresBusiness: true } },
       { path: 'recycle-bin', component: RecycleBin, meta: { title: '回收站', requiresBusiness: true } },
       { path: 'member-center', component: MemberCenter, meta: { title: '会员中心' } },
@@ -44,7 +56,7 @@ const routes = [
 
       { path: 'bid/projects', redirect: '/ai-bid' },
       { path: 'bid/template-variables', component: TemplateVariableManage, meta: { title: '模板变量', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
-      { path: 'bid/company-materials', component: CompanyMaterialManage, meta: { title: '资料库', requiresBusiness: true } },
+      { path: 'bid/company-materials', redirect: '/materials/company' },
 
       { path: 'ai/solutions', component: AiSolution, meta: { title: 'AI方案', requiresBusiness: true } },
       { path: 'ai/documents', component: AiDocument, meta: { title: 'AI文档生成', requiresBusiness: true } },
@@ -54,7 +66,7 @@ const routes = [
 
       { path: 'tender/notice', component: NoticeManage, meta: { title: '标讯商机',  requiresBusiness: true } },
 
-      { path: 'knowledge/bases', component: KnowledgeBase, meta: { title: '知识库', requiresBusiness: true } },
+      { path: 'knowledge/bases', redirect: '/materials/knowledge' },
       { path: 'knowledge/files', component: GenericCrudView, meta: { title: '知识库文件', configKey: 'knowledgeFile', requiresBusiness: true } },
 
       { path: 'system/users', component: UserManage, meta: { title: '用户管理', roles: [ROLE_SUPER_ADMIN, ROLE_PLATFORM_ADMIN, ROLE_ENTERPRISE_ADMIN] } },
