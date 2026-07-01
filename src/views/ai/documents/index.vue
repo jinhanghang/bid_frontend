@@ -313,6 +313,30 @@
             </el-form-item>
           </div>
 
+
+          <div class="form-row-two">
+            <el-form-item label="目标总字数">
+              <el-input-number
+                v-model="form.targetTotalWordCount"
+                :min="0"
+                :max="200000"
+                :step="10000"
+                controls-position="right"
+                class="full-input-number"
+                placeholder="不填则按普通大纲生成"
+              />
+              <div class="form-help-text">用于 5万/10万/20万字长文档拆分；填写后会按约 800~1500 字/节生成更细的大纲。</div>
+            </el-form-item>
+            <el-form-item label="长文档拆分">
+              <el-select v-model="form.longOutlinePreset" class="full-select" placeholder="快速选择目标">
+                <el-option label="不启用" :value="0" />
+                <el-option label="5万字初稿" :value="50000" />
+                <el-option label="10万字初稿" :value="100000" />
+                <el-option label="20万字初稿" :value="200000" />
+              </el-select>
+            </el-form-item>
+          </div>
+
           <div class="dialog-section-title">参考资料</div>
           <el-upload
             drag
@@ -573,7 +597,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElButton, ElIcon, ElMessage, ElMessageBox, ElTag, ElTooltip } from '@/plugins/element-plus-api'
 import { ArrowLeft, Document, InfoFilled, MagicStick, Plus, Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
@@ -663,12 +687,18 @@ const form = reactive({
   mainRequirement: '',
   referenceRequirement: '',
   outlineRequirement: '',
-  overallWritingRequirement: ''
+  overallWritingRequirement: '',
+  targetTotalWordCount: null,
+  longOutlinePreset: 0
 })
 const formData = reactive({})
 const wordPreset = reactive({ mode: '', wordCount: null })
 const wordPresetSelectionValid = computed(() => wordPreset.mode === 'AUTO' || (wordPreset.mode === 'FIXED' && Number(wordPreset.wordCount || 0) > 0))
 const wordOptions = [300, 600, 900, 1200, 1800, 2400, 3000]
+
+watch(() => form.longOutlinePreset, (value) => {
+  form.targetTotalWordCount = Number(value || 0) > 0 ? Number(value) : null
+})
 
 let searchTimer = null
 let parseTimer = null
@@ -1117,6 +1147,8 @@ function applyDoc(data, options = {}) {
   form.referenceRequirement = data?.requirement?.serviceRequirement || ''
   form.outlineRequirement = data?.requirement?.outlineRequirement || ''
   form.overallWritingRequirement = data?.overallWritingRequirement || ''
+  form.targetTotalWordCount = null
+  form.longOutlinePreset = 0
   parseTask.value = data?.latestParseTask || parseTask.value
   Object.keys(formData).forEach((key) => delete formData[key])
   fillFormDataFromSummary(data?.requirement?.technicalRequirement || '')
@@ -1485,6 +1517,9 @@ async function onGenerateOutline() {
       outlineRequirement: form.outlineRequirement,
       extraRequirement: form.outlineRequirement,
       writingDirection: form.overallWritingRequirement,
+      targetTotalWordCount: Number(form.targetTotalWordCount || 0) > 0 ? Number(form.targetTotalWordCount) : null,
+      leafMinWordCount: null,
+      leafMaxWordCount: null,
       regenerate: regenerateOutline
     })
     applyDoc(data)
@@ -1496,9 +1531,16 @@ async function onGenerateOutline() {
     await refreshCurrent()
     await loadDocuments()
     formDialogVisible.value = false
-    resetWordPresetSelection()
-    wordPresetDialogVisible.value = true
-    ElMessage.success('大纲已生成，请设置篇幅')
+    const latestLeaves = flattenLeaves(currentDoc.value?.outlines || data?.outlines || [])
+    const needWordPreset = latestLeaves.length > 0 && latestLeaves.some((node) => !Number(node?.targetWordCount || node?.wordCount || 0))
+    if (needWordPreset) {
+      resetWordPresetSelection()
+      wordPresetDialogVisible.value = true
+      ElMessage.success('大纲已生成，请设置篇幅')
+    } else {
+      wordPresetDialogVisible.value = false
+      ElMessage.success('长文档大纲已生成，系统已按目标总字数分配章节篇幅')
+    }
   } finally {
     outlineLoading.value = false
   }
@@ -4575,4 +4617,15 @@ function fallbackTypes() {
 .doc-export-check-title { margin: 0 0 8px; font-weight: 700; }
 .doc-export-check-list { margin: 0; padding-left: 18px; }
 .doc-export-check-tip { margin: 8px 0 0; color: #64748b; }
+
+.full-input-number {
+  width: 100%;
+}
+
+.form-help-text {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #7a8ba6;
+}
 </style>

@@ -423,6 +423,32 @@
                 </div>
 
 
+
+
+                <div class="tech-form-section">
+                  <div class="tech-inline-title">
+                    <span>目标总字数 / 长文档拆分：</span>
+                    <el-tag size="small" type="info">可选</el-tag>
+                  </div>
+                  <div class="tech-target-row">
+                    <el-input-number
+                      v-model="technicalForm.targetTotalWordCount"
+                      :min="0"
+                      :max="200000"
+                      :step="10000"
+                      controls-position="right"
+                      placeholder="不填则按普通目录生成"
+                    />
+                    <el-select v-model="technicalForm.longOutlinePreset" placeholder="快速选择" class="tech-target-select">
+                      <el-option label="不启用" :value="0" />
+                      <el-option label="5万字初稿" :value="50000" />
+                      <el-option label="10万字初稿" :value="100000" />
+                      <el-option label="20万字初稿" :value="200000" />
+                    </el-select>
+                  </div>
+                  <div class="tech-field-tip">填写后，目录生成会提前拆成 800~1500 字/节的末级章节，便于后续并行生成 5万~20万字初稿。</div>
+                </div>
+
                 <div class="tech-form-section">
                   <div class="tech-inline-title">
                     <span class="required">采购需求：</span>
@@ -1943,7 +1969,9 @@ const technicalForm = reactive({
   scoreRequirement: '',
   knowledgeIds: [],
   outlineMode: 'SCORE_ITEM',
-  outlineRequirement: ''
+  outlineRequirement: '',
+  targetTotalWordCount: null,
+  longOutlinePreset: 0
 })
 const technicalSubTypes = computed(() => technicalSubTypeMap[technicalForm.solutionType] || [])
 
@@ -1952,6 +1980,10 @@ watch(() => technicalForm.solutionType, () => {
   if (technicalForm.solutionSubType !== '不限' && !allowed.includes(technicalForm.solutionSubType)) {
     technicalForm.solutionSubType = '不限'
   }
+})
+
+watch(() => technicalForm.longOutlinePreset, (value) => {
+  technicalForm.targetTotalWordCount = Number(value || 0) > 0 ? Number(value) : null
 })
 
 
@@ -1980,7 +2012,9 @@ function resetTechnicalWorkspace() {
     scoreRequirement: '',
     knowledgeIds: [],
     outlineMode: 'SCORE_ITEM',
-    outlineRequirement: ''
+    outlineRequirement: '',
+    targetTotalWordCount: null,
+    longOutlinePreset: 0
   })
   resetBidDocumentWorkspace()
 }
@@ -3839,6 +3873,9 @@ async function generateTechnicalOutline() {
       outlineMode: technicalForm.outlineMode,
       outlineRequirement: technicalForm.outlineRequirement,
       knowledgeIds: stringifyKnowledgeIds(selectedOutlineKnowledgeIds),
+      targetTotalWordCount: Number(technicalForm.targetTotalWordCount || 0) > 0 ? Number(technicalForm.targetTotalWordCount) : null,
+      leafMinWordCount: null,
+      leafMaxWordCount: null,
       regenerate: regenerateOutline
     })
 
@@ -3852,10 +3889,16 @@ async function generateTechnicalOutline() {
       }
       if (technicalOutlines.value.length) {
         technicalStep.value = 4
-        resetWordPresetSelection()
+        const needWordPreset = technicalOutlinesNeedWordPreset(technicalOutlines.value)
         wordPresetNextAction.value = null
-        wordPresetVisible.value = true
-        ElMessage.success('技术方案目录已生成，请继续调整总字数')
+        if (needWordPreset) {
+          resetWordPresetSelection()
+          wordPresetVisible.value = true
+          ElMessage.success('技术方案目录已生成，请继续调整总字数')
+        } else {
+          wordPresetVisible.value = false
+          ElMessage.success('长篇技术方案目录已生成，系统已按目标总字数分配章节篇幅')
+        }
       } else {
         ElMessage.warning('目录生成请求已完成，但没有读取到目录数据，系统将继续自动检测生成结果')
       }
@@ -4655,6 +4698,20 @@ function technicalOutlineFailureMessage(solution) {
   const remark = String(solution?.remark || '').trim()
   if (remark && remark.includes('目录生成失败')) return remark
   return '技术方案目录生成失败，请稍后重试'
+}
+
+function technicalOutlinesNeedWordPreset(nodes) {
+  const leaves = []
+  const walk = (items) => {
+    ;(items || []).forEach((node) => {
+      if (!node) return
+      const children = node.children || []
+      if (children.length) walk(children)
+      else leaves.push(node)
+    })
+  }
+  walk(nodes || [])
+  return leaves.length > 0 && leaves.some((node) => Number(node?.targetWordCount || node?.wordCount || node?.section?.targetWordCount || 0) <= 0)
 }
 
 async function checkTechnicalOutlineReady(projectId, silent = true) {
@@ -8993,5 +9050,27 @@ const WritingDirectionEditor = defineComponent({
   .summary-text-grid {
     grid-template-columns: 1fr;
   }
+}
+
+
+.tech-target-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.tech-target-row .el-input-number {
+  width: 220px;
+}
+
+.tech-target-select {
+  width: 180px;
+}
+
+.tech-field-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #7a8ba6;
+  line-height: 1.6;
 }
 </style>

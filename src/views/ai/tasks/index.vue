@@ -112,6 +112,49 @@
             <el-descriptions-item label="失败原因" :span="2">{{ safeErrorMessage(taskDetail.task.errorMessage) }}</el-descriptions-item>
           </el-descriptions>
 
+          <div v-if="taskDetail.sectionTasks?.length" class="detail-section-head">
+            <div>
+              <h3>章节流水线</h3>
+              <p>总 {{ taskDetail.sectionTaskTotal || 0 }}，等待 {{ taskDetail.sectionTaskWaiting || 0 }}，生成中 {{ taskDetail.sectionTaskRunning || 0 }}，成功 {{ taskDetail.sectionTaskSuccess || 0 }}，失败 {{ taskDetail.sectionTaskFailed || 0 }}</p>
+            </div>
+            <span v-if="taskDetail.estimatedRemainingSeconds" class="detail-muted">预计剩余 {{ Math.ceil(taskDetail.estimatedRemainingSeconds / 60) }} 分钟</span>
+          </div>
+
+          <el-table
+            v-if="taskDetail.sectionTasks?.length"
+            :data="taskDetail.sectionTasks"
+            border
+            stripe
+            size="small"
+            max-height="320"
+            class="section-task-table"
+          >
+            <el-table-column label="章节" min-width="200">
+              <template #default="{ row }">
+                <div class="section-title">{{ row.title || '未命名章节' }}</div>
+                <div class="section-sub">目标 {{ row.targetWordCount || 0 }} 字，实际 {{ row.actualWordCount || 0 }} 字</div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }"><el-tag size="small" :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="质检" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.qualityStatus" size="small" :type="qualityTagType(row.qualityStatus)">{{ qualityLabel(row.qualityStatus) }}</el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="质检问题" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.qualityIssues || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="模型" width="150" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.modelName || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="耗时" width="90" align="center">
+              <template #default="{ row }">{{ formatDuration(row.durationMs) }}</template>
+            </el-table-column>
+          </el-table>
+
           <div class="detail-section-head">
             <div>
               <h3>失败 / 未完成章节</h3>
@@ -386,6 +429,27 @@ function statusTagType(value) {
   return 'info'
 }
 
+function qualityLabel(value) {
+  const map = { PASS: '通过', WARN: '预警', FAIL: '失败' }
+  return map[String(value || '').toUpperCase()] || value || '-'
+}
+
+function qualityTagType(value) {
+  const status = String(value || '').toUpperCase()
+  if (status === 'PASS') return 'success'
+  if (status === 'WARN') return 'warning'
+  if (status === 'FAIL') return 'danger'
+  return 'info'
+}
+
+function formatDuration(value) {
+  const ms = Number(value || 0)
+  if (!Number.isFinite(ms) || ms <= 0) return '-'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  return `${Math.round(ms / 60000)}min`
+}
+
 function safePercent(value) {
   const n = Number(value || 0)
   return Math.max(0, Math.min(100, Number.isFinite(n) ? n : 0))
@@ -463,6 +527,8 @@ function safeErrorMessage(value) {
 .detail-section-head h3 { margin: 0; font-size: 16px; color: #1f2937; }
 .detail-section-head p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
 .failed-section-table { width: 100%; }
+.section-task-table { width: 100%; margin-bottom: 18px; }
+.detail-muted { color: #64748b; font-size: 13px; }
 .section-title { font-weight: 700; color: #1f2937; }
 .section-sub { margin-top: 4px; color: #94a3b8; font-size: 12px; }
 </style>

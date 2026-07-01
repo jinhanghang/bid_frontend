@@ -27,3 +27,23 @@ export function updateAiModel(id, data) {
 export function deleteAiModel(id) {
   return request.delete(`/ai-model-config/${id}`)
 }
+
+export function pageAiModelRoutes(params) {
+  return request.get('/ai-model-route/page', { params })
+}
+
+export function listAiModelRoutes(params) {
+  return request.get('/ai-model-route/list', { params })
+}
+
+export function createAiModelRoute(data) {
+  return request.post('/ai-model-route', data)
+}
+
+export function updateAiModelRoute(id, data) {
+  return request.put(`/ai-model-route/${id}`, data)
+}
+
+export function deleteAiModelRoute(id) {
+  return request.delete(`/ai-model-route/${id}`)
+}

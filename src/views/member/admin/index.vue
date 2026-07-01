@@ -202,63 +202,117 @@
       </el-tab-pane>
 
       <el-tab-pane v-if="canManageModels" label="模型管理" name="models">
-        <div class="toolbar model-toolbar">
-          <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景 / 备注" clearable @keyup.enter="searchModels" />
-          <el-select v-model="modelQuery.modelType" placeholder="模型类型" clearable>
-            <el-option label="Chat" value="chat" />
-            <el-option label="Rerank" value="rerank" />
-          </el-select>
-          <el-button type="primary" @click="searchModels">搜索</el-button>
-          <el-button plain @click="openDiagnose">配置体检</el-button>
-          <el-button type="primary" plain @click="openModelDialog()">新增模型</el-button>
-        </div>
-
-        <div class="model-flow-card">
-          <div class="model-flow-title">模型调用闭环</div>
-          <div class="model-flow-steps">
-            <span>套餐/项目选择 AI等级</span>
-            <em>→</em>
-            <span>AI文档 / AI标书 / 知识库问答传入场景</span>
-            <em>→</em>
-            <span>模型管理按“场景 + 等级”解析真实模型</span>
-            <em>→</em>
-            <span>生成结果、额度流水、任务日志形成闭环</span>
-          </div>
-        </div>
-
-        <el-table :data="models" class="ui-table" height="500" v-loading="modelLoading">
-          <el-table-column prop="provider" label="服务商" width="110" />
-          <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
-          <el-table-column label="类型" width="100">
-            <template #default="{ row }"><el-tag>{{ modelTypeText(row.modelType) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="生效范围" min-width="240" show-overflow-tooltip>
-            <template #default="{ row }">{{ scopeText(row) }}</template>
-          </el-table-column>
-          <el-table-column label="默认" width="80">
-            <template #default="{ row }"><el-tag v-if="row.defaultFlag === 1" type="success">默认</el-tag><span v-else class="muted">-</span></template>
-          </el-table-column>
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="影响模块" min-width="210" show-overflow-tooltip>
-            <template #default="{ row }">{{ effectModulesText(row) }}</template>
-          </el-table-column>
-          <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
-          <el-table-column label="操作" width="190" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="previewModel(row)">预览</el-button>
-              <el-button link type="primary" @click="openModelDialog(row)">编辑</el-button>
-              <el-button link type="danger" @click="removeModel(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <PageFooterPager
-          :total="modelPager.total"
-          v-model:page="modelPager.current"
-          v-model:size="modelPager.size"
-          @change="loadModels"
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="model-alert model-compact-help"
+          title="模型列表只维护系统可用模型；路由配置决定 AI等级 + 调用场景实际使用哪个模型。未命中路由时，系统继续使用模型列表的全局默认模型兜底。"
         />
+
+        <el-tabs v-model="modelManageTab" class="model-manage-tabs">
+          <el-tab-pane label="模型列表" name="list">
+            <div class="toolbar model-toolbar">
+              <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 场景 / 备注" clearable @keyup.enter="searchModels" />
+              <el-select v-model="modelQuery.modelType" placeholder="模型类型" clearable>
+                <el-option label="Chat" value="chat" />
+                <el-option label="Rerank" value="rerank" />
+              </el-select>
+              <el-button type="primary" @click="searchModels">搜索</el-button>
+              <el-button plain @click="openDiagnose">配置体检</el-button>
+              <el-button type="primary" plain @click="openModelDialog()">新增模型</el-button>
+            </div>
+
+            <el-table :data="models" class="ui-table" height="500" v-loading="modelLoading">
+              <el-table-column prop="provider" label="服务商" width="110" />
+              <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
+              <el-table-column label="类型" width="100">
+                <template #default="{ row }"><el-tag>{{ modelTypeText(row.modelType) }}</el-tag></template>
+              </el-table-column>
+              <el-table-column label="生效范围" min-width="240" show-overflow-tooltip>
+                <template #default="{ row }">{{ scopeText(row) }}</template>
+              </el-table-column>
+              <el-table-column label="默认" width="80">
+                <template #default="{ row }"><el-tag v-if="row.defaultFlag === 1" type="success">默认</el-tag><span v-else class="muted">-</span></template>
+              </el-table-column>
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template>
+              </el-table-column>
+              <el-table-column label="影响模块" min-width="210" show-overflow-tooltip>
+                <template #default="{ row }">{{ effectModulesText(row) }}</template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+              <el-table-column label="操作" width="190" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="previewModel(row)">预览</el-button>
+                  <el-button link type="primary" @click="openModelDialog(row)">编辑</el-button>
+                  <el-button link type="danger" @click="removeModel(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <PageFooterPager
+              :total="modelPager.total"
+              v-model:page="modelPager.current"
+              v-model:size="modelPager.size"
+              @change="loadModels"
+            />
+          </el-tab-pane>
+
+          <el-tab-pane label="路由配置" name="routes">
+            <div class="route-panel-head route-panel-head-flat">
+              <div>
+                <strong>模型路由配置</strong>
+                <p>按“调用场景 + AI等级”指定主模型、备用模型、并发上限和超时时间。模型路由是实际生成链路的优先规则。</p>
+              </div>
+              <el-button type="primary" plain @click="openRouteDialog()">新增路由</el-button>
+            </div>
+            <div class="toolbar route-toolbar">
+              <el-select v-model="routeQuery.routeType" placeholder="调用场景" clearable>
+                <el-option v-for="item in sceneOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <el-select v-model="routeQuery.aiLevel" placeholder="AI等级" clearable>
+                <el-option label="基础版" value="BASIC" />
+                <el-option label="标准版" value="STANDARD" />
+                <el-option label="旗舰版" value="FLAGSHIP" />
+              </el-select>
+              <el-select v-model="routeQuery.enabled" placeholder="状态" clearable>
+                <el-option label="启用" :value="1" />
+                <el-option label="停用" :value="0" />
+              </el-select>
+              <el-button type="primary" @click="searchRoutes">搜索路由</el-button>
+              <el-button plain @click="openDiagnose">配置体检</el-button>
+            </div>
+            <el-table :data="modelRoutes" class="ui-table" height="500" v-loading="routeLoading">
+              <el-table-column prop="routeName" label="调用场景" min-width="150" show-overflow-tooltip />
+              <el-table-column prop="aiLevelName" label="AI等级" width="100" />
+              <el-table-column label="主模型" min-width="210" show-overflow-tooltip>
+                <template #default="{ row }">{{ modelDisplay(row.primaryProvider, row.primaryModelName) }}</template>
+              </el-table-column>
+              <el-table-column label="备用模型" min-width="210" show-overflow-tooltip>
+                <template #default="{ row }">{{ modelDisplay(row.fallbackProvider, row.fallbackModelName) }}</template>
+              </el-table-column>
+              <el-table-column prop="concurrencyLimit" label="并发" width="80" />
+              <el-table-column label="超时" width="90"><template #default="{ row }">{{ row.timeoutSeconds || '-' }}秒</template></el-table-column>
+              <el-table-column prop="retryTimes" label="重试" width="80" />
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }"><el-tag :type="row.enabled === 1 ? 'success' : 'info'">{{ row.enabled === 1 ? '启用' : '停用' }}</el-tag></template>
+              </el-table-column>
+              <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip />
+              <el-table-column label="操作" width="130" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openRouteDialog(row)">编辑</el-button>
+                  <el-button link type="danger" @click="removeRoute(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <PageFooterPager
+              :total="routePager.total"
+              v-model:page="routePager.current"
+              v-model:size="routePager.size"
+              @change="loadRoutes"
+            />
+          </el-tab-pane>
+        </el-tabs>
       </el-tab-pane>
 
     </el-tabs>
@@ -291,7 +345,7 @@
 
     <el-dialog v-model="modelDialog.visible" :title="modelDialog.form.id ? '编辑模型配置' : '新增模型配置'" width="820px" destroy-on-close>
       <el-alert type="warning" :closable="false" show-icon class="model-alert">
-        模型名称、接口地址、密钥引用仅超级管理员可见。默认模型是全局兜底模型，开启后会自动清空使用场景和 AI等级。
+        模型名称、接口地址、密钥引用仅超级管理员可见。模型列表只维护可用模型；具体 AI等级、调用场景、并发和超时由路由配置决定。默认模型是全局兜底模型，开启后会自动清空使用场景。
       </el-alert>
       <el-form :model="modelDialog.form" label-width="110px" class="model-form">
         <el-row :gutter="14">
@@ -314,24 +368,58 @@
               <el-option v-for="item in sceneOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="AI等级">
-            <el-select v-model="modelDialog.form.aiLevel" :disabled="modelDialog.form.defaultFlag === 1" clearable placeholder="为空表示通用" style="width: 100%">
-              <el-option label="基础版" value="BASIC" />
-              <el-option label="标准版" value="STANDARD" />
-              <el-option label="旗舰版" value="FLAGSHIP" />
-            </el-select>
-          </el-form-item></el-col>
           <el-col :span="12"><el-form-item label="API地址"><el-input v-model="modelDialog.form.apiBase" placeholder="为空使用 application.yml" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="密钥引用"><el-input v-model="modelDialog.form.apiKeyRef" placeholder="如 DASHSCOPE_API_KEY" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="排序"><el-input-number v-model="modelDialog.form.sortNo" :min="0" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="状态"><el-switch v-model="modelDialog.form.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="停用" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="备注"><el-input v-model="modelDialog.form.remark" type="textarea" :rows="3" placeholder="建议写清楚：适用模块、等级、成本或稳定性说明" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="备注"><el-input v-model="modelDialog.form.remark" type="textarea" :rows="3" placeholder="建议写清楚：适用模块、成本、速度或稳定性说明；AI等级请在路由配置中维护" /></el-form-item></el-col>
         </el-row>
       </el-form>
       <template #footer>
         <el-button @click="modelDialog.visible = false">取消</el-button>
         <el-button plain @click="previewModel(modelDialog.form)">预览命中</el-button>
         <el-button type="primary" @click="saveModel">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="routeDialog.visible" :title="routeDialog.form.id ? '编辑模型路由' : '新增模型路由'" width="760px" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon class="model-alert">
+        模型路由用于控制不同调用场景的主模型、备用模型、并发上限和超时时间。主模型失败时，系统会尝试备用模型，仍失败则章节进入失败列表，可在任务中心补跑。
+      </el-alert>
+      <el-form :model="routeDialog.form" label-width="110px" class="model-form">
+        <el-row :gutter="14">
+          <el-col :span="12"><el-form-item label="调用场景">
+            <el-select v-model="routeDialog.form.routeType" style="width: 100%">
+              <el-option v-for="item in sceneOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="AI等级">
+            <el-select v-model="routeDialog.form.aiLevel" clearable placeholder="为空表示通用" style="width: 100%">
+              <el-option label="基础版" value="BASIC" />
+              <el-option label="标准版" value="STANDARD" />
+              <el-option label="旗舰版" value="FLAGSHIP" />
+            </el-select>
+          </el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="主模型">
+            <el-select v-model="routeDialog.form.primaryModelId" filterable placeholder="请选择主模型" style="width: 100%">
+              <el-option v-for="item in enabledChatModels" :key="item.id" :label="modelDisplay(item.provider, item.modelName)" :value="item.id" />
+            </el-select>
+          </el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="备用模型">
+            <el-select v-model="routeDialog.form.fallbackModelId" filterable clearable placeholder="可选" style="width: 100%">
+              <el-option v-for="item in enabledChatModels" :key="item.id" :label="modelDisplay(item.provider, item.modelName)" :value="item.id" />
+            </el-select>
+          </el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="并发上限"><el-input-number v-model="routeDialog.form.concurrencyLimit" :min="1" :max="100" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="超时秒数"><el-input-number v-model="routeDialog.form.timeoutSeconds" :min="30" :max="900" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="重试次数"><el-input-number v-model="routeDialog.form.retryTimes" :min="0" :max="3" style="width: 100%" /></el-form-item></el-col>
+          <el-col :span="8"><el-form-item label="状态"><el-switch v-model="routeDialog.form.enabled" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="停用" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="备注"><el-input v-model="routeDialog.form.remark" type="textarea" :rows="3" placeholder="建议写清楚：为什么这个场景使用该模型，以及备用模型触发条件" /></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="routeDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="saveRoute">保存</el-button>
       </template>
     </el-dialog>
 
@@ -455,19 +543,35 @@ import {
   getSecurityAuditReport,
   updateMemberPlan
 } from '@/api/member'
-import { createAiModel, deleteAiModel, diagnoseAiModels, pageAiModels, previewAiModel, updateAiModel } from '@/api/aiModel'
+import {
+  createAiModel,
+  createAiModelRoute,
+  deleteAiModel,
+  deleteAiModelRoute,
+  diagnoseAiModels,
+  listAiModels,
+  pageAiModelRoutes,
+  pageAiModels,
+  previewAiModel,
+  updateAiModel,
+  updateAiModelRoute
+} from '@/api/aiModel'
 
 const route = useRoute()
 const auth = useAuthStore()
 const activeTab = ref(route.query?.tab === 'models' ? 'models' : 'plans')
+const modelManageTab = ref(route.query?.modelTab === 'routes' ? 'routes' : 'list')
 const plans = ref([])
 const orders = ref([])
 const accounts = ref([])
 const logs = ref([])
 const models = ref([])
+const modelRoutes = ref([])
+const routeModelOptions = ref([])
 const usageStatsLoading = ref(false)
 const securityAuditLoading = ref(false)
 const modelLoading = ref(false)
+const routeLoading = ref(false)
 const usageStats = ref({})
 const securityAudit = ref({ status: '', items: [] })
 
@@ -475,23 +579,28 @@ const orderQuery = reactive({ keyword: '', status: '' })
 const accountQuery = reactive({ keyword: '' })
 const logQuery = reactive({ keyword: '' })
 const modelQuery = reactive({ keyword: '', modelType: '' })
+const routeQuery = reactive({ routeType: '', aiLevel: '', enabled: '' })
 const usageStatsQuery = reactive({ dates: [], scene: '' })
 
 const orderPager = reactive({ current: 1, size: 10, total: 0 })
 const accountPager = reactive({ current: 1, size: 10, total: 0 })
 const logPager = reactive({ current: 1, size: 10, total: 0 })
 const modelPager = reactive({ current: 1, size: 10, total: 0 })
+const routePager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
 const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
 const auditDialog = reactive({ visible: false, loading: false, result: null })
 const modelDialog = reactive({ visible: false, form: emptyModel() })
+const routeDialog = reactive({ visible: false, form: emptyRoute() })
 const diagnoseDialog = reactive({ visible: false, loading: false, records: [] })
 
 const canManageModels = computed(() => {
   const roles = normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || [])
   return roles.includes('SUPERADMIN') || roles.includes('PLATFORMADMIN')
 })
+const enabledChatModels = computed(() => ((routeModelOptions.value && routeModelOptions.value.length ? routeModelOptions.value : models.value) || []).filter((item) => item.modelType === 'chat' && item.status === 1 && item.deleted !== 1))
+
 const totalAuditIssueCount = computed(() => {
   const r = auditDialog.result || {}
   return Number(r.balanceIssueCount || 0) + Number(r.chainIssueCount || 0) + Number(r.negativeMemberIssueCount || 0) + Number(r.openReservationIssueCount || 0)
@@ -521,7 +630,7 @@ watch(activeTab, (tab) => {
   if (tab === 'logs') loadLogs()
   if (tab === 'stats') loadUsageStats()
   if (tab === 'security' && canManageModels.value) loadSecurityAudit()
-  if (tab === 'models' && canManageModels.value) loadModels()
+  if (tab === 'models' && canManageModels.value) { loadModels(); loadRoutes(); loadRouteModelOptions() }
 })
 
 watch(() => modelDialog.form.defaultFlag, (value) => {
@@ -533,7 +642,7 @@ watch(() => modelDialog.form.defaultFlag, (value) => {
 
 async function refreshAll() {
   const jobs = [loadPlans(), loadOrders(), loadAccounts(), loadLogs()]
-  if (canManageModels.value) jobs.push(loadModels())
+  if (canManageModels.value) jobs.push(loadModels(), loadRoutes(), loadRouteModelOptions())
   await Promise.all(jobs)
 }
 
@@ -644,12 +753,45 @@ function searchModels() {
   loadModels()
 }
 
+async function loadRouteModelOptions() {
+  if (!canManageModels.value) return
+  routeModelOptions.value = await listAiModels({ modelType: 'chat' }) || []
+}
+
+async function loadRoutes() {
+  if (!canManageModels.value) return
+  routeLoading.value = true
+  try {
+    const params = {
+      current: routePager.current,
+      size: routePager.size,
+      routeType: routeQuery.routeType || undefined,
+      aiLevel: routeQuery.aiLevel || undefined,
+      enabled: routeQuery.enabled === '' ? undefined : routeQuery.enabled
+    }
+    const res = await pageAiModelRoutes(params)
+    modelRoutes.value = res?.records || []
+    routePager.total = Number(res?.total || 0)
+  } finally {
+    routeLoading.value = false
+  }
+}
+
+function searchRoutes() {
+  routePager.current = 1
+  loadRoutes()
+}
+
 function emptyPlan() {
   return { planCode: '', planName: '', planType: 'monthly', price: 0, durationDays: 30, wordQuota: 1000000, generateLimitDaily: 0, sortNo: 10, status: 1, remark: '' }
 }
 
 function emptyModel() {
-  return { provider: 'bailian', modelName: '', modelType: 'chat', sceneCode: '', aiLevel: '', apiBase: '', apiKeyRef: 'DASHSCOPE_API_KEY', temperature: 0.7, maxTokens: 8192, sortNo: 10, defaultFlag: 0, status: 1, remark: '' }
+  return { provider: 'bailian', modelName: '', modelType: 'chat', sceneCode: '', aiLevel: null, apiBase: '', apiKeyRef: 'DASHSCOPE_API_KEY', temperature: 0.7, maxTokens: 8192, sortNo: 10, defaultFlag: 0, status: 1, remark: '' }
+}
+
+function emptyRoute() {
+  return { routeType: 'SOLUTION_SECTION_GENERATE', aiLevel: '', primaryModelId: '', fallbackModelId: '', concurrencyLimit: 10, timeoutSeconds: 90, maxTokens: null, temperature: null, retryTimes: 1, enabled: 1, sortNo: 10, remark: '' }
 }
 
 function openPlanDialog(row) {
@@ -710,12 +852,12 @@ async function saveModel() {
   }
   const payload = { ...modelDialog.form }
   if (payload.sceneCode === '') payload.sceneCode = null
-  if (payload.aiLevel === '') payload.aiLevel = null
+  payload.aiLevel = null
   if (payload.id) await updateAiModel(payload.id, payload)
   else await createAiModel(payload)
   ElMessage.success('模型配置已保存')
   modelDialog.visible = false
-  await loadModels()
+  await Promise.all([loadModels(), loadRouteModelOptions()])
 }
 
 async function removeModel(row) {
@@ -728,12 +870,59 @@ async function removeModel(row) {
   await loadModels()
 }
 
+function openRouteDialog(row) {
+  routeDialog.form = row ? normalizeRouteForm(row) : emptyRoute()
+  routeDialog.visible = true
+}
+
+function normalizeRouteForm(row = {}) {
+  return {
+    ...emptyRoute(),
+    ...row,
+    aiLevel: row.aiLevel || '',
+    primaryModelId: row.primaryModelId || '',
+    fallbackModelId: row.fallbackModelId || '',
+    enabled: row.enabled == null ? 1 : row.enabled
+  }
+}
+
+async function saveRoute() {
+  if (!routeDialog.form.routeType || !routeDialog.form.primaryModelId) {
+    ElMessage.warning('请选择调用场景和主模型')
+    return
+  }
+  if (routeDialog.form.fallbackModelId && routeDialog.form.fallbackModelId === routeDialog.form.primaryModelId) {
+    ElMessage.warning('备用模型不能和主模型相同')
+    return
+  }
+  const payload = { ...routeDialog.form }
+  if (payload.aiLevel === '') payload.aiLevel = null
+  if (payload.fallbackModelId === '') payload.fallbackModelId = null
+  if (payload.maxTokens === 0) payload.maxTokens = null
+  if (payload.temperature === '') payload.temperature = null
+  if (payload.id) await updateAiModelRoute(payload.id, payload)
+  else await createAiModelRoute(payload)
+  ElMessage.success('模型路由已保存')
+  routeDialog.visible = false
+  await loadRoutes()
+}
+
+async function removeRoute(row) {
+  await ElMessageBox.confirm(`确定删除【${row.routeName || row.routeType} / ${row.aiLevelName || '通用'}】模型路由吗？`, '删除确认', { type: 'warning' })
+  await deleteAiModelRoute(row.id)
+  ElMessage.success('删除成功')
+  if (modelRoutes.value.length <= 1 && routePager.current > 1) {
+    routePager.current -= 1
+  }
+  await loadRoutes()
+}
+
 function normalizeModelForm(row = {}) {
   return {
     ...emptyModel(),
     ...row,
     sceneCode: row.sceneCode || '',
-    aiLevel: row.aiLevel || '',
+    aiLevel: null,
     apiBase: row.apiBase || '',
     apiKeyRef: row.apiKeyRef || 'DASHSCOPE_API_KEY',
     defaultFlag: row.defaultFlag || 0,
@@ -759,12 +948,11 @@ async function previewModel(row) {
   const payload = {
     modelType: row?.modelType || 'chat',
     sceneCode: row?.defaultFlag === 1 ? '' : (row?.sceneCode || ''),
-    aiLevel: row?.defaultFlag === 1 ? '' : (row?.aiLevel || '')
+    aiLevel: ''
   }
   const result = await previewAiModel(payload)
   const text = [
     `业务场景：${result?.sceneName || sceneText(payload.sceneCode)}`,
-    `AI等级：${result?.aiLevelName || levelText(payload.aiLevel)}`,
     `命中规则：${result?.effectiveRule || '-'}`,
     `模型名称：${result?.modelName || '-'}`,
     `服务商：${result?.provider || '-'}`,
@@ -822,6 +1010,11 @@ function levelText(value) {
   return value
 }
 
+function modelDisplay(provider, modelName) {
+  if (!modelName) return '-'
+  return provider ? `${provider} / ${modelName}` : modelName
+}
+
 function modelTypeText(value) {
   if (value === 'chat') return 'Chat'
   if (value === 'rerank') return 'Rerank'
@@ -831,12 +1024,8 @@ function modelTypeText(value) {
 function scopeText(row) {
   if (!row) return '-'
   if (row.defaultFlag === 1) return '全局默认兜底'
-  const scene = sceneText(row.sceneCode)
-  const level = levelText(row.aiLevel)
-  if (!row.sceneCode && !row.aiLevel) return '通用模型'
-  if (row.sceneCode && row.aiLevel) return `${scene} / ${level}`
-  if (row.sceneCode) return `${scene} / 全部等级`
-  return `全部场景 / ${level}`
+  if (!row.sceneCode) return '通用模型'
+  return sceneText(row.sceneCode)
 }
 
 function effectModulesText(row) {
@@ -914,14 +1103,16 @@ p { margin-top: 8px; color: #64748b; }
 .toolbar .el-select { width: 150px; }
 .page-footer-pager { margin-top: 10px; justify-content: flex-end; }
 .model-toolbar .el-select { width: 170px; }
-.model-flow-card { margin-bottom: 12px; padding: 14px 16px; border: 1px solid #e6edf7; border-radius: 14px; background: linear-gradient(135deg, #f8fbff, #ffffff); }
-.model-flow-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
-.model-flow-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #1f2937; font-size: 13px; }
-.model-flow-steps span { padding: 5px 9px; border-radius: 999px; background: #eef4ff; border: 1px solid #dbeafe; }
-.model-flow-steps em { color: #94a3b8; font-style: normal; }
-.model-flow-desc { margin-top: 8px; color: #64748b; font-size: 13px; line-height: 1.7; }
 .model-alert { margin-bottom: 12px; }
+.model-compact-help { margin-bottom: 10px; }
+.model-manage-tabs { padding-top: 2px; }
+.model-manage-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
 .model-form { margin-top: 14px; }
+.route-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.route-panel-head-flat { padding: 12px 14px; border: 1px solid #e6edf7; border-radius: 14px; background: #f8fbff; }
+.route-panel-head strong { display: block; color: #0f172a; font-size: 15px; margin-bottom: 6px; }
+.route-panel-head p { margin: 0; color: #64748b; font-size: 13px; line-height: 1.7; }
+.route-toolbar .el-select { width: 180px; }
 .switch-line { display: flex; align-items: center; gap: 10px; }
 .form-tip { color: #64748b; font-size: 12px; }
 .muted { color: #94a3b8; }
