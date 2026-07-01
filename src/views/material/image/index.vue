@@ -5,7 +5,10 @@
         <h2>图片库</h2>
         <p>统一维护标书插图素材。图片通过分类、标签和适用章节管理，不拆分多个图库。</p>
       </div>
-      <el-button type="primary" :icon="UploadFilled" @click="openUploadDialog">上传图片</el-button>
+      <div class="header-actions">
+        <el-button plain @click="openOnlineSearchDialog">在线搜索图片</el-button>
+        <el-button type="primary" :icon="UploadFilled" @click="openUploadDialog">上传图片</el-button>
+      </div>
     </section>
 
     <section class="image-library-overview">
@@ -98,6 +101,84 @@
       @current-change="onPageChange"
       @size-change="onSizeChange"
     />
+
+    <el-dialog v-model="onlineSearchDialog.visible" title="在线搜索图片" width="1120px" class="online-search-dialog" destroy-on-close>
+      <div class="online-search-panel">
+        <div class="online-search-toolbar">
+          <el-input v-model="onlineSearchDialog.keyword" clearable placeholder="输入关键词搜索网络图片，如：施工现场 安全文明施工" @keyup.enter="submitOnlineSearch">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <el-input-number v-model="onlineSearchDialog.topK" :min="1" :max="20" />
+          <el-button type="primary" :loading="onlineSearchDialog.loading" @click="submitOnlineSearch">搜索</el-button>
+        </div>
+        <div class="online-import-settings">
+          <div class="online-import-settings-title">
+            <span>导入设置</span>
+            <small>点击“导入图片库”时会使用以下信息，来源页面会自动写入图片说明。</small>
+          </div>
+          <el-form label-position="top" class="online-import-form">
+            <div class="online-import-grid">
+              <el-form-item v-if="isPlatformUser" label="所属企业" required>
+                <el-select
+                  v-model="onlineSearchDialog.enterpriseId"
+                  filterable
+                  remote
+                  clearable
+                  reserve-keyword
+                  :remote-method="remoteSearchEnterprises"
+                  :loading="enterpriseLoading"
+                  placeholder="请选择所属企业"
+                  style="width: 100%"
+                  @visible-change="onEnterpriseVisibleChange"
+                >
+                  <el-option v-for="item in enterpriseOptions" :key="item.id" :label="item.enterpriseName || item.name" :value="item.id" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="分类">
+                <el-select v-model="onlineSearchDialog.category" clearable filterable allow-create default-first-option placeholder="分类" style="width: 100%">
+                  <el-option v-for="item in categoryOptions" :key="item" :label="item" :value="item" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="标签">
+                <el-select v-model="onlineSearchDialog.tagList" multiple filterable allow-create default-first-option placeholder="标签" style="width: 100%">
+                  <el-option v-for="item in tagSuggestions" :key="item" :label="item" :value="item" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="适用章节">
+                <el-select v-model="onlineSearchDialog.chapterType" clearable filterable allow-create default-first-option placeholder="适用章节" style="width: 100%">
+                  <el-option v-for="item in chapterOptions" :key="item" :label="item" :value="item" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="适用场景">
+                <el-input v-model="onlineSearchDialog.scene" placeholder="如：技术标插图、现场展示" />
+              </el-form-item>
+              <el-form-item label="图片说明">
+                <el-input v-model="onlineSearchDialog.description" placeholder="可选，导入时会附加来源页面" />
+              </el-form-item>
+            </div>
+          </el-form>
+        </div>
+        <div class="online-search-result-bar">
+          <span>搜索结果</span>
+          <small v-if="onlineSearchDialog.results.length">共 {{ onlineSearchDialog.results.length }} 张候选图片</small>
+        </div>
+        <div v-loading="onlineSearchDialog.loading" class="online-search-grid">
+          <div v-for="(item, index) in onlineSearchDialog.results" :key="item.imageUrl || index" class="online-search-card">
+            <el-image class="online-search-thumb" :src="item.thumbnailUrl || item.imageUrl" :preview-src-list="[item.imageUrl || item.thumbnailUrl].filter(Boolean)" fit="cover" preview-teleported />
+            <div class="online-search-body">
+              <strong :title="item.title || '在线图片'">{{ item.title || '在线图片' }}</strong>
+              <p>{{ item.sourceDomain || '未知来源' }}</p>
+              <div class="online-search-links">
+                <a v-if="item.sourceUrl" :href="item.sourceUrl" target="_blank" rel="noreferrer">来源页面</a>
+                <a v-if="item.imageUrl" :href="item.imageUrl" target="_blank" rel="noreferrer">原图</a>
+              </div>
+              <el-button size="small" type="primary" :loading="onlineSearchDialog.importingIndex === index" @click="importOnlineImage(item, index)">导入图片库</el-button>
+            </div>
+          </div>
+          <el-empty v-if="!onlineSearchDialog.loading && !onlineSearchDialog.results.length" description="请输入关键词后搜索网络图片" />
+        </div>
+      </div>
+    </el-dialog>
 
     <el-dialog v-model="previewDialog.visible" title="图片预览" width="780px" destroy-on-close>
       <div v-if="previewDialog.item" class="preview-dialog-body">
@@ -265,7 +346,7 @@ import { Search, UploadFilled } from '@element-plus/icons-vue'
 import { ElImage, genFileId } from 'element-plus'
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { pageEnterprises } from '@/api/enterprise'
-import { deleteMaterialImage, getMaterialImageReferences, pageMaterialImages, updateMaterialImage, uploadMaterialImage } from '@/api/materialImage'
+import { deleteMaterialImage, getMaterialImageReferences, importOnlineMaterialImage, onlineSearchMaterialImages, pageMaterialImages, updateMaterialImage, uploadMaterialImage } from '@/api/materialImage'
 import {
   MATERIAL_IMAGE_CATEGORY_OPTIONS,
   MATERIAL_IMAGE_CHAPTER_OPTIONS,
@@ -302,6 +383,22 @@ const uploadDialog = reactive({
   scene: '',
   chapterType: '',
   description: ''
+})
+
+
+const onlineSearchDialog = reactive({
+  visible: false,
+  loading: false,
+  importingIndex: -1,
+  keyword: '',
+  topK: 10,
+  enterpriseId: '',
+  category: '在线搜索',
+  tagList: [],
+  scene: '在线搜索导入',
+  chapterType: '',
+  description: '',
+  results: []
 })
 
 const editDialog = reactive({
@@ -398,6 +495,69 @@ function onSizeChange(size) {
   pager.pageSize = size
   pager.pageNum = 1
   loadImages()
+}
+
+
+function openOnlineSearchDialog() {
+  Object.assign(onlineSearchDialog, {
+    visible: true,
+    loading: false,
+    importingIndex: -1,
+    keyword: '',
+    topK: 10,
+    enterpriseId: '',
+    category: '在线搜索',
+    tagList: [],
+    scene: '在线搜索导入',
+    chapterType: '',
+    description: '',
+    results: []
+  })
+  if (isPlatformUser.value) loadEnterprises('')
+}
+
+async function submitOnlineSearch() {
+  if (!onlineSearchDialog.keyword.trim()) {
+    ElMessage.warning('请输入在线搜索关键词')
+    return
+  }
+  onlineSearchDialog.loading = true
+  try {
+    const res = await onlineSearchMaterialImages({ keyword: onlineSearchDialog.keyword, topK: onlineSearchDialog.topK })
+    onlineSearchDialog.results = Array.isArray(res) ? res : []
+    if (!onlineSearchDialog.results.length) {
+      ElMessage.warning('未搜索到可用图片')
+    }
+  } finally {
+    onlineSearchDialog.loading = false
+  }
+}
+
+async function importOnlineImage(item, index) {
+  if (isPlatformUser.value && !onlineSearchDialog.enterpriseId) {
+    ElMessage.warning('请选择所属企业')
+    return
+  }
+  onlineSearchDialog.importingIndex = index
+  try {
+    await importOnlineMaterialImage({
+      enterpriseId: onlineSearchDialog.enterpriseId,
+      imageUrl: item.imageUrl,
+      thumbnailUrl: item.thumbnailUrl,
+      sourceUrl: item.sourceUrl,
+      sourceDomain: item.sourceDomain,
+      imageName: item.title,
+      category: onlineSearchDialog.category,
+      tags: normalizeTagValue(onlineSearchDialog.tagList),
+      scene: onlineSearchDialog.scene,
+      chapterType: onlineSearchDialog.chapterType,
+      description: onlineSearchDialog.description
+    })
+    ElMessage.success('已导入图片库')
+    loadImages()
+  } finally {
+    onlineSearchDialog.importingIndex = -1
+  }
 }
 
 function openUploadDialog() {
@@ -666,6 +826,120 @@ const ImageThumb = defineComponent({
   border-radius: 16px;
   background: #fff;
 }
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+:deep(.online-search-dialog .el-dialog__body) {
+  max-height: 74vh;
+  overflow-y: auto;
+  padding-top: 8px;
+}
+.online-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.online-search-toolbar {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 150px 84px;
+  gap: 10px;
+  align-items: center;
+}
+.online-search-toolbar :deep(.el-input-number) {
+  width: 150px;
+}
+.online-import-settings {
+  padding: 12px 14px 4px;
+  border: 1px solid #e5edf7;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+.online-import-settings-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.online-import-settings-title span {
+  color: #0f172a;
+  font-weight: 600;
+}
+.online-import-settings-title small {
+  color: #94a3b8;
+}
+.online-import-form :deep(.el-form-item) {
+  margin-bottom: 10px;
+}
+.online-import-form :deep(.el-form-item__label) {
+  padding-bottom: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+.online-import-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.online-search-result-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #0f172a;
+  font-weight: 600;
+}
+.online-search-result-bar small {
+  color: #94a3b8;
+  font-weight: 400;
+}
+.online-search-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  min-height: 220px;
+}
+.online-search-card {
+  overflow: hidden;
+  border: 1px solid #e5edf7;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+}
+.online-search-thumb {
+  display: block;
+  width: 100%;
+  height: 178px;
+  background: #f8fafc;
+}
+.online-search-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.online-search-body strong {
+  overflow: hidden;
+  color: #0f172a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.online-search-body p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+}
+.online-search-links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.online-search-links a {
+  color: #1677ff;
+  font-size: 12px;
+  text-decoration: none;
+}
+
 .image-library-header {
   display: flex;
   align-items: center;
@@ -880,21 +1154,25 @@ const ImageThumb = defineComponent({
   width: 100%;
 }
 @media (max-width: 1280px) {
-  .image-library-grid {
+  .image-library-grid,
+  .online-search-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 980px) {
   .toolbar-left,
   .image-form-grid,
-  .image-library-overview {
+  .image-library-overview,
+  .online-search-toolbar,
+  .online-import-grid {
     grid-template-columns: 1fr;
   }
   .image-library-header {
     align-items: flex-start;
     flex-direction: column;
   }
-  .image-library-grid {
+  .image-library-grid,
+  .online-search-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -12,3 +12,7 @@ export function getAiTaskDetail(taskCategory, taskId) {
 export function cancelAiTask(taskCategory, taskId) {
   return request({ url: `/ai-task-center/${taskCategory}/${taskId}/cancel`, method: 'post', timeout: 0 })
 }
+
+export function pageAiTaskEventLogs(params) {
+  return request({ url: '/ai-task-event-log/page', method: 'get', params, timeout: 0, silentError: true })
+}

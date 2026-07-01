@@ -112,6 +112,41 @@
             <el-descriptions-item label="失败原因" :span="2">{{ safeErrorMessage(taskDetail.task.errorMessage) }}</el-descriptions-item>
           </el-descriptions>
 
+          <div class="detail-section-head">
+            <div>
+              <h3>任务事件</h3>
+              <p>展示生成、联网摘要、自动图表和自动配图等关键过程，便于定位失败原因。</p>
+            </div>
+          </div>
+
+          <el-empty v-if="!eventLoading && !taskEvents.length" description="暂无任务事件" />
+          <el-table
+            v-else
+            v-loading="eventLoading"
+            :data="taskEvents"
+            border
+            stripe
+            size="small"
+            max-height="260"
+            class="task-event-table"
+          >
+            <el-table-column label="时间" width="155">
+              <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+            </el-table-column>
+            <el-table-column label="事件" min-width="150" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.eventName || row.eventType || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }"><el-tag size="small" :type="statusTagType(row.status)">{{ eventStatusLabel(row.status) }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="说明" min-width="260" show-overflow-tooltip>
+              <template #default="{ row }">{{ safeEventMessage(row.message) }}</template>
+            </el-table-column>
+            <el-table-column label="耗时" width="90" align="center">
+              <template #default="{ row }">{{ formatDuration(row.costMs) }}</template>
+            </el-table-column>
+          </el-table>
+
           <div v-if="taskDetail.sectionTasks?.length" class="detail-section-head">
             <div>
               <h3>章节流水线</h3>
@@ -206,7 +241,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { cancelAiTask, getAiTaskDetail, pageAiTasks } from '@/api/aiTaskCenter'
+import { cancelAiTask, getAiTaskDetail, pageAiTasks, pageAiTaskEventLogs } from '@/api/aiTaskCenter'
 import { formatDateTime } from '@/utils/format'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { generateFull, streamSection } from '@/api/aiSolution'
@@ -222,6 +257,8 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailTaskId = ref('')
 const taskDetail = ref(null)
+const taskEvents = ref([])
+const eventLoading = ref(false)
 const retryingAll = ref(false)
 const retryingSectionId = ref('')
 const autoRefresh = ref(true)
@@ -317,7 +354,10 @@ async function openTaskDetail(row) {
   if (!row?.id || !row?.taskCategory) return
   detailVisible.value = true
   detailTaskId.value = row.id
-  await loadTaskDetail(row.taskCategory, row.id)
+  await Promise.all([
+    loadTaskDetail(row.taskCategory, row.id),
+    loadTaskEvents(row.id)
+  ])
 }
 
 async function loadTaskDetail(taskCategory, taskId) {
@@ -326,6 +366,22 @@ async function loadTaskDetail(taskCategory, taskId) {
     taskDetail.value = await getAiTaskDetail(taskCategory, taskId)
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function loadTaskEvents(taskId) {
+  if (!taskId) {
+    taskEvents.value = []
+    return
+  }
+  eventLoading.value = true
+  try {
+    const res = await pageAiTaskEventLogs({ taskId, current: 1, size: 30 })
+    taskEvents.value = res?.records || []
+  } catch (e) {
+    taskEvents.value = []
+  } finally {
+    eventLoading.value = false
   }
 }
 
@@ -348,6 +404,7 @@ async function retryAllFailedSections() {
     await loadTasks()
     if (taskDetail.value?.task?.taskCategory && taskDetail.value?.task?.id) {
       await loadTaskDetail(taskDetail.value.task.taskCategory, taskDetail.value.task.id)
+      await loadTaskEvents(taskDetail.value.task.id)
     }
   } catch (e) {
     ElMessage.error(safeErrorMessage(e?.message || e))
@@ -376,6 +433,7 @@ async function retrySingleSection(row) {
     await loadTasks()
     if (taskDetail.value?.task?.taskCategory && taskDetail.value?.task?.id) {
       await loadTaskDetail(taskDetail.value.task.taskCategory, taskDetail.value.task.id)
+      await loadTaskEvents(taskDetail.value.task.id)
     }
   } catch (e) {
     ElMessage.error(safeErrorMessage(e?.message || e))
@@ -427,6 +485,15 @@ function statusTagType(value) {
   if (status === 'PARTIAL') return 'warning'
   if (status === 'RUNNING' || status === 'WAITING' || status === 'PENDING') return 'warning'
   return 'info'
+}
+
+function eventStatusLabel(value) {
+  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '已跳过', WARN: '预警', FAILED: '失败', CANCELED: '已取消' }
+  return map[String(value || '').toUpperCase()] || value || '-'
+}
+
+function safeEventMessage(value) {
+  return safeErrorMessage(value)
 }
 
 function qualityLabel(value) {
@@ -528,6 +595,7 @@ function safeErrorMessage(value) {
 .detail-section-head p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
 .failed-section-table { width: 100%; }
 .section-task-table { width: 100%; margin-bottom: 18px; }
+.task-event-table { width: 100%; margin-bottom: 18px; }
 .detail-muted { color: #64748b; font-size: 13px; }
 .section-title { font-weight: 700; color: #1f2937; }
 .section-sub { margin-top: 4px; color: #94a3b8; font-size: 12px; }
