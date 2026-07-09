@@ -473,14 +473,14 @@ function categoryLabel(value) {
 }
 
 function statusLabel(value) {
-  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '部分成功', FAILED: '失败', CANCELED: '已取消' }
+  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '部分成功', FAILED: '失败', TIMEOUT: '已超时', CANCELED: '已取消' }
   return map[String(value || '').toUpperCase()] || value || '-'
 }
 
 function statusTagType(value) {
   const status = String(value || '').toUpperCase()
   if (status === 'SUCCESS') return 'success'
-  if (status === 'FAILED') return 'danger'
+  if (status === 'FAILED' || status === 'TIMEOUT') return 'danger'
   if (status === 'CANCELED') return 'info'
   if (status === 'PARTIAL') return 'warning'
   if (status === 'RUNNING' || status === 'WAITING' || status === 'PENDING') return 'warning'
@@ -488,7 +488,7 @@ function statusTagType(value) {
 }
 
 function eventStatusLabel(value) {
-  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '已跳过', WARN: '预警', FAILED: '失败', CANCELED: '已取消' }
+  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '已跳过', WARN: '预警', FAILED: '失败', TIMEOUT: '已超时', CANCELED: '已取消' }
   return map[String(value || '').toUpperCase()] || value || '-'
 }
 

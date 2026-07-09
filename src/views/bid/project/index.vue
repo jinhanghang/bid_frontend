@@ -326,15 +326,24 @@
 
       <template v-else-if="activeDoc === 'TECHNICAL_SOLUTION'">
         <div class="bid-tech-panel">
-          <div v-if="!technicalGeneratedView" class="bid-tech-header">
+          <div class="bid-tech-header">
             <el-button plain @click="activeDoc = ''">退出技术方案</el-button>
             <div class="bid-tech-steps">
-              <span v-for="step in techSteps" :key="step.value" class="bid-tech-step" :class="{ active: technicalStep >= step.value }">
+              <span v-for="step in techSteps" :key="step.value" class="bid-tech-step" :class="{ active: technicalActiveStep >= step.value, current: technicalActiveStep === step.value }">
                 <b>{{ step.value }}</b>{{ step.label }}
               </span>
             </div>
           </div>
 
+
+          <el-alert
+            v-if="technicalWorkflowAlertData"
+            class="bid-tech-workflow-alert"
+            :type="technicalWorkflowAlertData.type"
+            :title="technicalWorkflowAlertData.title"
+            show-icon
+            :closable="false"
+          />
 
           <div class="bid-tech-body" :class="{ generated: technicalGeneratedView }">
             <div class="bid-tech-left">
@@ -1705,6 +1714,16 @@ import {
   deleteRequirementItem,
   syncRequirementExtractToOutline
 } from '@/api/aiSolution'
+import {
+  TECH_STEPS,
+  isTechnicalTaskRunningStatus,
+  normalizeTechnicalTaskStatus,
+  resolveTechnicalWorkflowState,
+  technicalTaskResultMessage,
+  technicalWorkflowAlert,
+  technicalWorkflowLabel,
+  technicalWorkflowStep
+} from './composables/useTechnicalBidWorkflow'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -1752,6 +1771,7 @@ const technicalTaskPollingBusy = ref(false)
 const technicalTaskPollErrorCount = ref(0)
 const technicalTaskPollTick = ref(0)
 const technicalTaskCanceling = ref(false)
+const technicalTaskTerminalNotifiedIds = new Set()
 const globalAiRunningTask = ref(null)
 let globalAiTaskPoller = null
 const GLOBAL_AI_TASK_POLL_INTERVAL_MS = 10000
@@ -1927,13 +1947,7 @@ const createDialog = reactive({
   ownerUserId: null
 })
 
-const techSteps = [
-  { value: 1, label: '选择方案类型' },
-  { value: 2, label: '录入基础信息' },
-  { value: 3, label: '生成预览目录' },
-  { value: 4, label: '调整总字数' },
-  { value: 5, label: '生成方案' }
-]
+const techSteps = TECH_STEPS
 const aiLevels = [
   { value: 'BASIC', label: '基础版', desc: '标准生成质量，适合常规文档与快速出稿。' },
   { value: 'STANDARD', label: '标准版', desc: '标准生成质量，增加关键质量校验与结构优化。' },
@@ -2088,7 +2102,7 @@ const canRetryTechnicalFailedSections = computed(() => {
 })
 const technicalGeneratePercent = computed(() => {
   const task = technicalSolution.value?.runningTask
-  if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
+  if (task && isTechnicalTaskRunningStatus(task.status)) {
     return Math.min(100, Math.max(0, Number(task.progress || 0)))
   }
   const total = technicalLeafNodes.value.length
@@ -2123,10 +2137,25 @@ const showTechnicalStats = computed(() => {
     || technicalTargetWordCount.value > 0
     || technicalActualWordCount.value > 0
 })
+const technicalWorkflowState = computed(() => resolveTechnicalWorkflowState({
+  backendStatus: selectedProject.value?.technicalStatus || workflow.value?.project?.technicalStatus,
+  solutionStatus: technicalSolution.value?.status,
+  hasOutlines: technicalOutlines.value.length > 0,
+  purchaseRequirement: technicalForm.purchaseRequirement,
+  aiLevel: technicalForm.aiLevel || technicalSolution.value?.aiLevel,
+  generatingOutline: technicalGeneratingOutline.value || isCurrentTechnicalOutlineGenerating.value,
+  fullGenerating: fullGenerating.value || isTechnicalRunningByBackend.value,
+  totalLeafCount: technicalLeafNodes.value.length,
+  finishedLeafCount: technicalFinishedLeafCount.value,
+  hasWordCount: technicalTargetWordCount.value > 0
+}))
+const technicalActiveStep = computed(() => Math.max(technicalStep.value || 1, technicalWorkflowStep(technicalWorkflowState.value)))
+const technicalWorkflowStatusText = computed(() => technicalWorkflowLabel(technicalWorkflowState.value))
+const technicalWorkflowAlertData = computed(() => technicalWorkflowAlert(technicalWorkflowState.value))
 const technicalGeneratedView = computed(() => {
   return technicalOutlines.value.length > 0
     || isCurrentTechnicalOutlineGenerating.value
-    || technicalStep.value >= 3
+    || ['OUTLINE_GENERATING', 'OUTLINE_READY', 'WORD_COUNT_READY', 'CONTENT_GENERATING', 'PARTIAL', 'DONE', 'FAILED', 'TIMEOUT'].includes(String(technicalWorkflowState.value || '').toUpperCase())
     || fullGenerating.value
     || isTechnicalRunningByBackend.value
 })
@@ -2201,18 +2230,18 @@ const isGlobalAiTaskForCurrentTechnicalSolution = computed(() => {
 })
 const technicalRunningTask = computed(() => {
   const currentTask = technicalSolution.value?.runningTask
-  if (currentTask && ['WAITING', 'RUNNING'].includes(String(currentTask.status || '').toUpperCase())) return currentTask
+  if (currentTask && isTechnicalTaskRunningStatus(currentTask.status)) return currentTask
   if (isGlobalAiTaskForCurrentTechnicalSolution.value && isGlobalAiTaskRunning.value) return globalAiRunningTask.value
   return currentTask || null
 })
-const technicalRunningTaskStatus = computed(() => String(technicalRunningTask.value?.status || '').toUpperCase())
+const technicalRunningTaskStatus = computed(() => normalizeTechnicalTaskStatus(technicalRunningTask.value))
 const isTechnicalTaskWaiting = computed(() => technicalRunningTaskStatus.value === 'WAITING')
 const isTechnicalTaskRunning = computed(() => technicalRunningTaskStatus.value === 'RUNNING')
-const isTechnicalRunningByBackend = computed(() => ['WAITING', 'RUNNING'].includes(technicalRunningTaskStatus.value))
+const isTechnicalRunningByBackend = computed(() => isTechnicalTaskRunningStatus(technicalRunningTaskStatus.value))
 const hasOtherAiTaskRunning = computed(() => isGlobalAiTaskRunning.value && !isGlobalAiTaskForCurrentTechnicalSolution.value)
 const isTechnicalRewriteRunning = computed(() => {
   const task = technicalRunningTask.value
-  return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())
+  return !!task && String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' && isTechnicalTaskRunningStatus(task.status)
 })
 const technicalRunningTaskTypeLabel = computed(() => technicalTaskTypeLabel(technicalRunningTask.value?.taskType))
 const technicalRunningTaskProgress = computed(() => Math.min(100, Math.max(0, Number(technicalRunningTask.value?.progress || 0))))
@@ -2237,7 +2266,7 @@ const projectNoMore = computed(() => projectPager.total > 0 && projects.value.le
 
 const technicalGenerateButtonText = computed(() => {
   const task = technicalSolution.value?.runningTask
-  if (task && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
+  if (task && isTechnicalTaskRunningStatus(task.status)) {
     return String(task.taskType || '').toUpperCase() === 'REWRITE_FULL' ? '重编中...' : '生成中...'
   }
   if (fullGenerating.value || isTechnicalRunningByBackend.value) return '生成中...'
@@ -2768,13 +2797,10 @@ function technicalDisplayStatus(project) {
   }
 
   if (projectId && selectedId && projectId === selectedId) {
-    const solutionStatus = String(technicalSolution.value?.status || '').toUpperCase()
-    if (solutionStatus) return solutionStatus
-
-    const runningTask = technicalSolution.value?.runningTask
-    const runningStatus = String(runningTask?.status || '').toUpperCase()
-    if (['WAITING', 'RUNNING'].includes(runningStatus)) return 'CONTENT_GENERATING'
-
+    const state = String(technicalWorkflowState.value || '').toUpperCase()
+    if (state === 'CONTENT_GENERATING') return 'GENERATING'
+    if (state === 'WORD_COUNT_READY') return 'WORD_COUNT_READY'
+    if (['OUTLINE_GENERATING', 'OUTLINE_READY', 'PARTIAL', 'DONE', 'FAILED', 'TIMEOUT'].includes(state)) return state
     if (technicalGeneratingOutline.value) return 'OUTLINE_GENERATING'
     if (technicalOutlines.value.length) {
       const allDone = technicalLeafNodes.value.length > 0 && technicalLeafNodes.value.every(isTechnicalLeafDone)
@@ -2852,9 +2878,11 @@ function statusLabel(type, status) {
   if (value === 'DONE' || value === 'CONTENT_READY') return '已完成'
   if (value === 'OUTLINE_GENERATING') return '目录生成中'
   if (value === 'OUTLINE_READY') return '目录已生成'
+  if (value === 'WORD_COUNT_READY' || value === 'WORD_COUNT_SET') return '篇幅已设置'
   if (value === 'CONTENT_GENERATING' || value === 'GENERATING') return '方案生成中'
   if (value === 'FILLING') return '制作中'
-  if (value === 'PARTIAL') return '部分完成'
+  if (value === 'PARTIAL' || value === 'CONTENT_PARTIAL') return '部分完成'
+  if (value === 'TIMEOUT') return '已超时'
   if (value === 'FAILED') return '失败'
   if (value === 'WAIT_CREATE' || value === 'INFO_READY') return '待制作'
   if (value === 'WAIT_PARSE') return '待解析'
@@ -2865,8 +2893,8 @@ function statusType(status) {
   const value = String(status || '').toUpperCase()
   if (value === 'SUCCESS' || value === 'DONE' || value === 'CONTENT_READY') return 'success'
   if (['PARSING', 'EXTRACTING', 'FILLING', 'GENERATING', 'OUTLINE_GENERATING', 'CONTENT_GENERATING'].includes(value)) return 'warning'
-  if (value === 'FAILED') return 'danger'
-  if (value === 'WAIT_CREATE' || value === 'INFO_READY' || value === 'OUTLINE_READY') return 'primary'
+  if (value === 'FAILED' || value === 'TIMEOUT') return 'danger'
+  if (value === 'WAIT_CREATE' || value === 'INFO_READY' || value === 'OUTLINE_READY' || value === 'WORD_COUNT_READY' || value === 'WORD_COUNT_SET') return 'primary'
   return 'info'
 }
 
@@ -3231,14 +3259,23 @@ async function onTechnicalTenderFileChange(event) {
     return
   }
 
+  const projectId = selectedProject.value.id
   technicalTenderUploading.value = true
   try {
+    clearTechnicalOutlinePending(projectId)
+    clearTechnicalTaskPending(projectId)
+    globalAiRunningTask.value = null
+    resetTechnicalWorkspace()
+    patchSelectedProjectTechnicalStatus('WAIT_PARSE')
+
     const formData = new FormData()
     formData.append('file', file)
-    const res = await uploadTenderToExistingProject(selectedProject.value.id, formData)
+    const res = await uploadTenderToExistingProject(projectId, formData)
     workflow.value = res
     selectedProject.value = res?.project || selectedProject.value
-    ElMessage.success('招标文件已上传，请点击“开始解析”')
+    resetTechnicalWorkspace()
+    patchSelectedProjectTechnicalStatus('WAIT_PARSE')
+    ElMessage.success('招标文件已上传，旧技术标、商务标、审稿结果和生成任务已清理，请重新开始解析')
     await loadProjects(selectedProject.value.id)
     activeDoc.value = 'TECHNICAL_SOLUTION'
   } finally {
@@ -3659,6 +3696,9 @@ function mapSolutionOutlineNode(node) {
     writingDirection: node.writingDirection || node.section?.writingDirection || '',
     writingRequirement: node.writingRequirement || node.section?.writingRequirement || '',
     writingStyle: node.writingStyle || node.section?.writingStyle || 'GENERAL',
+    chartLevel: node.chartLevel || node.section?.chartLevel || 'NONE',
+    tableLevel: node.tableLevel || node.section?.tableLevel || 'NONE',
+    imageLevel: node.imageLevel || node.section?.imageLevel || 'NONE',
     knowledgeIds: node.knowledgeIds || node.section?.knowledgeIds || '',
     fileResourceIds: node.fileResourceIds || '',
     section: node.section || null,
@@ -3818,49 +3858,62 @@ function autoFillTechnicalRequirementAfterParse(showMessage = true) {
 }
 
 async function generateTechnicalOutline() {
+  if (technicalGeneratingOutline.value || isCurrentTechnicalOutlineGenerating.value) {
+    ElMessage.warning('目录正在生成中，请勿重复提交')
+    return
+  }
+
   if (!requireSelectedTechnicalAiLevel()) return
+
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
     ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
     return
   }
+
   if (!selectedProject.value?.id) {
     ElMessage.warning('请先选择项目')
     return
   }
+
   if (!technicalForm.solutionName?.trim()) {
     ElMessage.warning('请先填写方案名称')
     return
   }
+
   if (!technicalForm.purchaseRequirement?.trim()) {
     ElMessage.warning('请先填写采购需求，或先完成解析报告后重新提取')
     return
   }
 
   const projectId = selectedProject.value.id
+  const selectedOutlineKnowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
+  const regenerateOutline = technicalOutlines.value.length > 0 || getTechnicalOutlinesFromSolution(technicalSolution.value).length > 0
+
+  if (regenerateOutline) {
+    try {
+      await ElMessageBox.confirm('当前技术方案已经生成目录，重新生成会在新目录生成成功后覆盖旧目录及旧章节正文，是否继续？', '重新生成目录确认', {
+        type: 'warning',
+        confirmButtonText: '重新生成',
+        cancelButtonText: '取消'
+      })
+    } catch {
+      return
+    }
+  }
+
   technicalGeneratingOutline.value = true
   markTechnicalOutlinePending(projectId)
   patchSelectedProjectTechnicalStatus('OUTLINE_GENERATING')
+
   // 点击生成目录后，立即切换到“生成预览目录”步骤，并在右侧显示生成中状态，避免用户误以为页面卡住。
   technicalStep.value = Math.max(technicalStep.value, 3)
 
+  let outlineRequestAccepted = false
+
   try {
-    const selectedOutlineKnowledgeIds = collectTechnicalFullGenerateKnowledgeIds()
     technicalForm.knowledgeIds = selectedOutlineKnowledgeIds
-    const regenerateOutline = technicalOutlines.value.length > 0 || getTechnicalOutlinesFromSolution(technicalSolution.value).length > 0
-    if (regenerateOutline) {
-      try {
-        await ElMessageBox.confirm('当前技术方案已经生成目录，重新生成会在新目录生成成功后覆盖旧目录及旧章节正文，是否继续？', '重新生成目录确认', {
-          type: 'warning',
-          confirmButtonText: '重新生成',
-          cancelButtonText: '取消'
-        })
-      } catch {
-        technicalGeneratingOutline.value = false
-        clearTechnicalOutlinePending(projectId)
-        return
-      }
-    }
+
     const res = await generateBidProjectTechnicalOutline(projectId, {
       solutionName: technicalForm.solutionName,
       solutionType: technicalForm.solutionType,
@@ -3879,18 +3932,23 @@ async function generateTechnicalOutline() {
       regenerate: regenerateOutline
     })
 
+    outlineRequestAccepted = true
+
     // 如果用户在生成期间切换了项目，不要把返回结果写到别的项目页面。
     if (String(selectedProject.value?.id || '') === String(projectId)) {
       technicalSolution.value = res
       hydrateTechnicalOutlinesFromSolution(res)
+
       // 有些接口返回的是保存成功后的方案摘要，目录树可能需要再查一次详情才能拿到。
       if (!technicalOutlines.value.length) {
         await loadTechnicalSolution()
       }
+
       if (technicalOutlines.value.length) {
         technicalStep.value = 4
         const needWordPreset = technicalOutlinesNeedWordPreset(technicalOutlines.value)
         wordPresetNextAction.value = null
+
         if (needWordPreset) {
           resetWordPresetSelection()
           wordPresetVisible.value = true
@@ -3900,15 +3958,21 @@ async function generateTechnicalOutline() {
           ElMessage.success('长篇技术方案目录已生成，系统已按目标总字数分配章节篇幅')
         }
       } else {
-        ElMessage.warning('目录生成请求已完成，但没有读取到目录数据，系统将继续自动检测生成结果')
+        ElMessage.warning('目录生成请求已提交，系统将继续自动检测生成结果')
       }
+
       await refreshWorkflow()
     }
 
     // 不管当前是否还停留在技术方案页，都启动一次结果检测。
     await checkTechnicalOutlineReady(projectId, false)
+  } catch (e) {
+    clearTechnicalOutlinePending(projectId)
+    technicalGeneratingOutline.value = false
+    await refreshWorkflow()
+    return
   } finally {
-    if (!technicalOutlines.value.length && technicalOutlinePendingProjectId.value) {
+    if (outlineRequestAccepted && !technicalOutlines.value.length && technicalOutlinePendingProjectId.value) {
       // 后端可能已经在继续处理，前端不强行结束生成态，交给轮询恢复。
       startTechnicalOutlinePolling(technicalOutlinePendingProjectId.value)
     } else {
@@ -4287,8 +4351,9 @@ function markTechnicalTaskPending(projectId, taskId) {
 }
 
 function clearTechnicalTaskPending(projectId, taskId) {
-  if (String(technicalTaskPending.projectId || '') === String(projectId || '')
-    && String(technicalTaskPending.taskId || '') === String(taskId || '')) {
+  const sameProject = String(technicalTaskPending.projectId || '') === String(projectId || '')
+  const sameTask = !taskId || String(technicalTaskPending.taskId || '') === String(taskId || '')
+  if (sameProject && sameTask) {
     technicalTaskPending.projectId = ''
     technicalTaskPending.taskId = ''
     localStorage.removeItem(TECH_TASK_PENDING_KEY)
@@ -4379,10 +4444,10 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   technicalTaskPollingBusy.value = true
   try {
     const task = await getBidProjectTechnicalTask(projectId, taskId)
-    globalAiRunningTask.value = ['WAITING', 'RUNNING'].includes(String(task?.status || '').toUpperCase()) ? task : null
+    const status = normalizeTechnicalTaskStatus(task)
+    globalAiRunningTask.value = isTechnicalTaskRunningStatus(status) ? task : null
     technicalTaskPollErrorCount.value = 0
-    const status = String(task?.status || '').toUpperCase()
-    if (['WAITING', 'RUNNING'].includes(status)) {
+    if (isTechnicalTaskRunningStatus(status)) {
       fullGenerating.value = true
       technicalTaskPollTick.value += 1
       if (String(selectedProject.value?.id || '') === String(projectId || '')) {
@@ -4406,12 +4471,7 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
       selectFirstGeneratedTechnicalLeaf()
     }
 
-    if (!silent) {
-      if (status === 'FAILED') ElMessage.error(safeTechnicalTaskMessage(task?.message || task?.errorMessage, '生成失败，请稍后重试'))
-      else if (status === 'PARTIAL') ElMessage.warning(safeTechnicalTaskMessage(task?.message, '部分章节未生成完成，请继续生成或重编失败章节'))
-      else if (status === 'CANCELED') ElMessage.warning(safeTechnicalTaskMessage(task?.message, '生成已取消'))
-      else ElMessage.success(safeTechnicalTaskMessage(task?.message, '技术方案正文生成完成'))
-    }
+    notifyTechnicalTaskTerminal(projectId, taskId, status, task, silent)
   } catch (e) {
     // 生成中的查询接口偶发超时，不能把本地“生成中”状态清掉。
     // 否则用户切换菜单回来，会误以为后台任务没了，但实际上后端还在继续生成。
@@ -4431,6 +4491,21 @@ async function pollTechnicalGenerationTask(projectId, taskId, silent = true) {
   }
 }
 
+
+
+function notifyTechnicalTaskTerminal(projectId, taskId, status, task, silent = true) {
+  const notifyKey = `${projectId || ''}:${taskId || ''}:${status || ''}`
+  if (!notifyKey || technicalTaskTerminalNotifiedIds.has(notifyKey)) return
+  const shouldNotify = !silent
+    || ['PARTIAL', 'FAILED', 'TIMEOUT', 'CANCELED'].includes(String(status || '').toUpperCase())
+  if (!shouldNotify) return
+  technicalTaskTerminalNotifiedIds.add(notifyKey)
+  const message = safeTechnicalTaskMessage(technicalTaskResultMessage(status, task), technicalTaskResultMessage(status, task))
+  if (status === 'FAILED' || status === 'TIMEOUT') ElMessage.error(message)
+  else if (status === 'PARTIAL') ElMessage.warning(message)
+  else if (status === 'CANCELED') ElMessage.warning(message)
+  else ElMessage.success(message)
+}
 
 function technicalLeafTitle(node) {
   return String(node?.title || node?.name || node?.outlineTitle || '未命名章节').trim()
@@ -4757,6 +4832,17 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
     return true
   } catch (e) {
     technicalOutlinePollErrorCount.value += 1
+    if (technicalOutlinePollErrorCount.value === 3 && String(selectedProject.value?.id || '') === String(projectId || '')) {
+      ElMessage.warning('目录状态查询连续失败，系统会降低刷新频率继续检查')
+    }
+    if (technicalOutlinePollErrorCount.value >= 6) {
+      clearTechnicalOutlinePending(projectId)
+      if (String(selectedProject.value?.id || '') === String(projectId || '')) {
+        technicalGeneratingOutline.value = false
+        await refreshWorkflow()
+        ElMessage.error('目录生成状态查询多次失败，已停止前端轮询。可刷新页面或重新生成目录。')
+      }
+    }
     return false
   } finally {
     technicalOutlinePollingBusy.value = false
@@ -5206,9 +5292,9 @@ async function optimizeTechnicalSection(type = 'POLISH', customTargetWordCount =
       action: type === 'SHRINK' ? 'SHORTEN' : type,
       sourceContent: content,
       maxRewriteAttempts: type === 'SHRINK' ? 3 : undefined,
-      chartLevel: 'NONE',
-      tableLevel: 'NONE',
-      imageLevel: 'NONE',
+      chartLevel: node.chartLevel || sectionForm.chartLevel || 'NONE',
+      tableLevel: node.tableLevel || sectionForm.tableLevel || 'NONE',
+      imageLevel: node.imageLevel || sectionForm.imageLevel || 'NONE',
       knowledgeIds: stringifyKnowledgeIds(node.knowledgeIds || sectionForm.knowledgeIds || ''),
       fileResourceIds: node.fileResourceIds || '',
       writingDirection: node.writingDirection || '',
@@ -5612,9 +5698,9 @@ function openTechnicalSectionDialog(node) {
   Object.assign(sectionForm, {
     title: node.title,
     targetWordCount,
-    chartLevel: 'NONE',
-    tableLevel: 'NONE',
-    imageLevel: 'NONE',
+    chartLevel: node.chartLevel || node.section?.chartLevel || sectionForm.chartLevel || 'NONE',
+    tableLevel: node.tableLevel || node.section?.tableLevel || sectionForm.tableLevel || 'NONE',
+    imageLevel: node.imageLevel || node.section?.imageLevel || sectionForm.imageLevel || 'NONE',
     knowledgeIds: node.knowledgeIds || '',
     fileResourceIds: node.fileResourceIds || '',
     writingDirection: node.writingDirection || '',
@@ -5639,9 +5725,9 @@ async function generateTechnicalSection() {
     await streamBidProjectTechnicalSection(selectedProject.value?.id, sectionNode.value.id, {
       ...sectionForm,
       knowledgeIds: stringifyKnowledgeIds(sectionForm.knowledgeIds),
-      chartLevel: 'NONE',
-      tableLevel: 'NONE',
-      imageLevel: 'NONE'
+      chartLevel: sectionForm.chartLevel || sectionNode.value?.chartLevel || 'NONE',
+      tableLevel: sectionForm.tableLevel || sectionNode.value?.tableLevel || 'NONE',
+      imageLevel: sectionForm.imageLevel || sectionNode.value?.imageLevel || 'NONE'
     }, {
       onMessage(chunk) {
         sectionStreamingText.value += chunk
@@ -6583,6 +6669,10 @@ const WritingDirectionEditor = defineComponent({
   height: 54px;
   padding: 0 12px;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.bid-tech-workflow-alert {
+  margin: 10px 12px 0;
 }
 
 .bid-tech-steps {
