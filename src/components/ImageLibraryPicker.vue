@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="从图片库插入图片" width="1120px" destroy-on-close @open="onOpen">
+  <el-dialog v-model="visible" title="插入配图" width="1120px" destroy-on-close @open="onOpen">
     <div class="image-picker-top">
       <div>
         <strong>当前章节：{{ chapterTitle || '未选择章节' }}</strong>
@@ -67,6 +67,22 @@
 
       <div class="image-insert-panel">
         <div class="panel-title">插入设置</div>
+        <div class="local-upload-box">
+          <div class="local-upload-head">
+            <strong>本地上传</strong>
+            <span>上传后自动加入图片库并选中</span>
+          </div>
+          <el-upload
+            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+            :auto-upload="false"
+            :show-file-list="false"
+            :disabled="uploading"
+            :on-change="onLocalUploadChange"
+          >
+            <el-button size="small" type="primary" plain :loading="uploading">上传本地图片</el-button>
+          </el-upload>
+          <p>支持 JPG、JPEG、PNG，建议单张不超过 8MB。插入后会绑定到当前章节。</p>
+        </div>
         <template v-if="selected">
           <ImageThumb :file-id="selected.fileResourceId || selected.fileId" large />
           <div class="selected-image-info">
@@ -108,7 +124,7 @@
         @current-change="onPageChange"
       />
       <el-button @click="visible = false">取消</el-button>
-      <el-button type="primary" :disabled="!selected" @click="confirmInsert">插入图片</el-button>
+      <el-button type="primary" :disabled="!selected" @click="confirmInsert">插入配图</el-button>
     </template>
   </el-dialog>
 </template>
@@ -116,8 +132,8 @@
 <script setup>
 import { computed, defineComponent, h, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
-import { ElImage } from 'element-plus'
-import { pageMaterialImages } from '@/api/materialImage'
+import { ElImage, ElMessage } from 'element-plus'
+import { pageMaterialImages, uploadMaterialImage } from '@/api/materialImage'
 import { downloadFileBlob } from '@/api/file'
 import {
   MATERIAL_IMAGE_CATEGORY_OPTIONS,
@@ -132,6 +148,10 @@ const props = defineProps({
   },
   chapterTitle: {
     type: String,
+    default: ''
+  },
+  enterpriseId: {
+    type: [String, Number],
     default: ''
   }
 })
@@ -150,6 +170,7 @@ const pager = reactive({ pageNum: 1, pageSize: 12, total: 0 })
 const imageList = ref([])
 const selected = ref(null)
 const loading = ref(false)
+const uploading = ref(false)
 const fallbackNotice = ref('')
 const insertedByRecommendation = ref(false)
 const insertForm = reactive({ caption: '', width: 680, align: 'center' })
@@ -193,6 +214,7 @@ async function loadImages(options = {}) {
       category: query.category || undefined,
       chapterType: query.chapterType || undefined,
       status: 1,
+      enterpriseId: props.enterpriseId || undefined,
       pageNum: pager.pageNum,
       pageSize: pager.pageSize
     }
@@ -204,6 +226,7 @@ async function loadImages(options = {}) {
       const fallbackRes = await pageMaterialImages({
         keyword: query.keyword || undefined,
         status: 1,
+        enterpriseId: props.enterpriseId || undefined,
         pageNum: 1,
         pageSize: pager.pageSize
       })
@@ -279,6 +302,52 @@ function applyRecommendation() {
 function onPageChange(page) {
   pager.pageNum = page
   loadImages({ fallbackIfEmpty: insertedByRecommendation.value })
+}
+
+async function onLocalUploadChange(uploadFile) {
+  const raw = uploadFile?.raw
+  if (!raw) return
+  const name = raw.name || 'section-image.png'
+  if (!/\.(jpe?g|png)$/i.test(name)) {
+    ElMessage.warning('只支持上传 JPG、JPEG、PNG 图片')
+    return
+  }
+  if (raw.size && raw.size > 8 * 1024 * 1024) {
+    ElMessage.warning('图片不能超过 8MB')
+    return
+  }
+  const enterpriseId = props.enterpriseId
+  if (!enterpriseId) {
+    ElMessage.warning('当前项目未绑定所属企业，不能上传本地图片。请先完善项目所属企业，或从图片库选择已有图片。')
+    return
+  }
+  uploading.value = true
+  try {
+    const imageName = stripImageExt(name) || props.chapterTitle || '章节配图'
+    const uploaded = await uploadMaterialImage({
+      file: raw,
+      enterpriseId,
+      imageName,
+      category: recommendation.value.category || '',
+      chapterType: recommendation.value.chapterType || '',
+      scene: props.chapterTitle || '',
+      description: props.chapterTitle ? `${props.chapterTitle}配图` : imageName
+    })
+    selected.value = uploaded
+    insertForm.caption = uploaded?.description || uploaded?.imageName || imageName || '章节配图'
+    ElMessage.success('图片已上传并选中')
+    pager.pageNum = 1
+    await loadImages()
+    selected.value = uploaded
+  } catch (e) {
+    // 业务异常由全局拦截器提示，这里只保持弹窗可继续操作。
+  } finally {
+    uploading.value = false
+  }
+}
+
+function stripImageExt(name = '') {
+  return String(name || '').replace(/\.[^.]+$/, '').trim()
 }
 
 function confirmInsert() {
@@ -471,6 +540,31 @@ const ImageThumb = defineComponent({
   margin-bottom: 12px;
   color: #0f172a;
   font-weight: 700;
+}
+.local-upload-box {
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 10px;
+  background: #fff;
+}
+.local-upload-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.local-upload-head strong {
+  color: #0f172a;
+}
+.local-upload-head span,
+.local-upload-box p {
+  color: #64748b;
+  font-size: 12px;
+}
+.local-upload-box p {
+  margin: 8px 0 0;
+  line-height: 1.5;
 }
 .selected-image-info {
   margin-top: 10px;

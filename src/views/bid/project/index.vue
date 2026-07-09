@@ -662,7 +662,7 @@
                     </div>
                     <div class="section-preview-actions">
                       <template v-if="technicalSectionContentEditMode">
-                        <el-button size="small" plain :disabled="!canInsertTechnicalImage" @click="openTechnicalImagePicker">插入图片</el-button>
+                        <el-button size="small" plain :disabled="!canInsertTechnicalImage" @click="openTechnicalImagePicker">插入配图</el-button>
                         <el-button size="small" :disabled="technicalSectionContentSaving" @click="cancelEditTechnicalSectionContent">取消</el-button>
                         <el-button size="small" type="primary" :loading="technicalSectionContentSaving" :disabled="!technicalSectionContentDirty" @click="saveTechnicalSectionContent">保存</el-button>
                       </template>
@@ -681,7 +681,7 @@
                           :disabled="!canInsertTechnicalImage"
                           @click="openTechnicalImagePicker"
                         >
-                          插入图片
+                          插入配图
                         </el-button>
                         <el-button
                           size="small"
@@ -1630,7 +1630,12 @@
       </template>
     </el-dialog>
 
-    <ImageLibraryPicker v-model="imagePickerVisible" :chapter-title="selectedTechnicalLeaf?.title || ''" @insert="insertTechnicalImage" />
+    <ImageLibraryPicker
+      v-model="imagePickerVisible"
+      :chapter-title="selectedTechnicalLeaf?.title || ''"
+      :enterprise-id="selectedProject?.enterpriseId || auth.enterpriseId || ''"
+      @insert="insertTechnicalImage"
+    />
 
   </div>
 </template>
@@ -5154,6 +5159,7 @@ async function copyTechnicalSectionContent() {
     return
   }
   const content = String(selectedTechnicalLeafDisplayContent.value || '').trim()
+  const preservedImageMarkers = collectTechnicalImageMarkers(content)
   if (!content) {
     ElMessage.warning('当前章节暂无正文可复制')
     return
@@ -5313,6 +5319,9 @@ async function optimizeTechnicalSection(type = 'POLISH', customTargetWordCount =
     await refreshWorkflow()
     const latest = findTechnicalOutlineNodeById(technicalOutlines.value, node.id)
     selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
+    if (preservedImageMarkers.length) {
+      await restoreTechnicalImagesIfNeeded(node.id, preservedImageMarkers)
+    }
     technicalStep.value = Math.max(technicalStep.value, 5)
     const latestActual = outlineActualWordCount(selectedTechnicalLeaf.value) || countTextWords(getTechnicalLeafContent(selectedTechnicalLeaf.value) || '')
     if (type === 'SHRINK' && latestActual > maxAcceptableFrontendWords(targetWordCount)) {
@@ -5436,7 +5445,7 @@ function openTechnicalImagePicker() {
     return
   }
   if (!canInsertTechnicalImage.value) {
-    ElMessage.warning('当前章节暂不能插入图片，请等待生成任务完成')
+    ElMessage.warning('当前章节暂不能插入配图，请等待生成任务完成')
     return
   }
   if (!technicalSectionContentEditMode.value) {
@@ -5445,19 +5454,40 @@ function openTechnicalImagePicker() {
   imagePickerVisible.value = true
 }
 
-function insertTechnicalImage(payload) {
+async function insertTechnicalImage(payload) {
   if (!payload) return
   const marker = payload.marker || buildImageMarker(payload)
   if (!marker) {
     ElMessage.warning('图片信息不完整，无法插入')
     return
   }
-  const current = String(technicalSectionContentDraft.value || '')
+  if (!selectedProject.value?.id || !selectedTechnicalLeaf.value?.id) {
+    ElMessage.warning('请先选择要插图的章节')
+    return
+  }
+  const current = String(technicalSectionContentEditMode.value ? technicalSectionContentDraft.value : selectedTechnicalLeafDisplayContent.value || '')
   const prefix = current.trimEnd()
-  technicalSectionContentDraft.value = `${prefix}${prefix ? '\n\n' : ''}${marker}\n`
+  const nextContent = `${prefix}${prefix ? '\n\n' : ''}${marker}\n`
+  technicalSectionContentDraft.value = nextContent
   technicalSectionContentEditMode.value = true
-  nextTick(() => focusTechnicalSectionEditor(true))
-  ElMessage.success('图片已插入正文，请保存本章')
+
+  // 配图要立即保存到章节正文，才算真正绑定当前章节，并且 Word 导出才能稳定带图。
+  technicalSectionContentSaving.value = true
+  try {
+    await updateBidProjectTechnicalSectionContent(selectedProject.value.id, selectedTechnicalLeaf.value.id, normalizeSectionContent(nextContent))
+    await loadTechnicalSolution()
+    const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
+    selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
+    technicalSectionContentEditMode.value = false
+    ElMessage.success('配图已插入并保存到当前章节')
+  } catch (e) {
+    // 保存失败时不丢用户操作，保留编辑草稿，用户可以手动点击保存。
+    technicalSectionContentEditMode.value = true
+    nextTick(() => focusTechnicalSectionEditor(true))
+    ElMessage.warning('配图已插入编辑草稿，但自动保存失败，请手动保存本章')
+  } finally {
+    technicalSectionContentSaving.value = false
+  }
 }
 
 function buildImageMarker(payload) {
@@ -5541,7 +5571,11 @@ function findTechnicalImageLineIndex(lines, block) {
   return -1
 }
 
-function applyTechnicalImageMarkerChange(block, nextLine, message = '图片设置已更新，请保存本章') {
+async function applyTechnicalImageMarkerChange(block, nextLine, message = '图片设置已更新并保存') {
+  if (technicalSectionContentSaving.value) {
+    ElMessage.warning('当前章节正在保存，请稍后再操作图片设置')
+    return
+  }
   const source = String(technicalSectionContentEditMode.value ? technicalSectionContentDraft.value : selectedTechnicalLeafContent.value || '')
   const lines = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   const index = findTechnicalImageLineIndex(lines, block)
@@ -5555,10 +5589,73 @@ function applyTechnicalImageMarkerChange(block, nextLine, message = '图片设�
   } else {
     lines[index] = nextLine
   }
-  technicalSectionContentDraft.value = lines.join('\n')
-  technicalSectionContentEditMode.value = true
-  nextTick(() => focusTechnicalSectionEditor())
-  ElMessage.success(message)
+  const nextContent = lines.join('\n')
+  technicalSectionContentDraft.value = nextContent
+
+  if (!selectedProject.value?.id || !selectedTechnicalLeaf.value?.id) {
+    technicalSectionContentEditMode.value = true
+    nextTick(() => focusTechnicalSectionEditor())
+    ElMessage.warning('图片设置已写入草稿，但缺少项目或章节信息，请手动保存本章')
+    return
+  }
+
+  // 图片大小、对齐、说明和删除引用属于章节配图设置，点击后应立即落库。
+  // 否则只会改编辑草稿，用户在预览区看不到变化，导出 Word 也仍然使用旧设置。
+  technicalSectionContentSaving.value = true
+  try {
+    await updateBidProjectTechnicalSectionContent(
+      selectedProject.value.id,
+      selectedTechnicalLeaf.value.id,
+      normalizeSectionContent(nextContent)
+    )
+    await loadTechnicalSolution()
+    const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
+    selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
+    technicalSectionContentEditMode.value = false
+    ElMessage.success(message)
+  } catch (e) {
+    // 自动保存失败时不丢操作，保留编辑草稿，用户可以手动保存。
+    technicalSectionContentEditMode.value = true
+    nextTick(() => focusTechnicalSectionEditor())
+    ElMessage.warning('图片设置已写入编辑草稿，但自动保存失败，请手动保存本章')
+  } finally {
+    technicalSectionContentSaving.value = false
+  }
+}
+
+
+function collectTechnicalImageMarkers(content = '') {
+  const lines = String(content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const markers = []
+  const seen = new Set()
+  lines.forEach((line) => {
+    const trimmed = String(line || '').trim()
+    if (!trimmed || !parseTechnicalImageMarker(trimmed)) return
+    if (seen.has(trimmed)) return
+    seen.add(trimmed)
+    markers.push(trimmed)
+  })
+  return markers
+}
+
+function mergePreservedTechnicalImages(content = '', markers = []) {
+  const text = String(content || '').trimEnd()
+  const missing = (markers || []).filter((marker) => marker && !text.includes(marker))
+  if (!missing.length) return content
+  return `${text}${text ? '\n\n' : ''}${missing.join('\n\n')}\n`
+}
+
+async function restoreTechnicalImagesIfNeeded(nodeId, markers = []) {
+  if (!selectedProject.value?.id || !nodeId || !markers?.length) return false
+  const latestNode = findTechnicalOutlineNodeById(technicalOutlines.value, nodeId)
+  const latestContent = getTechnicalLeafContent(latestNode || selectedTechnicalLeaf.value) || ''
+  const merged = mergePreservedTechnicalImages(latestContent, markers)
+  if (merged === latestContent) return false
+  await updateBidProjectTechnicalSectionContent(selectedProject.value.id, nodeId, normalizeSectionContent(merged))
+  await loadTechnicalSolution()
+  const refreshed = findTechnicalOutlineNodeById(technicalOutlines.value, nodeId)
+  selectedTechnicalLeaf.value = refreshed || selectedTechnicalLeaf.value
+  return true
 }
 
 function focusTechnicalSectionEditor(moveToEnd = false) {
@@ -5568,16 +5665,16 @@ function focusTechnicalSectionEditor(moveToEnd = false) {
   if (moveToEnd) input.selectionStart = input.selectionEnd = input.value.length
 }
 
-function updateTechnicalImageWidth({ block, width }) {
+async function updateTechnicalImageWidth({ block, width }) {
   const parsed = parseTechnicalImageMarker(block?.rawLine)
   if (!parsed) return
-  applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, width }), '图片宽度已调整，请保存本章')
+  await applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, width }), '图片宽度已调整并保存')
 }
 
-function updateTechnicalImageAlign({ block, align }) {
+async function updateTechnicalImageAlign({ block, align }) {
   const parsed = parseTechnicalImageMarker(block?.rawLine)
   if (!parsed) return
-  applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, align }), '图片对齐方式已调整，请保存本章')
+  await applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, align }), '图片对齐方式已调整并保存')
 }
 
 async function editTechnicalImageCaption({ block }) {
@@ -5591,7 +5688,7 @@ async function editTechnicalImageCaption({ block }) {
       cancelButtonText: '取消',
       inputValidator: (value) => String(value || '').trim().length > 0 || '图片说明不能为空'
     })
-    applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, alt: value }), '图片说明已修改，请保存本章')
+    await applyTechnicalImageMarkerChange(block, buildTechnicalImageMarker({ ...parsed, alt: value }), '图片说明已修改并保存')
   } catch (e) {
     // 用户取消。
   }
@@ -5604,7 +5701,7 @@ async function deleteTechnicalImageReference({ block }) {
       confirmButtonText: '删除引用',
       cancelButtonText: '取消'
     })
-    applyTechnicalImageMarkerChange(block, null, '图片引用已删除，请保存本章')
+    await applyTechnicalImageMarkerChange(block, null, '图片引用已删除并保存')
   } catch (e) {
     // 用户取消。
   }
@@ -5719,6 +5816,8 @@ async function generateTechnicalSection() {
     return
   }
   if (!sectionNode.value?.id) return
+  const currentNode = findTechnicalOutlineNodeById(technicalOutlines.value, sectionNode.value.id) || sectionNode.value
+  const preservedImageMarkers = collectTechnicalImageMarkers(getTechnicalLeafContent(currentNode) || '')
   sectionGenerating.value = true
   sectionStreamingText.value = ''
   try {
@@ -5740,6 +5839,9 @@ async function generateTechnicalSection() {
     await refreshWorkflow()
     const latest = findTechnicalOutlineNodeById(technicalOutlines.value, sectionNode.value.id)
     selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
+    if (preservedImageMarkers.length) {
+      await restoreTechnicalImagesIfNeeded(sectionNode.value.id, preservedImageMarkers)
+    }
     technicalStep.value = Math.max(technicalStep.value, 5)
     ElMessage.success('本段生成完成')
   } finally {
