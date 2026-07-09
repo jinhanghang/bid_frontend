@@ -1,0 +1,3209 @@
+.ai-bid-page {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+}
+
+.project-pane,
+.workspace {
+  min-width: 0;
+  min-height: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.project-pane {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+}
+
+.pane-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1f2937;
+  margin-bottom: 14px;
+}
+
+.project-search {
+  margin-bottom: 12px;
+}
+
+.project-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.project-list-load-state {
+  padding: 16px 0 6px;
+  color: #8a95a8;
+  text-align: center;
+  font-size: 13px;
+}
+
+.project-card {
+  border: 1px solid #eef2ff;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  transition: all 0.18s ease;
+}
+
+.project-card.active {
+  border-color: #4f8cff;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1);
+}
+
+.project-main {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+}
+
+.project-dot {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+}
+
+.project-dot.success { background: #22c55e; }
+.project-dot.warning { background: #f59e0b; }
+.project-dot.danger { background: #ef4444; }
+
+.project-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-name {
+  overflow: hidden;
+  color: #2563eb;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-time {
+  margin-top: 4px;
+  color: #8a98ad;
+  font-size: 12px;
+}
+
+.project-fold-btn,
+.project-delete-btn {
+  width: 26px;
+  height: 26px;
+  margin-top: -4px;
+  color: #94a3b8;
+}
+
+.project-fold-btn {
+  opacity: 1;
+}
+
+.fold-icon {
+  color: #94a3b8;
+  transition: transform 0.18s ease;
+}
+
+.fold-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.project-delete-btn {
+  opacity: 0;
+}
+
+.project-card:hover .project-delete-btn,
+.project-card.active .project-delete-btn {
+  opacity: 1;
+}
+
+.project-delete-btn:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.project-fold-btn:hover {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.doc-list {
+  border-top: 1px solid #edf2f7;
+  background: #f8fbff;
+}
+
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.doc-row:hover,
+.doc-row.active {
+  background: #eaf2ff;
+}
+
+.doc-row.disabled {
+  opacity: 0.75;
+}
+
+.doc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.doc-info {
+  min-width: 0;
+}
+
+.doc-title {
+  color: #334155;
+  font-weight: 700;
+}
+
+.doc-tags {
+  display: flex;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.export-project-btn {
+  width: calc(100% - 20px);
+  margin: 10px;
+}
+
+.empty-project {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 260px;
+  color: #8a98ad;
+}
+
+.empty-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 86px;
+  height: 86px;
+  border-radius: 28px;
+  background: #eef5ff;
+  color: #9bbcff;
+  font-weight: 900;
+  font-size: 28px;
+}
+
+.new-project-btn {
+  width: 100%;
+  height: 42px;
+  border: 0;
+  background: linear-gradient(90deg, #3b73ff, #7c4dff);
+}
+
+.workspace {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 40px;
+}
+
+.hero {
+  max-width: 760px;
+  margin: 40px auto 60px;
+  text-align: center;
+}
+
+.hero h1 {
+  margin: 0 0 20px;
+  color: #1f2937;
+  font-size: 32px;
+}
+
+.hero p {
+  color: #4b5563;
+  line-height: 2;
+  font-size: 16px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.feature-card {
+  min-height: 300px;
+  padding: 28px;
+  border-radius: 24px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.12);
+}
+
+.feature-card h3 {
+  margin: 0 0 18px;
+  color: #1f2937;
+  font-size: 22px;
+}
+
+.feature-card p {
+  color: #475569;
+  line-height: 1.8;
+}
+
+.feature-blue { background: #f1f5ff; }
+.feature-red { background: #fff1f2; }
+.feature-cyan { background: #eef8ff; }
+
+.feature-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-top: 58px;
+  border-radius: 22px;
+  background: rgba(255,255,255,0.78);
+  color: #3b82f6;
+  font-size: 28px;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.12);
+}
+
+.hero-new-btn {
+  display: block;
+  width: 150px;
+  height: 44px;
+  margin: 58px auto 0;
+  border: 0;
+  background: linear-gradient(90deg, #3b73ff, #7c4dff);
+}
+
+.doc-workspace {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.doc-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.doc-head h2 {
+  margin: 0 0 8px;
+  color: #1f2937;
+}
+
+.doc-head p {
+  margin: 0;
+  color: #64748b;
+}
+
+.parse-running {
+  max-width: 720px;
+  margin: 120px auto 0;
+  text-align: center;
+}
+
+.parse-pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+}
+
+.report-panel {
+  padding: 18px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  color: #64748b;
+  margin-bottom: 16px;
+}
+
+.auto-fill-basic-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+
+.auto-fill-basic-card strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #1e3a8a;
+}
+
+.auto-fill-basic-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.report-text {
+  min-height: 520px;
+  padding: 18px;
+  border-radius: 14px;
+  background: #fff;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+}
+
+.bid-doc-workspace {
+  padding: 18px;
+  background: #f5f7fb;
+  overflow: auto;
+}
+
+.bid-doc-head {
+  margin-bottom: 14px;
+}
+
+.bid-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bid-doc-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.bid-doc-status-card,
+.company-material-ref-card,
+.bid-doc-analysis-card,
+.bid-doc-review-card,
+.bid-doc-editor-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.bid-doc-status-card {
+  padding: 16px;
+}
+
+.bid-doc-status-card strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #0f172a;
+}
+
+.bid-doc-status-card span {
+  color: #2563eb;
+  font-weight: 700;
+}
+
+.bid-doc-status-card p {
+  margin: 8px 0 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.bid-doc-status-card.success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.company-material-ref-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.company-material-ref-card strong,
+.bid-doc-editor-head strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f172a;
+}
+
+.company-material-ref-card p,
+.bid-doc-editor-head p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.company-material-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+
+.bid-doc-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.bid-doc-analysis-card,
+.bid-doc-review-card {
+  padding: 16px;
+}
+
+.analysis-card-head,
+.review-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.analysis-card-head strong,
+.review-card-head strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.analysis-card-head span,
+.review-card-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.bid-doc-review-card {
+  margin-bottom: 14px;
+}
+
+.bid-doc-review-form {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.bid-doc-editor-card {
+  padding: 18px;
+}
+
+.bid-doc-editor-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.company-material-selector {
+  min-height: 220px;
+}
+
+.company-material-option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.company-material-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.company-material-option.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.company-material-option strong {
+  color: #0f172a;
+}
+
+.company-material-option p {
+  margin: 6px 0;
+  color: #475569;
+}
+
+.company-material-option span {
+  display: -webkit-box;
+  color: #64748b;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.create-admin-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.create-admin-select {
+  width: 100%;
+}
+
+.tech-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48%;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+}
+
+.tech-form,
+.outline-preview {
+  min-height: 0;
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.step-bar {
+  display: flex;
+  gap: 14px;
+  padding: 8px 0 18px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.step {
+  color: #8a98ad;
+  font-weight: 700;
+}
+
+.step.active {
+  color: #246bfe;
+}
+
+.form-section {
+  margin-top: 18px;
+}
+
+.required-label {
+  margin-bottom: 10px;
+  color: #111827;
+  font-weight: 800;
+}
+
+.required-label::before {
+  content: '*';
+  margin-right: 4px;
+  color: #ef4444;
+}
+
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ai-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ai-card {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #dbe3ef;
+  background: #fff;
+}
+
+.ai-card.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.ai-card h3 {
+  margin: 0 0 8px;
+}
+
+.ai-card p {
+  min-height: 48px;
+  margin: 0 0 10px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.ai-card span {
+  display: block;
+  margin: 0 -16px -16px;
+  padding: 9px;
+  text-align: center;
+  color: #64748b;
+  background: #e8eefb;
+}
+
+.outline-preview {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e5e7eb;
+}
+
+.outline-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.outline-head span {
+  color: #f59e0b;
+  font-size: 13px;
+}
+
+.outline-empty {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 52px;
+  color: #a0aec0;
+  background: #fbfdff;
+}
+
+.outline-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+
+.bid-tech-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  margin: -28px -40px;
+  background: #fff;
+}
+
+.bid-tech-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 54px;
+  padding: 0 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.bid-tech-workflow-alert {
+  margin: 10px 12px 0;
+}
+
+.bid-tech-steps {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex: 1;
+  min-width: 0;
+}
+
+.bid-tech-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bid-tech-step:not(:last-child)::after {
+  content: '';
+  width: 72px;
+  height: 1px;
+  margin-left: 12px;
+  background: #d9dee8;
+}
+
+.bid-tech-step b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  background: #cbd5e1;
+}
+
+.bid-tech-step.active {
+  color: #2563eb;
+}
+
+.bid-tech-step.active b {
+  background: #2f6df6;
+}
+
+.bid-tech-stats {
+  padding: 14px 22px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.tech-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 8px 72px;
+  max-width: 760px;
+}
+
+.tech-stat-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #334155;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tech-stat-item strong {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.tech-stat-item strong.danger {
+  color: #ef4444;
+}
+
+.tech-stat-item strong.success {
+  color: #16a34a;
+}
+
+.tech-stat-item em {
+  color: #111827;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.tech-stat-tip {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 16px;
+}
+
+.bid-tech-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48%;
+  flex: 1;
+  min-height: 0;
+}
+
+.bid-tech-left {
+  min-width: 0;
+  overflow: auto;
+  padding: 22px 22px 80px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.bid-tech-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #fbfdff;
+}
+
+.tech-form-section {
+  margin-bottom: 20px;
+}
+
+.tech-label,
+.tech-inline-title {
+  margin-bottom: 10px;
+  color: #111827;
+  font-weight: 800;
+}
+
+.tech-label.required::before,
+.tech-inline-title .required::before {
+  content: '*';
+  margin-right: 4px;
+  color: #ef4444;
+}
+
+.tech-inline-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tech-type-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 260px));
+  gap: 12px;
+}
+
+.tech-select {
+  width: 100%;
+}
+
+.tech-ai-levels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tech-strategy-note,
+.tech-form-tip {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.tech-ai-card {
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #fff;
+  transition: all 0.18s ease;
+}
+
+.tech-ai-card.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.08);
+}
+
+.tech-ai-card strong {
+  display: block;
+  padding: 16px 16px 0;
+  color: #1f2937;
+  font-size: 17px;
+}
+
+.tech-ai-card p {
+  min-height: 54px;
+  margin: 8px 0 12px;
+  padding: 0 16px;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.tech-ai-card span {
+  display: block;
+  padding: 10px;
+  color: #64748b;
+  text-align: center;
+  background: #e8eefb;
+}
+
+.tech-read-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 136px;
+  border: 1px dashed #9bbcff;
+  border-radius: 12px;
+  background: #fbfdff;
+  color: #64748b;
+}
+
+.tech-read-card.success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.tech-read-card.running {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.tech-read-card.empty {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.tech-read-card.empty .tech-read-icon,
+.tech-read-card.empty .tech-read-file {
+  color: #ef4444;
+}
+
+.tech-read-icon {
+  color: #3b82f6;
+  font-size: 36px;
+}
+
+.tech-read-file {
+  margin-top: 8px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.tech-read-status {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.tech-read-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.tech-read-actions .el-button {
+  min-width: 118px;
+  height: 34px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.tech-outline-mode {
+  margin-bottom: 10px;
+}
+
+.tech-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.tech-preview-head span {
+  color: #f59e0b;
+  font-size: 13px;
+}
+
+.tech-preview-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+
+.tech-outline-loading {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #4b5563;
+  text-align: center;
+}
+
+.tech-outline-loading .el-icon {
+  font-size: 34px;
+  color: #2563eb;
+}
+
+.tech-outline-loading strong {
+  font-size: 18px;
+  color: #1f2937;
+}
+
+.tech-outline-loading p {
+  max-width: 420px;
+  margin: 0;
+  line-height: 1.7;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.tech-outline-tree {
+  padding: 18px 20px 80px;
+  color: #1f2937;
+}
+
+.outline-lv1,
+.outline-lv2,
+.outline-lv3 {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  border-bottom: 1px dashed #edf2f7;
+}
+
+.outline-lv1 {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.outline-lv2 {
+  padding-left: 22px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.outline-lv3 {
+  justify-content: space-between;
+  padding-left: 48px;
+  color: #475569;
+}
+
+.outline-lv3 em {
+  color: #16a34a;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.tech-outline-next-tip {
+  padding: 10px 16px 0;
+  font-size: 13px;
+  color: #64748b;
+  background: #fff;
+}
+
+.tech-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.tender-upload :deep(.el-upload-dragger) {
+  height: 310px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-icon {
+  color: #94a3b8;
+  font-size: 58px;
+}
+
+.upload-tip {
+  margin-top: 10px;
+  color: #64748b;
+  text-align: center;
+}
+
+.selected-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: #475569;
+}
+
+@media (max-width: 1280px) {
+  .feature-grid,
+  .tech-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tech-stats-inline {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #edf2f7;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+}
+
+.tech-stats-inline b {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.tech-stats-inline .red,
+.tech-stats-inline b.red {
+  color: #ef4444;
+}
+
+.tech-stats-inline .green,
+.tech-stats-inline b.green {
+  color: #16a34a;
+}
+
+.tech-stats-inline em {
+  grid-column: 1 / -1;
+  color: #94a3b8;
+  font-style: normal;
+}
+
+.sticky-status {
+  margin: 0;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: #fff;
+}
+
+.tech-leaf-row {
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.tech-leaf-row:hover,
+.tech-leaf-row.active {
+  background: #eef6ff;
+}
+
+.tech-result-preview {
+  margin: 10px 16px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.result-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.result-preview-head strong {
+  color: #1f2937;
+}
+
+.result-preview-head span {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.result-preview-body {
+  max-height: 260px;
+  overflow: auto;
+  padding: 14px;
+}
+
+.result-preview-body pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  color: #1f2937;
+  font-family: inherit;
+}
+
+.result-preview-empty {
+  padding: 10px 0;
+}
+
+.section-form :deep(.el-form-item__label) {
+  font-weight: 700;
+}
+
+.selected-kb-empty {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+
+
+.project-status-summary {
+  margin-top: 4px;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* 追加：AI标书技术方案后续步骤样式。重复定义的类不会影响原布局，仅补充新区域。 */
+.tech-generate-status {
+  margin: 0 0 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f8fbff;
+  border: 1px solid #e5efff;
+}
+
+.tech-generate-summary {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.tech-leaf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tech-leaf-row > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tech-leaf-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tech-leaf-meta em {
+  color: #16a34a;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.word-preset-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.preset-tip,
+.preset-auto-card,
+.preset-group-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.preset-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: #f8fbff;
+}
+
+.preset-tip strong {
+  color: #1f2937;
+  font-size: 15px;
+}
+
+.preset-tip span,
+.preset-group-desc,
+.preset-auto-card span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.preset-auto-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  cursor: pointer;
+}
+
+.preset-auto-card.active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.preset-auto-card > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preset-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.preset-group-card {
+  padding: 14px;
+}
+
+.preset-group-title {
+  color: #1f2937;
+  font-weight: 800;
+}
+
+.preset-word-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.preset-word-grid.small {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+.preset-word-grid button {
+  height: 34px;
+  border: 1px solid #dbe4f0;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.preset-word-grid button.active {
+  border-color: #3b82f6;
+  background: #2563eb;
+  color: #fff;
+}
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* v18：技术方案进入目录/正文阶段后，按 生成成果详情区布局展示：左侧目录，右侧结果预览。 */
+.bid-tech-body.generated {
+  grid-template-columns: minmax(0, 50%) minmax(0, 50%);
+}
+
+.bid-tech-body.generated .bid-tech-left {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.bid-tech-body.generated .bid-tech-right {
+  background: #fff;
+}
+
+.tech-detail-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: #fff;
+}
+
+.tech-detail-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid #edf2f7;
+  background: #fff;
+}
+
+.tech-detail-top h2 {
+  margin: 0 0 10px;
+  color: #111827;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.tech-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 28px;
+  color: #334155;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tech-detail-stats b {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.tech-detail-stats .red {
+  color: #ef4444;
+}
+
+.tech-detail-stats .green {
+  color: #16a34a;
+}
+
+.tech-stat-note {
+  margin-top: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.tech-detail-outline-head {
+  flex-shrink: 0;
+}
+
+.tech-detail-panel .tech-generate-status {
+  margin: 12px 16px;
+  flex-shrink: 0;
+}
+
+.tech-detail-outline-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.tech-outline-loading.compact {
+  min-height: 280px;
+}
+
+.tech-result-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #fff;
+}
+
+.result-main-head {
+  height: 52px;
+  flex-shrink: 0;
+  padding: 0 18px;
+}
+
+.result-main-body {
+  flex: 1;
+  max-height: none;
+  overflow: auto;
+  padding: 22px 28px;
+}
+
+.result-main-body pre {
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.result-main-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #fbfdff 0%, #fff 100%);
+}
+
+.knowledge-setting {
+  width: 100%;
+}
+
+.knowledge-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.selected-kb-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.knowledge-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.knowledge-search-row {
+  display: flex;
+  gap: 10px;
+}
+
+.knowledge-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.knowledge-check-card {
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.knowledge-check-card:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.kb-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kb-name {
+  color: #1f2937;
+  font-weight: 800;
+}
+
+.kb-meta {
+  color: #64748b;
+  font-size: 13px;
+}
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+.tech-detail-kb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #edf2f7;
+  background: #fbfdff;
+  color: #334155;
+  font-size: 13px;
+}
+
+.tech-detail-kb > span {
+  font-weight: 800;
+}
+
+.tech-detail-kb > em {
+  color: #94a3b8;
+  font-style: normal;
+}
+
+.selected-kb-list.compact {
+  flex: 1;
+  min-width: 220px;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* v19：目录/正文阶段严格贴近 生成成果详情区：无步骤条，左目录右结果，知识库进入“方案设置”弹窗。 */
+.bid-tech-body.generated {
+  height: 100%;
+}
+
+.tech-detail-top > .el-button {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.detail-actions-like-solution {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.detail-actions-like-solution .detail-action-btn {
+  width: 100%;
+  height: 42px;
+  font-size: 15px;
+  font-weight: 700;
+  margin-left: 0 !important;
+}
+.detail-actions-like-solution :deep(.el-button + .el-button) { margin-left: 0 !important; }
+
+.rewrite-preview-alert {
+  margin: 12px 0;
+}
+
+.version-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 520px;
+}
+
+.version-list-panel {
+  border-right: 1px solid #eef2f7;
+  padding-right: 14px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.version-card {
+  border: 1px solid #e5eaf3;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.version-card:hover,
+.version-card.active {
+  border-color: #2f6bff;
+  background: #f4f8ff;
+}
+
+.version-card-title {
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.version-card-meta,
+.version-card-remark {
+  color: #8492a6;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.version-preview-panel {
+  min-width: 0;
+}
+
+.version-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.version-preview-title {
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.version-preview-desc {
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.version-compare-tip {
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.version-section-scroll {
+  height: 450px;
+}
+
+.version-section-item {
+  border: 1px solid #edf1f7;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+
+.version-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-section-title {
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 4px;
+}
+
+.version-section-meta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.version-section-content {
+  max-height: 160px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  color: #334155;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.full-generate-form .knowledge-setting {
+  width: 100%;
+}
+
+.blind-setting {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.blind-rule-input {
+  width: 100%;
+}
+
+.style-radio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.style-radio-grid :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+/* AI标书-技术方案：生成后布局按 生成成果详情区压缩成“左目录 + 右结果” */
+.solution-like-progress-wrap {
+  padding: 8px 0 14px;
+  border-bottom: 1px solid #eef2f8;
+}
+
+.solution-like-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 8px;
+  color: #7b8798;
+  font-size: 13px;
+}
+
+.solution-like-progress :deep(.el-progress-bar__outer) {
+  background: #edf1f7;
+}
+
+.solution-like-progress :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #ff4d4f, #ff5f6d);
+}
+
+.solution-like-result-panel {
+  padding: 34px 34px 28px;
+}
+
+.solution-like-result-title {
+  margin-bottom: 24px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #162033;
+}
+
+.solution-like-result-body {
+  height: calc(100vh - 190px);
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.solution-like-result-body pre {
+  font-size: 16px;
+  line-height: 2.05;
+  color: #29364a;
+}
+
+/* ============================================================
+   v26 修复：v25 折叠按钮补丁覆盖了 v24 的字体样式。
+   这里放在 style 最末尾，专门覆盖 AI标书技术方案生成后区域，
+   使标题、字数统计、正文预览继续贴近 生成成果详情区。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .tech-detail-top {
+  padding: 18px 20px 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-top h2 {
+  margin: 0 0 12px !important;
+  font-size: 18px !important;
+  line-height: 1.35 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) !important;
+  gap: 8px 40px !important;
+  color: #334155 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 500 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.red,
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats b.green {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .red {
+  color: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-stats .green {
+  color: #16b91f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-stat-note {
+  margin-top: 10px !important;
+  color: #94a3b8 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-result-panel.solution-like-result-panel {
+  padding: 28px 32px !important;
+  background: #fff !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-title {
+  margin: 0 0 18px !important;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+  font-weight: 800 !important;
+  color: #06152b !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body {
+  height: calc(100vh - 190px) !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-result-body pre {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.9 !important;
+  color: #0f2747 !important;
+  font-family: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+
+
+/* ============================================================
+   v27：目录树区域严格贴近 生成成果详情区。
+   只调整目录区样式，不改操作流程、不改接口、不改折叠/删除逻辑。
+   ============================================================ */
+.ai-bid-page .bid-tech-body.generated .solution-like-progress-wrap {
+  padding: 12px 20px 12px !important;
+  border-bottom: 0 !important;
+  background: #fff !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress-meta {
+  display: none !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress :deep(.el-progress-bar__outer) {
+  height: 6px !important;
+  border-radius: 999px !important;
+  background: #edf1f7 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress :deep(.el-progress-bar__inner) {
+  border-radius: 999px !important;
+  background: #ff4d4f !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-outline-scroll {
+  flex: 1 !important;
+  min-height: 0 !important;
+  padding: 0 20px 0 !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-outline-tree {
+  padding: 0 0 80px !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1,
+.ai-bid-page .bid-tech-body.generated .outline-lv2,
+.ai-bid-page .bid-tech-body.generated .outline-lv3 {
+  display: flex !important;
+  align-items: center !important;
+  min-height: 36px !important;
+  border-bottom: 1px dashed #e5e7eb !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1 {
+  padding-left: 0 !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv2 {
+  padding-left: 20px !important;
+  color: #334155 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv3 {
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding-left: 40px !important;
+  color: #6b7280 !important;
+  font-size: 15px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv2::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv3::before {
+  display: inline-block !important;
+  width: 16px !important;
+  margin-right: 8px !important;
+  color: #ef4444 !important;
+  text-align: center !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv1::before,
+.ai-bid-page .bid-tech-body.generated .outline-lv2::before {
+  content: '▾' !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .outline-lv3::before {
+  content: '•' !important;
+  font-size: 14px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row > span {
+  flex: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta em {
+  min-width: 82px !important;
+  color: #22c55e !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  font-style: normal !important;
+  font-weight: 700 !important;
+  text-align: right !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta :deep(.el-tag) {
+  height: 24px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-meta :deep(.el-button) {
+  height: 24px !important;
+  padding: 0 4px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row:hover,
+.ai-bid-page .bid-tech-body.generated .tech-leaf-row.active {
+  background: #f8fafc !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-outline-next-tip {
+  padding: 8px 20px 0 !important;
+  color: #64748b !important;
+  font-size: 13px !important;
+  background: #fff !important;
+  border-top: 0 !important;
+  flex-shrink: 0 !important;
+}
+
+
+/* AI标书技术方案编辑区：直接复用 内部生成引擎交互的交互样式 */
+.ai-solution-like-detail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.edit-tabs {
+  height: 54px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.edit-tabs button {
+  border: 0;
+  background: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  position: relative;
+}
+.edit-tabs button.active {
+  color: #2f6bff;
+  font-weight: 700;
+}
+.edit-tabs button.active::after {
+  content: '';
+  position: absolute;
+  left: 24%;
+  right: 24%;
+  bottom: 0;
+  height: 3px;
+  background: #2f6bff;
+  border-radius: 3px 3px 0 0;
+}
+.edit-scroll {
+  flex: 1;
+  padding: 14px 18px;
+}
+.edit-section {
+  min-height: 100%;
+}
+.delete-bar {
+  text-align: center;
+  margin: 10px 0 18px;
+}
+.overall-card {
+  background: #f7f8fa;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.card-title,
+.mini-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.mini-card-title.second {
+  margin-top: 10px;
+}
+.outline-tree {
+  color: #334155;
+  font-size: 15px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px dashed #e5e7eb;
+  gap: 8px;
+}
+.tree-row.clickable {
+  cursor: pointer;
+}
+.tree-row.clickable:hover {
+  background: #f8fafc;
+}
+.tree-row.selected {
+  background: #eff6ff;
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
+.tree-dot {
+  width: 16px;
+  color: #ef4444;
+  text-align: center;
+  flex-shrink: 0;
+}
+.tree-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-title.parent {
+  color: #334155;
+  font-weight: 700;
+}
+.tree-title.leaf {
+  color: #6b7280;
+  font-weight: 400;
+}
+.tree-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.word-select {
+  width: 104px;
+}
+.count-text {
+  min-width: 88px;
+  color: #22c55e;
+  font-weight: 700;
+  text-align: right;
+}
+.count-text.too-short,
+.count-text.too-long {
+  color: #f59e0b;
+}
+.count-text.failed {
+  color: #ef4444;
+}
+.direction-editor {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .06);
+}
+.title-input {
+  flex: 1;
+}
+.section-preview {
+  height: 100%;
+  padding: 28px 32px;
+  box-sizing: border-box;
+  background: #fff;
+}
+.section-preview-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.section-preview-title {
+  min-width: 0;
+  width: 100%;
+  flex: none;
+}
+.section-preview-title h3 {
+  margin: 0;
+  color: #06152b;
+  font-size: 22px;
+  line-height: 1.45;
+  font-weight: 800;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+.section-preview-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #64748b;
+}
+.section-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex-shrink: 0;
+}
+.section-content-preview {
+  font-size: 18px;
+  line-height: 1.9;
+  color: #0f2747;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+.section-content-editor :deep(.el-textarea__inner) {
+  font-size: 16px;
+  line-height: 1.8;
+  color: #0f2747;
+}
+.ai-bid-page .bid-tech-body.generated {
+  grid-template-columns: minmax(500px, 0.95fr) minmax(560px, 1.25fr) !important;
+}
+.ai-bid-page .bid-tech-body.generated .tech-detail-outline-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 20px 0 !important;
+  box-sizing: border-box;
+}
+.ai-bid-page .bid-tech-body.generated .solution-like-progress {
+  margin-bottom: 14px;
+}
+
+/* ============================================================
+   AI标书技术方案编辑树样式修复
+   说明：OutlineTree / WritingDirectionEditor 是当前 SFC 内部 defineComponent 组件，
+   普通 scoped 选择器不会穿透到子组件内部渲染出来的 .tree-row / .tree-title。
+   所以这里必须使用 :deep()，否则会出现目录树变成普通文字、控件挤在一起的问题。
+   ============================================================ */
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.outline-tree),
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.writing-direction-tree) {
+  font-size: 15px !important;
+  color: #334155 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-node-wrap) {
+  width: 100% !important;
+  contain: layout paint style !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 36px !important;
+  border-bottom: 1px dashed #e5e7eb !important;
+  color: #6b7280 !important;
+  box-sizing: border-box !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.clickable) {
+  cursor: pointer !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.clickable:hover) {
+  background: #f8fafc !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.selected) {
+  background: #eff6ff !important;
+  box-shadow: inset 3px 0 0 #3b82f6 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-dot) {
+  width: 16px !important;
+  min-width: 16px !important;
+  text-align: center !important;
+  color: #ef4444 !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title) {
+  flex: 1 !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.parent) {
+  color: #334155 !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.leaf) {
+  color: #6b7280 !important;
+  font-weight: 400 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls) {
+  margin-left: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.word-select) {
+  width: 110px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.count-text) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  color: #22c55e !important;
+  min-width: 82px !important;
+  text-align: right !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.count-text.too-short),
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.count-text.too-long) {
+  color: #f59e0b !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.count-text.failed) {
+  color: #ef4444 !important;
+}
+
+.word-health-text {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+  font-weight: 700;
+  color: #16a34a;
+}
+.word-health-text.too-short,
+.word-health-text.too-long {
+  color: #d97706;
+}
+.word-health-text.normal {
+  color: #16a34a;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.simple-level) {
+  color: #9ca3af !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.direction-editor) {
+  background: #fff !important;
+  border-radius: 10px !important;
+  padding: 12px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 1px 5px rgba(15, 23, 42, .06) !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.direction-node) {
+  width: 100% !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.title-input) {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.mini-card-title) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  margin-bottom: 8px !important;
+  font-weight: 700 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.mini-card-title.second) {
+  margin-top: 12px !important;
+}
+
+.word-export-success-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.word-export-success-name {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #1f2937;
+  font-weight: 600;
+}
+.word-export-success-tip {
+  color: #64748b;
+  font-size: 13px;
+}
+.word-export-success-btn {
+  align-self: flex-start;
+}
+
+.section-editor-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: #8a95a8;
+}
+
+/* 统一 AI标书技术方案生成页样式：对齐 内部生成引擎的目录树、字数列、状态列和右侧正文预览 */
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+  padding: 18px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.4;
+  font-weight: 800;
+  color: #111827;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 8px 40px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #334155;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.outline-tree) {
+  font-size: 14px !important;
+  color: #334155 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row) {
+  min-height: 38px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.generate-row) {
+  min-height: 40px !important;
+  padding-right: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-row.generate-row.selected) {
+  background: #eff6ff !important;
+  box-shadow: inset 3px 0 0 #3b82f6 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title) {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  line-height: 22px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.parent) {
+  font-size: 15px !important;
+  font-weight: 800 !important;
+  color: #1f2937 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-title.leaf) {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  color: #64748b !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls) {
+  width: 220px !important;
+  min-width: 220px !important;
+  display: grid !important;
+  grid-template-columns: 100px 62px 48px !important;
+  column-gap: 6px !important;
+  align-items: center !important;
+  justify-items: end !important;
+  flex-shrink: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .count-text) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  width: 100px !important;
+  min-width: 100px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 22px !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .el-tag) {
+  width: 58px !important;
+  justify-content: center !important;
+  padding: 0 6px !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail :deep(.tree-controls.generate-controls .el-button) {
+  width: 46px !important;
+  min-width: 46px !important;
+  height: 26px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+}
+
+.ai-bid-page .bid-tech-right .section-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 24px 28px;
+}
+
+.ai-bid-page .bid-tech-right .section-preview-title h3 {
+  font-size: 22px;
+  line-height: 1.45;
+  max-width: 100%;
+}
+
+.ai-bid-page .bid-tech-right .section-content-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding-right: 6px;
+  font-size: 17px;
+  line-height: 1.9;
+}
+.hidden-file-input {
+  display: none !important;
+}
+
+.doc-head-actions,
+.tender-analysis-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tender-analysis-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tender-analysis-intro strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #1f2937;
+}
+
+.tender-analysis-intro p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.analysis-kb-list {
+  margin: 10px 0 14px;
+}
+
+.analysis-alert {
+  margin: 10px 0 14px;
+}
+
+.analysis-tabs {
+  margin-top: 12px;
+}
+
+.requirement-extract-wrap,
+.quality-check-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 360px;
+}
+.requirement-extract-toolbar,
+.quality-check-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.requirement-extract-actions,
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.requirement-extract-title,
+.quality-check-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1f2937;
+}
+.requirement-extract-desc,
+.quality-check-desc {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.requirement-extract-summary,
+.quality-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.summary-stat-card,
+.quality-stat-card {
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.summary-stat-card.wide {
+  grid-column: span 1;
+}
+.summary-stat-card span,
+.quality-stat-card span {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+}
+.summary-stat-card strong,
+.quality-stat-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #1f2937;
+}
+.summary-stat-card small,
+.quality-stat-card small {
+  display: block;
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.requirement-type-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.extract-desc-box,
+.extract-collapse,
+.extract-summary,
+.quality-alert,
+.quality-table,
+.review-textarea {
+  margin-top: 10px;
+}
+.summary-text-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.summary-text-item {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+.summary-text-item strong {
+  color: #1f2937;
+}
+.summary-text-item p {
+  margin: 8px 0 0;
+  color: #475569;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.quality-score-cell {
+  display: grid;
+  grid-template-columns: 1fr 36px;
+  align-items: center;
+  gap: 8px;
+}
+.quality-risk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+.quality-problem-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.5;
+}
+.quality-problem-text strong {
+  color: #1f2937;
+}
+.quality-problem-text span,
+.muted-text {
+  color: #64748b;
+}
+.requirement-edit-form :deep(.el-textarea__inner) {
+  line-height: 1.7;
+}
+.tech-task-status-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+.tech-task-status-card.waiting {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+}
+.tech-task-status-card.conflict {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.tech-task-status-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.tech-task-status-main strong {
+  display: block;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.tech-task-status-main p {
+  margin: 2px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tech-task-status-main small {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tech-task-status-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.tech-task-status-side span {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 1200px) {
+  .requirement-extract-summary,
+  .quality-stat-grid,
+  .summary-text-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.tech-target-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.tech-target-row .el-input-number {
+  width: 220px;
+}
+
+.tech-target-select {
+  width: 180px;
+}
+
+.tech-field-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #7a8ba6;
+  line-height: 1.6;
+}
