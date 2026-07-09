@@ -3741,9 +3741,7 @@ function technicalOutlineTreeSignature(nodes = []) {
         String(node?.contentStatus || ''),
         String(node?.section?.generateStatus || ''),
         String(node?.section?.updatedAt || node?.section?.updateTime || node?.updatedAt || node?.updateTime || ''),
-        content.length,
-        content.slice(0, 24),
-        content.slice(-24),
+        contentSignature(content),
         Array.isArray(node?.children) ? node.children.length : 0
       ].join('¦'))
       walk(node?.children || [])
@@ -4933,6 +4931,25 @@ function getTechnicalLeafContent(node) {
     || ''
 }
 
+function contentSignature(value = '') {
+  const text = String(value || '')
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
+  }
+  return `${text.length}:${hash}`
+}
+
+function setTechnicalLeafContentLocal(node, content = '') {
+  if (!node) return
+  const value = String(content || '')
+  if (!node.section) node.section = {}
+  node.section.content = value
+  node.section.contentMarkdown = value
+  node.content = value
+  node.contentMarkdown = value
+}
+
 function markTechnicalManualSelection(node) {
   if (!node?.id) return
   technicalManualSelectedLeafId.value = String(node.id)
@@ -5591,6 +5608,12 @@ async function applyTechnicalImageMarkerChange(block, nextLine, message = '图�
   }
   const nextContent = lines.join('\n')
   technicalSectionContentDraft.value = nextContent
+
+  // 先更新当前章节本地正文，让预览区立即切换“小 / 中 / 大 / 对齐”的选中状态和图片尺寸。
+  // 后端保存成功后会再刷新一次，确保 Word 导出和页面数据一致。
+  setTechnicalLeafContentLocal(selectedTechnicalLeaf.value, nextContent)
+  const outlineNode = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value?.id)
+  if (outlineNode && outlineNode !== selectedTechnicalLeaf.value) setTechnicalLeafContentLocal(outlineNode, nextContent)
 
   if (!selectedProject.value?.id || !selectedTechnicalLeaf.value?.id) {
     technicalSectionContentEditMode.value = true
