@@ -1,9 +1,9 @@
 export const TECH_STEPS = [
-  { value: 1, label: '选择方案类型' },
-  { value: 2, label: '录入基础信息' },
-  { value: 3, label: '生成预览目录' },
-  { value: 4, label: '调整总字数' },
-  { value: 5, label: '生成方案' }
+  { value: 1, label: '选择AI与方案类型' },
+  { value: 2, label: '读取招标文件' },
+  { value: 3, label: '确认采购需求' },
+  { value: 4, label: '生成目录并设置篇幅' },
+  { value: 5, label: '生成正文并导出' }
 ]
 
 export const TECH_TASK_RUNNING_STATUSES = ['WAITING', 'RUNNING']
@@ -64,31 +64,31 @@ export function resolveTechnicalWorkflowState(options = {}) {
   if (backendStatus === 'DONE' || solutionStatus === 'CONTENT_READY' || solutionStatus === 'DONE' || (totalLeafCount > 0 && finishedLeafCount >= totalLeafCount)) return 'DONE'
   if (backendStatus === 'WORD_COUNT_READY' || solutionStatus === 'WORD_COUNT_SET' || (hasOutlines && hasWordCount)) return 'WORD_COUNT_READY'
   if (backendStatus === 'OUTLINE_READY' || solutionStatus === 'OUTLINE_READY' || hasOutlines) return 'OUTLINE_READY'
-  if (hasAiLevel && hasRequirement) return 'REQUIREMENT_READY'
-  if (hasAiLevel || hasRequirement) return 'INFO_READY'
+  if (hasRequirement) return 'REQUIREMENT_READY'
+  if (hasAiLevel) return 'INFO_READY'
   return 'INIT'
 }
 
 export function technicalWorkflowStep(state) {
   const value = normalizeTechStatus(state)
   if (['CONTENT_GENERATING', 'PARTIAL', 'DONE', 'FAILED', 'TIMEOUT'].includes(value)) return 5
-  if (['WORD_COUNT_READY'].includes(value)) return 4
-  if (['OUTLINE_GENERATING', 'OUTLINE_READY'].includes(value)) return 3
-  if (['INFO_READY', 'REQUIREMENT_READY'].includes(value)) return 2
+  if (['OUTLINE_GENERATING', 'OUTLINE_READY', 'WORD_COUNT_READY'].includes(value)) return 4
+  if (value === 'REQUIREMENT_READY') return 3
+  if (value === 'INFO_READY') return 2
   return 1
 }
 
 export function technicalWorkflowLabel(state) {
   const value = normalizeTechStatus(state)
-  if (value === 'INIT') return '待选择方案类型和AI等级'
-  if (value === 'INFO_READY') return '基础信息填写中'
-  if (value === 'REQUIREMENT_READY') return '需求已填写，可生成目录'
-  if (value === 'OUTLINE_GENERATING') return '目录生成中'
+  if (value === 'INIT') return '待选择AI与方案类型'
+  if (value === 'INFO_READY') return '请读取招标文件并确认解析结果'
+  if (value === 'REQUIREMENT_READY') return '采购需求已确认，可生成目录'
+  if (value === 'OUTLINE_GENERATING') return '目录生成中，请稍候设置篇幅'
   if (value === 'OUTLINE_READY') return '目录已生成，请设置篇幅'
-  if (value === 'WORD_COUNT_READY') return '篇幅已设置，可生成正文'
+  if (value === 'WORD_COUNT_READY') return '目录和篇幅已确认，可生成正文'
   if (value === 'CONTENT_GENERATING') return '正文生成中'
   if (value === 'PARTIAL') return '部分章节已完成'
-  if (value === 'DONE') return '技术方案已完成'
+  if (value === 'DONE') return '正文已生成，可检查并导出'
   if (value === 'FAILED') return '生成失败'
   if (value === 'TIMEOUT') return '生成超时'
   return '待处理'

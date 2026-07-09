@@ -3670,7 +3670,7 @@ function hydrateTechnicalOutlinesFromSolution(solution) {
   const nextOutlines = outlines.map(mapSolutionOutlineNode)
   syncTechnicalOutlineTree(nextOutlines)
   if (technicalOutlines.value.length) {
-    // 已经有目录时，直接进入“调整总字数”阶段；如果已有正文，则进入“生成方案”阶段。
+    // 已经有目录时，直接进入“生成目录并设置篇幅”阶段；如果已有正文，则进入“生成正文并导出”阶段。
     const leaves = flattenTechnicalLeaves(technicalOutlines.value)
     const hasContent = leaves.some(isTechnicalLeafDone)
     technicalStep.value = Math.max(technicalStep.value, hasContent ? 5 : 4)
@@ -3807,7 +3807,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
   technicalForm.outlineRequirement = requirement.outlineRequirement || technicalForm.outlineRequirement || ''
   extractTechnicalRequirement(false, false)
-  technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 2 : 1)
+  technicalStep.value = technicalOutlines.value.length ? 4 : (technicalForm.purchaseRequirement ? 3 : (technicalForm.aiLevel ? 2 : 1))
 }
 
 function extractTechnicalRequirement(showMessage = true, force = true) {
@@ -3847,7 +3847,7 @@ function autoFillTechnicalRequirementAfterParse(showMessage = true) {
   const afterScore = String(technicalForm.scoreRequirement || '').trim()
 
   if (afterPurchase || afterScore) {
-    technicalStep.value = Math.max(technicalStep.value, 2)
+    technicalStep.value = Math.max(technicalStep.value, 3)
   }
 
   const changed = beforePurchase !== afterPurchase || beforeScore !== afterScore
@@ -3906,8 +3906,8 @@ async function generateTechnicalOutline() {
   markTechnicalOutlinePending(projectId)
   patchSelectedProjectTechnicalStatus('OUTLINE_GENERATING')
 
-  // 点击生成目录后，立即切换到“生成预览目录”步骤，并在右侧显示生成中状态，避免用户误以为页面卡住。
-  technicalStep.value = Math.max(technicalStep.value, 3)
+  // 点击生成目录后，立即切换到“生成目录并设置篇幅”步骤，并在右侧显示生成中状态，避免用户误以为页面卡住。
+  technicalStep.value = Math.max(technicalStep.value, 4)
 
   let outlineRequestAccepted = false
 
@@ -3952,7 +3952,7 @@ async function generateTechnicalOutline() {
         if (needWordPreset) {
           resetWordPresetSelection()
           wordPresetVisible.value = true
-          ElMessage.success('技术方案目录已生成，请继续调整总字数')
+          ElMessage.success('技术方案目录已生成，请继续设置篇幅')
         } else {
           wordPresetVisible.value = false
           ElMessage.success('长篇技术方案目录已生成，系统已按目标总字数分配章节篇幅')
@@ -4808,7 +4808,7 @@ async function checkTechnicalOutlineReady(projectId, silent = true) {
           technicalSolution.value = solution
           technicalOutlines.value = []
           technicalGeneratingOutline.value = false
-          technicalStep.value = Math.max(technicalStep.value, 3)
+          technicalStep.value = Math.max(technicalStep.value, 4)
           await refreshWorkflow()
           ElMessage.error(technicalOutlineFailureMessage(solution))
         }
