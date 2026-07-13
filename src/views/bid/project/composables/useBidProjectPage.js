@@ -6,6 +6,7 @@ import { notifyRequestError } from '@/utils/errorNotify'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
 import SectionContentPreview from '@/components/SectionContentPreview.vue'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
+import { createSerialPoller } from '@/utils/serialPoller'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
@@ -709,31 +710,30 @@ export function useBidProjectPage() {
   }
 
   function startTechnicalRequirementExtractPolling() {
-    clearInterval(technicalRequirementExtractTimer)
+    technicalRequirementExtractTimer?.stop()
     let retry = 0
-    technicalRequirementExtractTimer = setInterval(async () => {
+    technicalRequirementExtractTimer = createSerialPoller(async () => {
       const solutionId = technicalSolution.value?.id
       if (!technicalRequirementExtractVisible.value || !solutionId) {
-        clearInterval(technicalRequirementExtractTimer)
         technicalRequirementExtractTimer = null
-        return
+        return false
       }
-      if (document.hidden) return
       retry += 1
-      try {
-        const data = normalizeRequirementExtractPayload(await getRequirementExtract(solutionId))
-        technicalRequirementExtract.value = data
-        if (data?.hasExtract || retry >= 60) {
-          clearInterval(technicalRequirementExtractTimer)
-          technicalRequirementExtractTimer = null
-        }
-      } catch {
-        if (retry >= 60) {
-          clearInterval(technicalRequirementExtractTimer)
-          technicalRequirementExtractTimer = null
-        }
+      const data = normalizeRequirementExtractPayload(await getRequirementExtract(solutionId))
+      technicalRequirementExtract.value = data
+      if (data?.hasExtract || retry >= 60) {
+        technicalRequirementExtractTimer = null
+        return false
       }
-    }, 5000)
+      return true
+    }, {
+      interval: 5000,
+      maxBackoff: 20000,
+      onError() {
+        if (retry >= 60) technicalRequirementExtractTimer?.stop()
+      }
+    })
+    technicalRequirementExtractTimer.start({ immediate: false })
   }
 
   async function onRebuildTechnicalRequirementExtract() {
@@ -1100,29 +1100,29 @@ export function useBidProjectPage() {
     document.removeEventListener('visibilitychange', handleBidProjectVisibilityChange)
     clearTimeout(timer.value)
     clearTimeout(enterpriseKeywordTimer.value)
-    clearInterval(poller.value)
-    clearInterval(technicalOutlinePoller.value)
-    clearInterval(technicalTaskPoller.value)
-    clearInterval(globalAiTaskPoller)
-    clearInterval(technicalRequirementExtractTimer)
+    poller.value?.stop()
+    technicalOutlinePoller.value?.stop()
+    technicalTaskPoller.value?.stop()
+    globalAiTaskPoller?.stop()
+    technicalRequirementExtractTimer?.stop()
   })
 
   function handleBidProjectVisibilityChange() {
     if (document.hidden) return
-    loadGlobalAiRunningTask({ force: true })
-    if (technicalOutlinePendingProjectId.value) {
-      checkTechnicalOutlineReady(technicalOutlinePendingProjectId.value, true)
-    }
-    if (technicalTaskPending.projectId && technicalTaskPending.taskId) {
-      pollTechnicalGenerationTask(technicalTaskPending.projectId, technicalTaskPending.taskId, true)
-    }
+    globalAiTaskPoller?.trigger()
+    poller.value?.trigger()
+    technicalOutlinePoller.value?.trigger()
+    technicalTaskPoller.value?.trigger()
+    technicalRequirementExtractTimer?.trigger()
   }
 
   function startGlobalAiTaskPolling() {
-    clearInterval(globalAiTaskPoller)
-    globalAiTaskPoller = setInterval(() => {
-      if (!document.hidden) loadGlobalAiRunningTask()
-    }, GLOBAL_AI_TASK_POLL_INTERVAL_MS)
+    globalAiTaskPoller?.stop()
+    globalAiTaskPoller = createSerialPoller(() => loadGlobalAiRunningTask(), {
+      interval: GLOBAL_AI_TASK_POLL_INTERVAL_MS,
+      immediate: false
+    })
+    globalAiTaskPoller.start()
   }
 
   async function loadGlobalAiRunningTask(options = {}) {
@@ -2724,7 +2724,8 @@ export function useBidProjectPage() {
       technicalTaskPending.taskId = ''
       localStorage.removeItem(TECH_TASK_PENDING_KEY)
     }
-    clearInterval(technicalTaskPoller.value)
+    technicalTaskPoller.value?.stop()
+    technicalTaskPoller.value = null
   }
 
   function restoreTechnicalTaskPending() {
@@ -2746,11 +2747,18 @@ export function useBidProjectPage() {
   }
 
   function startTechnicalTaskPolling(projectId, taskId) {
-    clearInterval(technicalTaskPoller.value)
-    pollTechnicalGenerationTask(projectId, taskId, true)
-    technicalTaskPoller.value = setInterval(() => {
-      pollTechnicalGenerationTask(projectId, taskId, true)
-    }, TECHNICAL_TASK_POLL_INTERVAL_MS)
+    technicalTaskPoller.value?.stop()
+    technicalTaskPoller.value = createSerialPoller(
+      () => pollTechnicalGenerationTask(projectId, taskId, true),
+      {
+        interval: TECHNICAL_TASK_POLL_INTERVAL_MS,
+        maxBackoff: Math.max(15000, TECHNICAL_TASK_POLL_INTERVAL_MS * 5),
+        onError() {
+          // 查询异常由业务函数记录并展示。
+        }
+      }
+    )
+    technicalTaskPoller.value.start()
   }
 
   function technicalTaskTypeLabel(taskType) {
@@ -3112,7 +3120,8 @@ export function useBidProjectPage() {
       technicalGeneratingOutline.value = false
       localStorage.removeItem(TECH_OUTLINE_PENDING_KEY)
     }
-    clearInterval(technicalOutlinePoller.value)
+    technicalOutlinePoller.value?.stop()
+    technicalOutlinePoller.value = null
   }
 
   function restoreTechnicalOutlinePending() {
@@ -3125,10 +3134,18 @@ export function useBidProjectPage() {
 
   function startTechnicalOutlinePolling(projectId) {
     if (!projectId) return
-    clearInterval(technicalOutlinePoller.value)
-    technicalOutlinePoller.value = setInterval(() => {
-      checkTechnicalOutlineReady(projectId, true)
-    }, TECHNICAL_OUTLINE_POLL_INTERVAL_MS)
+    technicalOutlinePoller.value?.stop()
+    technicalOutlinePoller.value = createSerialPoller(
+      () => checkTechnicalOutlineReady(projectId, true),
+      {
+        interval: TECHNICAL_OUTLINE_POLL_INTERVAL_MS,
+        maxBackoff: Math.max(18000, TECHNICAL_OUTLINE_POLL_INTERVAL_MS * 5),
+        onError() {
+          // 状态查询失败由业务函数累计。
+        }
+      }
+    )
+    technicalOutlinePoller.value.start({ immediate: false })
   }
 
   function isTechnicalOutlineGeneratingStatus(status) {
@@ -4115,12 +4132,11 @@ export function useBidProjectPage() {
 
 
   function startPolling() {
-    clearInterval(poller.value)
-    poller.value = setInterval(async () => {
-      if (document.hidden) return
-      if (!selectedProject.value?.id) return
+    poller.value?.stop()
+    poller.value = createSerialPoller(async () => {
+      if (!selectedProject.value?.id) return true
       const hasParsing = projects.value.some((item) => ['PARSING', 'EXTRACTING'].includes(String(item.parseStatus || '').toUpperCase())) || isParseRunning.value
-      if (!hasParsing) return
+      if (!hasParsing) return true
       const beforeSuccess = isParseSuccess.value
       await selectProject(selectedProject.value.id, false)
       await loadProjects(selectedProject.value.id)
@@ -4129,7 +4145,16 @@ export function useBidProjectPage() {
       } else {
         autoFillTechnicalRequirementAfterParse(false)
       }
-    }, 5000)
+      return true
+    }, {
+      interval: 5000,
+      maxBackoff: 20000,
+      immediate: false,
+      onError() {
+        // 解析状态查询异常自动退避。
+      }
+    })
+    poller.value.start()
   }
 
   function isOutlineGenerated(node) {

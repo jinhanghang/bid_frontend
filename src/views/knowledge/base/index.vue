@@ -526,6 +526,7 @@ import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import { createRequestId } from '@/utils/requestId'
+import { createSerialPoller } from '@/utils/serialPoller'
 import {
   createKnowledgeBase,
   createKnowledgeFile,
@@ -1083,19 +1084,27 @@ function setRebuilding(id, value) {
 
 function startFilePolling() {
   if (pollingTimer.value || !selectedBase.value?.id) return
-  pollingTimer.value = window.setInterval(async () => {
+  pollingTimer.value = createSerialPoller(async () => {
     if (!selectedBase.value?.id) {
-      stopFilePolling()
-      return
+      pollingTimer.value = null
+      return false
     }
     await loadFiles()
     await loadBases(selectedBase.value.id)
-  }, 3000)
+    return true
+  }, {
+    interval: ({ elapsedMs }) => elapsedMs < 60000 ? 5000 : 10000,
+    maxBackoff: 30000,
+    immediate: false,
+    onError() {
+      // 解析入库状态查询异常自动退避，避免请求堆积。
+    }
+  })
+  pollingTimer.value.start()
 }
 
 function stopFilePolling() {
-  if (!pollingTimer.value) return
-  clearInterval(pollingTimer.value)
+  pollingTimer.value?.stop()
   pollingTimer.value = null
 }
 
@@ -1311,15 +1320,19 @@ async function submitAskTaskFlow() {
 
 function startAskTaskPolling() {
   stopAskTaskPolling()
-  pollAskTask()
-  askTaskTimer.value = window.setInterval(pollAskTask, 1800)
+  askTaskTimer.value = createSerialPoller(pollAskTask, {
+    interval: ({ elapsedMs }) => elapsedMs < 60000 ? 4000 : 6000,
+    maxBackoff: 20000,
+    onError() {
+      // pollAskTask 负责错误提示和终止，轮询器只保证请求串行。
+    }
+  })
+  askTaskTimer.value.start()
 }
 
 function stopAskTaskPolling() {
-  if (askTaskTimer.value) {
-    clearInterval(askTaskTimer.value)
-    askTaskTimer.value = null
-  }
+  askTaskTimer.value?.stop()
+  askTaskTimer.value = null
 }
 
 async function pollAskTask() {

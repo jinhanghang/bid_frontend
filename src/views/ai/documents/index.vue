@@ -304,6 +304,17 @@
                 <el-option label="旗舰版" value="FLAGSHIP" />
               </el-select>
             </el-form-item>
+            <el-form-item label="生成模式">
+              <el-select v-model="form.generationProfile" class="full-select">
+                <el-option label="快速生成（速度优先）" value="FAST" />
+                <el-option label="标准生成（推荐）" value="STANDARD" />
+                <el-option label="高质量生成（质量优先）" value="QUALITY" />
+              </el-select>
+              <div class="form-help-text">快速模式减少增强步骤；高质量模式增加检索、质检和有限重试。</div>
+            </el-form-item>
+          </div>
+
+          <div class="form-row-two">
             <el-form-item label="写作风格">
               <el-select v-model="form.writingStyle" class="full-select">
                 <el-option label="专业正式" value="PROFESSIONAL" />
@@ -311,8 +322,8 @@
                 <el-option label="简洁清晰" value="CONCISE" />
               </el-select>
             </el-form-item>
+            <div></div>
           </div>
-
 
           <div class="form-row-two">
             <el-form-item label="目标总字数">
@@ -633,6 +644,7 @@ import { downloadFileResource, getCurrentUserRunningAiTask, streamSection, updat
 import { formatDateTime } from '@/utils/format'
 import { notifyRequestError } from '@/utils/errorNotify'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
+import { createSerialPoller } from '@/utils/serialPoller'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
 import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
 import AiModelTrace from '@/components/ai/AiModelTrace.vue'
@@ -683,6 +695,7 @@ const form = reactive({
   documentTitle: '',
   projectName: '',
   aiLevel: '',
+  generationProfile: 'STANDARD',
   writingStyle: 'PROFESSIONAL',
   mainRequirement: '',
   referenceRequirement: '',
@@ -825,17 +838,19 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearTimeout(searchTimer)
-  clearInterval(parseTimer)
-  clearInterval(taskTimer)
-  clearInterval(outlineTimer)
-  clearInterval(globalTaskTimer)
+  parseTimer?.stop()
+  taskTimer?.stop()
+  outlineTimer?.stop()
+  globalTaskTimer?.stop()
 })
 
 function startGlobalTaskPolling() {
-  clearInterval(globalTaskTimer)
-  globalTaskTimer = setInterval(() => {
-    if (!document.hidden) loadGlobalRunningTask()
-  }, 5000)
+  globalTaskTimer?.stop()
+  globalTaskTimer = createSerialPoller(loadGlobalRunningTask, {
+    interval: 15000,
+    immediate: false
+  })
+  globalTaskTimer.start()
 }
 
 async function loadGlobalRunningTask() {
@@ -921,7 +936,7 @@ function onDocumentListScroll() {
 
 function resetWorkspace() {
   if (isOperationLocked.value) return
-  clearInterval(outlineTimer)
+  outlineTimer?.stop()
   outlineTimer = null
   currentDoc.value = null
   activeNode.value = null
@@ -1142,6 +1157,7 @@ function applyDoc(data, options = {}) {
   form.documentTitle = data?.solutionName || docTypeLabel(form.documentType)
   form.projectName = ''
   form.aiLevel = data?.aiLevel || ''
+  form.generationProfile = data?.runningTask?.generationProfile || data?.latestGenerationTask?.generationProfile || form.generationProfile || 'STANDARD'
   form.writingStyle = data?.writingStyle || 'PROFESSIONAL'
   form.mainRequirement = data?.requirement?.purchaseRequirement || ''
   form.referenceRequirement = data?.requirement?.serviceRequirement || ''
@@ -1277,33 +1293,37 @@ async function onReferenceChange(uploadFile) {
 }
 
 function resumeParsePolling() {
-  clearInterval(parseTimer)
+  parseTimer?.stop()
+  parseTimer = null
   if (parseTask.value?.id && !['SUCCESS', 'FAILED', 'CANCELED'].includes(String(parseTask.value.status || '').toUpperCase())) {
     pollParseTask(parseTask.value.id)
   }
 }
 
 function pollParseTask(taskId) {
-  clearInterval(parseTimer)
-  const tick = async () => {
-    if (document.hidden) return
+  parseTimer?.stop()
+  parseTimer = createSerialPoller(async () => {
     try {
       const task = await getDocumentParseTask(taskId)
       parseTask.value = task
       const status = String(task.status || '').toUpperCase()
       if (['SUCCESS', 'FAILED', 'CANCELED'].includes(status)) {
-        clearInterval(parseTimer)
         parseTimer = null
         if (status === 'SUCCESS') {
           await autoFillAfterParseSuccess(taskId)
         }
+        return false
       }
     } catch (e) {
-      // Polling should not block the page when the network jitters.
+      // 网络抖动由串行轮询器退避重试，不产生重叠请求。
+      throw e
     }
-  }
-  tick()
-  parseTimer = setInterval(tick, 2500)
+    return true
+  }, {
+    interval: ({ elapsedMs }) => elapsedMs < 30000 ? 5000 : (elapsedMs < 180000 ? 8000 : 12000),
+    maxBackoff: 30000
+  })
+  parseTimer.start()
 }
 
 
@@ -1419,45 +1439,46 @@ function isDocumentGeneratingStatus(status) {
 }
 
 function resumeOutlinePolling(forceDocId) {
-  clearInterval(outlineTimer)
+  outlineTimer?.stop()
+  outlineTimer = null
   const docId = forceDocId || currentDoc.value?.id
   if (!docId) return
   if (!forceDocId && !isOutlineGeneratingStatus(currentDoc.value?.status)) return
 
-  const tick = async () => {
-    if (document.hidden) return
-    try {
-      if (currentDoc.value?.id && String(currentDoc.value.id) !== String(docId)) {
-        clearInterval(outlineTimer)
-        outlineTimer = null
-        return
-      }
-      const data = await getDocument(docId)
-      applyDoc(data, { skipOutlinePolling: true })
-      await loadDocuments()
-      if (!isOutlineGeneratingStatus(data?.status)) {
-        clearInterval(outlineTimer)
-        outlineTimer = null
-        if ((data?.outlines || []).length) {
-          const leaves = flattenLeaves(data?.outlines || [])
-          const needWordPreset = leaves.length > 0 && leaves.some((node) => !Number(node?.targetWordCount || node?.wordCount || 0))
-          if (needWordPreset && !wordPresetDialogVisible.value) {
-            resetWordPresetSelection()
-            wordPresetDialogVisible.value = true
-            ElMessage.success('大纲生成完成，请设置篇幅')
-          } else {
-            ElMessage.success('大纲生成完成')
-          }
-        } else {
-          ElMessage.error('大纲生成失败或超时，请稍后重试')
-        }
-      }
-    } catch (e) {
-      // 轮询只负责刷新状态，接口异常由全局请求拦截器提示，这里避免定时器抛出未捕获异常。
+  outlineTimer = createSerialPoller(async () => {
+    if (currentDoc.value?.id && String(currentDoc.value.id) !== String(docId)) {
+      outlineTimer = null
+      return false
     }
-  }
-
-  outlineTimer = setInterval(tick, 3000)
+    const data = await getDocument(docId)
+    applyDoc(data, { skipOutlinePolling: true })
+    if (!isOutlineGeneratingStatus(data?.status)) {
+      await loadDocuments()
+      outlineTimer = null
+      if ((data?.outlines || []).length) {
+        const leaves = flattenLeaves(data?.outlines || [])
+        const needWordPreset = leaves.length > 0 && leaves.some((node) => !Number(node?.targetWordCount || node?.wordCount || 0))
+        if (needWordPreset && !wordPresetDialogVisible.value) {
+          resetWordPresetSelection()
+          wordPresetDialogVisible.value = true
+          ElMessage.success('大纲生成完成，请设置篇幅')
+        } else {
+          ElMessage.success('大纲生成完成')
+        }
+      } else {
+        ElMessage.error('大纲生成失败或超时，请稍后重试')
+      }
+      return false
+    }
+    return true
+  }, {
+    interval: ({ elapsedMs }) => elapsedMs < 30000 ? 5000 : (elapsedMs < 180000 ? 8000 : 12000),
+    maxBackoff: 30000,
+    onError() {
+      // 短暂接口异常自动退避，保持任务轮询。
+    }
+  })
+  outlineTimer.start()
 }
 
 function formatDocumentGenerateCheckIssues(data = {}) {
@@ -1591,8 +1612,8 @@ async function onGenerateFull(rewrite) {
   fullGenerating.value = true
   try {
     const task = rewrite
-      ? await rewriteDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle })
-      : await generateDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle })
+      ? await rewriteDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle, generationProfile: form.generationProfile })
+      : await generateDocumentFull(currentDoc.value.id, { writingStyle: form.writingStyle, generationProfile: form.generationProfile })
     runningTask.value = task
     globalRunningTask.value = task
     pollGenerationTask(task.id)
@@ -1612,7 +1633,7 @@ async function onRetryFailedDocumentSections() {
   fullGenerating.value = true
   try {
     await saveDocumentForm(currentDoc.value.id, buildFormPayload())
-    const task = await retryFailedDocumentSections(currentDoc.value.id, { writingStyle: form.writingStyle })
+    const task = await retryFailedDocumentSections(currentDoc.value.id, { writingStyle: form.writingStyle, generationProfile: form.generationProfile })
     runningTask.value = task
     globalRunningTask.value = task
     pollGenerationTask(task.id)
@@ -1641,7 +1662,7 @@ async function onCancelDocumentTask() {
     const canceled = await cancelDocumentGenerationTask(taskId)
     runningTask.value = canceled
     globalRunningTask.value = null
-    clearInterval(taskTimer)
+    taskTimer?.stop()
     taskTimer = null
     await refreshCurrentLight({ skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
     await loadDocuments()
@@ -1654,7 +1675,8 @@ async function onCancelDocumentTask() {
 }
 
 function resumeTaskPolling() {
-  clearInterval(taskTimer)
+  taskTimer?.stop()
+  taskTimer = null
   const task = currentDoc.value?.runningTask || runningTask.value
   if (task?.id && ['WAITING', 'RUNNING'].includes(String(task.status || '').toUpperCase())) {
     pollGenerationTask(task.id)
@@ -1662,42 +1684,48 @@ function resumeTaskPolling() {
 }
 
 function pollGenerationTask(taskId) {
-  clearInterval(taskTimer)
-  const tick = async () => {
-    if (document.hidden) return
-    try {
-      const task = await getDocumentGenerationTask(taskId)
-      const status = String(task.status || '').toUpperCase()
-      const taskDocId = String(task?.solutionId || task?.documentId || task?.bizId || '')
-      const currentDocId = String(currentDoc.value?.id || '')
-      const isTaskForCurrentDoc = !taskDocId || !currentDocId || taskDocId === currentDocId
-      globalRunningTask.value = ['WAITING', 'RUNNING'].includes(status) ? task : null
-      runningTask.value = isTaskForCurrentDoc ? task : (currentDoc.value?.runningTask || null)
+  taskTimer?.stop()
+  let lastFinishedNodes = -1
+  let lastDetailRefreshAt = 0
+  taskTimer = createSerialPoller(async () => {
+    const task = await getDocumentGenerationTask(taskId)
+    const status = String(task.status || '').toUpperCase()
+    const taskDocId = String(task?.solutionId || task?.documentId || task?.bizId || '')
+    const currentDocId = String(currentDoc.value?.id || '')
+    const isTaskForCurrentDoc = !taskDocId || !currentDocId || taskDocId === currentDocId
+    const running = ['WAITING', 'RUNNING'].includes(status)
+    globalRunningTask.value = running ? task : null
+    runningTask.value = isTaskForCurrentDoc ? task : (currentDoc.value?.runningTask || null)
 
-      // 后台生成任务可以继续轮询，但用户切换到其他文档查看时，不要用该任务刷新/污染当前文档详情。
-      if (isTaskForCurrentDoc) {
+    if (running) {
+      const finishedNodes = Number(task?.finishedNodes || task?.successNodes || 0)
+      const now = Date.now()
+      if (isTaskForCurrentDoc && finishedNodes !== lastFinishedNodes && now - lastDetailRefreshAt >= 10000) {
+        lastFinishedNodes = finishedNodes
+        lastDetailRefreshAt = now
         await refreshCurrentLight({ docId: currentDocId || taskDocId, skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
       }
-      await loadDocuments()
-
-      if (!['WAITING', 'RUNNING'].includes(status)) {
-        clearInterval(taskTimer)
-        taskTimer = null
-        runningTask.value = isTaskForCurrentDoc ? task : null
-        if (isTaskForCurrentDoc) {
-          await refreshCurrentLight({ docId: currentDocId || taskDocId, skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
-        }
-        await loadDocuments()
-        if (status === 'SUCCESS') ElMessage.success('全文生成完成')
-        else if (status === 'PARTIAL') ElMessage.warning('生成完成，但存在失败章节，请检查后重试')
-        else if (status === 'FAILED') ElMessage.error('全文生成失败，请稍后重试或联系管理员')
-      }
-    } catch (e) {
-      // 轮询异常不打断页面，避免短暂网络抖动导致实时刷新停止。
+      return true
     }
-  }
-  tick()
-  taskTimer = setInterval(tick, 2500)
+
+    taskTimer = null
+    runningTask.value = isTaskForCurrentDoc ? task : null
+    if (isTaskForCurrentDoc) {
+      await refreshCurrentLight({ docId: currentDocId || taskDocId, skipOutlinePolling: true, skipTaskPolling: true, preferLatestGenerated: true })
+    }
+    await loadDocuments()
+    if (status === 'SUCCESS') ElMessage.success('全文生成完成')
+    else if (status === 'PARTIAL') ElMessage.warning('生成完成，但存在失败章节，请检查后重试')
+    else if (status === 'FAILED') ElMessage.error('全文生成失败，请稍后重试或联系管理员')
+    return false
+  }, {
+    interval: ({ elapsedMs }) => elapsedMs < 30000 ? 4000 : (elapsedMs < 180000 ? 6000 : 10000),
+    maxBackoff: 30000,
+    onError() {
+      // 短暂网络异常自动退避，不终止后台任务刷新。
+    }
+  })
+  taskTimer.start()
 }
 
 function selectNode(node) {
