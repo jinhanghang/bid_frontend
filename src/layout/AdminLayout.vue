@@ -59,6 +59,7 @@
                 </el-dropdown-item>
                 <el-dropdown-item v-if="showManagerEntry" @click="goManager">用户管理</el-dropdown-item>
                 <el-dropdown-item v-if="showMemberAdminEntry" @click="goMemberAdmin">会员运营</el-dropdown-item>
+                <el-dropdown-item @click="openChangePassword">修改密码</el-dropdown-item>
                 <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -71,7 +72,11 @@
       </main>
     </section>
 
-
+    <ChangePasswordDialog
+      v-model="changePasswordVisible"
+      :phone="auth.user?.phone"
+      @success="handlePasswordChanged"
+    />
   </div>
 </template>
 
@@ -93,6 +98,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getMemberSummary } from '@/api/member'
 import { getAuditPendingCount } from '@/api/enterpriseApply'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +120,7 @@ const showMemberAdminEntry = computed(() => isSuperAdmin.value || isPlatformAdmi
 const showCompanyApprovalEntry = computed(() => showManagerEntry.value)
 // 企业绑定统一走“企业申请 / 公司审批”流程，不再弹出首次登录自动创建企业窗口。
 const approvalPendingCount = ref(0)
+const changePasswordVisible = ref(false)
 const quota = reactive({
   availableWords: 0,
   freeRemainWords: 0,
@@ -222,6 +229,16 @@ watch(() => auth.user?.id, () => {
 
 function goManager() {
   router.push('/system/users')
+}
+
+function openChangePassword() {
+  changePasswordVisible.value = true
+}
+
+async function handlePasswordChanged() {
+  ElMessage.success('密码修改成功，请使用新密码重新登录')
+  await auth.logout()
+  router.replace('/login')
 }
 
 async function logout() {

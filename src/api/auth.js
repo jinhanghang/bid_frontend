@@ -16,6 +16,18 @@ export function resetPassword(data) {
   return request.post('/auth/forgot-password/reset', data)
 }
 
+export function changePassword(data) {
+  return request.post('/auth/change-password', data)
+}
+
+export function sendChangePasswordSmsCode() {
+  return request.post('/auth/change-password/sms-code')
+}
+
+export function changePasswordBySms(data) {
+  return request.post('/auth/change-password/by-sms', data)
+}
+
 export function smsLogin(data) {
   return request.post('/auth/sms-login', data)
 }
