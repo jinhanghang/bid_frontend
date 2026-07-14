@@ -33,7 +33,7 @@
             <span>剩余总字数：{{ formatNumber(quota.availableWords) }}</span>
             <el-button size="small" type="primary" plain round @click.stop="goMemberCenter">立即充值</el-button>
           </div>
-          <el-button link :icon="Refresh" @click="reloadMe">刷新用户</el-button>
+          <el-button link :icon="Refresh" @click="reloadMe">刷新额度</el-button>
           <el-dropdown trigger="click">
             <div class="user-entry">
               <div class="avatar">{{ avatarText }}</div>
@@ -168,7 +168,7 @@ function normalizeRoleList(values = []) {
 async function reloadMe() {
   await auth.loadMe()
   await Promise.all([loadQuota(), loadApprovalPendingCount()])
-  ElMessage.success('用户信息已刷新')
+  ElMessage.success('已刷新')
 }
 
 async function loadQuota() {
