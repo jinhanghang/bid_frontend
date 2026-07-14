@@ -2209,18 +2209,66 @@ async function saveBidDocumentReview() {
   }
 }
 
+function sanitizeDownloadFileName(fileName, fallbackName) {
+  const normalized = String(fileName || fallbackName || '投标文件')
+    .trim()
+    .replace(/[\/:*?"<>|]/g, '_')
+  return normalized || String(fallbackName || '投标文件')
+}
+
+async function downloadGeneratedBidDocument(file, fallbackName) {
+  if (!file?.id) {
+    ElMessage.warning('文件已生成，但未返回文件ID，请到下载中心查看')
+    return false
+  }
+
+  const blob = await downloadFileResource(file.id)
+  if (!(blob instanceof Blob)) {
+    throw new Error('下载文件数据异常，请到下载中心重试')
+  }
+
+  const url = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = sanitizeDownloadFileName(file.originalName, fallbackName)
+  link.style.display = 'none'
+
+  try {
+    document.body.appendChild(link)
+    link.click()
+  } finally {
+    document.body.removeChild(link)
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+  }
+  return true
+}
+
 async function exportBidDocumentWordFile() {
   if (!selectedProject.value?.id) return
   if (!bidDocumentDraft.value.trim()) {
     ElMessage.warning('请先生成或填写投标文件内容')
     return
   }
+
   bidDocumentExporting.value = true
   try {
-    await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
-    const file = await exportBidDocumentWord(selectedProject.value.id, { styleCode: 'BID_OFFICIAL' })
+    bidDocumentDetail.value = await saveBidDocument(selectedProject.value.id, {
+      content: bidDocumentDraft.value
+    })
+
+    const file = await exportBidDocumentWord(selectedProject.value.id, {
+      styleCode: 'BID_OFFICIAL'
+    })
+
     await refreshWorkflow()
-    ElMessage.success(file?.originalName ? `Word 已生成：${file.originalName}` : 'Word 已生成，可在下载中心查看')
+    const downloaded = await downloadGeneratedBidDocument(
+      file,
+      `${selectedProject.value.projectName || '投标文件'}-投标文件.docx`
+    )
+
+    if (downloaded) {
+      ElMessage.success('Word 导出成功，已开始下载')
+    }
   } finally {
     bidDocumentExporting.value = false
   }
@@ -2232,12 +2280,24 @@ async function exportBidDocumentMarkdownFile() {
     ElMessage.warning('请先生成或填写投标文件内容')
     return
   }
+
   bidDocumentExporting.value = true
   try {
-    await saveBidDocument(selectedProject.value.id, { content: bidDocumentDraft.value })
+    bidDocumentDetail.value = await saveBidDocument(selectedProject.value.id, {
+      content: bidDocumentDraft.value
+    })
+
     const file = await exportBidDocumentMarkdown(selectedProject.value.id)
+
     await refreshWorkflow()
-    ElMessage.success(file?.originalName ? `Markdown 已生成：${file.originalName}` : 'Markdown 已生成，可在下载中心查看')
+    const downloaded = await downloadGeneratedBidDocument(
+      file,
+      `${selectedProject.value.projectName || '投标文件'}-投标文件.md`
+    )
+
+    if (downloaded) {
+      ElMessage.success('Markdown 导出成功，已开始下载')
+    }
   } finally {
     bidDocumentExporting.value = false
   }

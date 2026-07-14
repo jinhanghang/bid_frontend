@@ -173,7 +173,7 @@
           <div class="doc-head bid-doc-head">
             <div>
               <h2>投标文件</h2>
-              <p>先关联企业资料档案，再结合解析报告自动生成商务标基础内容。</p>
+              <p>结合招标文件解析结果和企业资料档案，自动生成资格、商务响应及基础表单初稿。</p>
             </div>
             <div class="bid-doc-actions">
               <el-button :icon="Refresh" @click="refreshBidDocument">刷新</el-button>
