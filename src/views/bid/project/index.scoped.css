@@ -1073,6 +1073,48 @@
   color: #64748b;
 }
 
+.tech-generation-live-time {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #475569;
+  font-size: 13px;
+}
+
+.tech-generation-live-time b {
+  color: #2563eb;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.tech-generation-timing-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #475569;
+  font-size: 12px;
+}
+
+.tech-generation-timing-summary b {
+  color: #2563eb;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tech-generation-timing-summary small {
+  color: #94a3b8;
+}
+
 .tech-outline-tree {
   padding: 18px 20px 80px;
   color: #1f2937;
@@ -3176,6 +3218,20 @@
   color: #2563eb;
   font-size: 13px;
   font-weight: 700;
+}
+
+.tech-task-status-metrics {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.tech-task-status-metrics small {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 1200px) {
