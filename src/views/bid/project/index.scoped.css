@@ -602,6 +602,13 @@
   width: 100%;
 }
 
+.create-space-tip {
+  grid-column: 1 / -1;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .tech-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 48%;
@@ -3262,4 +3269,398 @@
   font-size: 12px;
   color: #7a8ba6;
   line-height: 1.6;
+}
+
+/* ============================================================
+   AI标书技术方案工作台自适应布局修复
+   1. 中间目录区在宽屏下获得更合理的宽度，避免标题区与“编辑”按钮挤压。
+   2. 标题、统计信息与操作按钮使用网格布局，按钮不再覆盖文字。
+   3. 流程步骤在空间不足时允许横向滚动，避免后续步骤被截断。
+   4. 窄屏下自动压缩项目栏，并将目录区/预览区切换为上下布局。
+   ============================================================ */
+
+.ai-bid-page {
+  grid-template-columns: minmax(230px, 16%) minmax(0, 1fr);
+}
+
+.ai-bid-page .bid-tech-header {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ai-bid-page .bid-tech-steps {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: clamp(12px, 1.4vw, 28px);
+  padding-bottom: 2px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ai-bid-page .bid-tech-steps::-webkit-scrollbar {
+  display: none;
+}
+
+.ai-bid-page .bid-tech-step {
+  flex: 0 0 auto;
+}
+
+.ai-bid-page .bid-tech-step:not(:last-child)::after {
+  width: clamp(28px, 3.2vw, 72px);
+  margin-left: 8px;
+}
+
+.ai-bid-page .bid-tech-body.generated {
+  grid-template-columns: minmax(0, 52%) minmax(0, 48%) !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail {
+  container-type: inline-size;
+  container-name: bid-tech-detail;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top > div:first-child {
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top > .el-button {
+  position: static;
+  z-index: auto;
+  flex: 0 0 auto;
+  justify-self: end;
+  align-self: start;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top h2 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px clamp(14px, 2.4vw, 32px) !important;
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats > span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-stat-note,
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-generation-timing-summary {
+  max-width: 100%;
+}
+
+@container bid-tech-detail (max-width: 620px) {
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top > .el-button {
+    justify-self: start;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+    gap: 8px 14px !important;
+  }
+}
+
+@container bid-tech-detail (max-width: 500px) {
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats > span {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 1500px) {
+  .ai-bid-page {
+    grid-template-columns: 238px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .ai-bid-page .bid-tech-body.generated {
+    grid-template-columns: minmax(0, 55%) minmax(0, 45%) !important;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .ai-bid-page {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .ai-bid-page .bid-tech-body.generated {
+    grid-template-columns: minmax(0, 58%) minmax(0, 42%) !important;
+  }
+
+  .ai-bid-page .bid-tech-step:not(:last-child)::after {
+    width: 28px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .ai-bid-page {
+    grid-template-columns: minmax(0, 1fr);
+    overflow: auto;
+  }
+
+  .ai-bid-page .project-pane {
+    max-height: 280px;
+  }
+
+  .ai-bid-page .workspace {
+    min-height: 760px;
+  }
+
+  .ai-bid-page .bid-tech-body.generated {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(520px, auto) minmax(420px, auto);
+    overflow-y: auto;
+  }
+
+  .ai-bid-page .bid-tech-body.generated .bid-tech-left {
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+}
+
+/* 2026-07-17：标题编辑按钮回到标题后方，底部操作区固定在左侧面板底部。 */
+.ai-bid-page .bid-tech-body.generated .bid-tech-left {
+  min-height: 0;
+}
+
+.ai-bid-page .bid-tech-body.generated .bid-tech-left > .tech-detail-panel.ai-solution-like-detail {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+  display: block !important;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 16px 20px 14px;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top-main {
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row h2 {
+  min-width: 0;
+  max-width: calc(100% - 96px);
+  margin: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-edit-btn {
+  position: static !important;
+  z-index: auto !important;
+  flex: 0 0 auto;
+  align-self: center;
+  margin: 0 !important;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+  margin-top: 12px;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-outline-scroll,
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .edit-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .detail-actions-like-solution {
+  position: relative;
+  bottom: auto;
+  z-index: 6;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  box-shadow: 0 -8px 18px rgba(15, 39, 71, 0.035);
+}
+
+@container bid-tech-detail (max-width: 560px) {
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row {
+    align-items: flex-start;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row h2 {
+    max-width: calc(100% - 88px);
+    white-space: normal;
+  }
+}
+
+/* 2026-07-17：生成用时并入标题工具区，压缩头部与底部操作区，为目录列表释放纵向空间。 */
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail {
+  padding-bottom: 0 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .bid-tech-left {
+  padding-bottom: 0 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-top {
+  padding: 12px 20px 9px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row h2 {
+  flex: 1 1 auto;
+  max-width: none !important;
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-generation-timing-summary--compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 230px;
+  margin: 0 !important;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-generation-timing-summary--compact b {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-generation-timing-summary--compact small {
+  max-width: 72px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-edit-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-stats {
+  margin-top: 8px !important;
+  gap: 5px clamp(14px, 2vw, 28px) !important;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-stat-note {
+  margin-top: 4px !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-detail-outline-scroll {
+  padding-top: 6px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress {
+  margin-bottom: 8px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .solution-like-progress :deep(.el-progress-bar__outer) {
+  height: 4px !important;
+}
+
+.ai-bid-page .bid-tech-body.generated .tech-outline-tree {
+  padding-bottom: 12px !important;
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .detail-actions-like-solution {
+  margin-top: 0 !important;
+  padding: 8px 20px !important;
+  gap: 8px !important;
+  box-shadow: 0 -4px 12px rgba(15, 39, 71, 0.025);
+}
+
+.ai-bid-page .tech-detail-panel.ai-solution-like-detail .detail-actions-like-solution .detail-action-btn {
+  height: 34px !important;
+  padding: 0 10px !important;
+  font-size: 13px !important;
+  line-height: 32px !important;
+}
+
+@container bid-tech-detail (max-width: 680px) {
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row {
+    align-items: flex-start;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-tools {
+    flex-wrap: nowrap;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-generation-timing-summary--compact small {
+    display: none;
+  }
+}
+
+@container bid-tech-detail (max-width: 540px) {
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row {
+    flex-wrap: wrap;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-row h2 {
+    flex-basis: 100%;
+    white-space: normal;
+  }
+
+  .ai-bid-page .tech-detail-panel.ai-solution-like-detail .tech-detail-title-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }

@@ -517,8 +517,25 @@
               <template v-else>
                 <div class="tech-detail-panel ai-solution-like-detail">
                   <div class="tech-detail-top">
-                    <div>
-                      <h2>{{ technicalForm.solutionName || selectedProject?.projectName || '技术方案' }}</h2>
+                    <div class="tech-detail-top-main">
+                      <div class="tech-detail-title-row">
+                        <h2>{{ technicalForm.solutionName || selectedProject?.projectName || '技术方案' }}</h2>
+                        <div class="tech-detail-title-tools">
+                          <div v-if="technicalGenerationTimingVisible && !technicalGenerationTimingActive" class="tech-generation-timing-summary tech-generation-timing-summary--compact">
+                            <span>{{ technicalGenerationTimingLabel }}</span>
+                            <b>{{ technicalGenerationElapsedText }}</b>
+                            <small>{{ technicalGenerationTimingStatusText }}</small>
+                          </div>
+                          <el-button
+                            class="tech-detail-edit-btn"
+                            :icon="technicalEditMode ? Close : EditPen"
+                            :disabled="!canEditTechnicalOutline"
+                            @click="toggleTechnicalEditMode"
+                          >
+                            {{ technicalEditMode ? '退出编辑' : '编辑' }}
+                          </el-button>
+                        </div>
+                      </div>
                       <div v-if="showTechnicalStats" class="tech-detail-stats">
                         <span>目标字数：<b class="red">{{ technicalTargetWordCount }}</b> 字</span>
                         <span>生成字数：<b class="green">{{ technicalActualWordCount }}</b> 字</span>
@@ -526,19 +543,7 @@
                         <span>预估页数：<b class="green">{{ technicalActualPageCount }}</b> 页</span>
                       </div>
                       <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
-                      <div v-if="technicalGenerationTimingVisible && !technicalGenerationTimingActive" class="tech-generation-timing-summary">
-                        <span>{{ technicalGenerationTimingLabel }}</span>
-                        <b>{{ technicalGenerationElapsedText }}</b>
-                        <small>{{ technicalGenerationTimingStatusText }}</small>
-                      </div>
                     </div>
-                    <el-button
-                      :icon="technicalEditMode ? Close : EditPen"
-                      :disabled="!canEditTechnicalOutline"
-                      @click="toggleTechnicalEditMode"
-                    >
-                      {{ technicalEditMode ? '退出编辑' : '编辑' }}
-                    </el-button>
                   </div>
 
                   <template v-if="technicalEditMode">
@@ -828,7 +833,7 @@
           clearable
           :remote-method="remoteSearchCreateEnterprises"
           :loading="enterpriseLoading"
-          placeholder="请选择所属企业"
+          placeholder="所属企业（可不选，留空为个人空间）"
           class="create-admin-select"
           @visible-change="onCreateEnterpriseVisibleChange"
           @change="onCreateEnterpriseChange"
@@ -844,7 +849,7 @@
           v-model="createDialog.ownerUserId"
           filterable
           clearable
-          placeholder="请选择项目负责人"
+          :placeholder="createDialog.enterpriseId ? '请选择项目负责人' : '个人空间默认当前账号'"
           class="create-admin-select"
           :disabled="!createDialog.enterpriseId"
         >
@@ -855,6 +860,9 @@
             :value="item.id"
           />
         </el-select>
+        <div class="create-space-tip">
+          不选择企业时，项目保存到当前账号的个人空间；选择企业后，必须指定该企业的项目负责人。
+        </div>
       </div>
 
       <el-upload
