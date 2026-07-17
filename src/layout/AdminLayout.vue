@@ -1,33 +1,55 @@
 <template>
   <div class="product-shell">
-    <aside class="product-sidebar">
+    <aside class="product-sidebar" :class="{ 'is-collapsed': sidebarCompact }">
       <button type="button" class="brand" @click="router.push('/dashboard')">
         <span class="brand-mark">AI</span>
         <span class="brand-copy">
-          <strong>恒鼎·智慧AI平台</strong>
+          <strong>恒鼎·智慧AI</strong>
           <small>AI BIDDING WORKSPACE</small>
         </span>
       </button>
 
+      <el-tooltip :content="sidebarCompact ? '展开菜单' : '收起菜单'" placement="right" :show-after="250">
+        <button
+          type="button"
+          class="sidebar-collapse-toggle"
+          :aria-label="sidebarCompact ? '展开左侧菜单' : '收起左侧菜单'"
+          @click="toggleSidebar"
+        >
+          <el-icon>
+            <Expand v-if="sidebarCompact" />
+            <Fold v-else />
+          </el-icon>
+        </button>
+      </el-tooltip>
+
       <el-scrollbar class="sidebar-scroll">
         <nav class="sidebar-menu" aria-label="主导航">
-          <button
+          <el-tooltip
             v-for="item in productMenus"
             :key="item.path"
-            type="button"
-            class="sidebar-item"
-            :class="{ active: isMenuActive(item) }"
-            @click="goMenu(item)"
+            :content="item.title"
+            placement="right"
+            :disabled="!sidebarCompact"
+            :show-after="280"
           >
-            <span class="sidebar-active-line" />
-            <span class="sidebar-icon">
-              <el-badge v-if="item.badge" :value="item.badge" class="sidebar-badge">
-                <el-icon><component :is="item.icon" /></el-icon>
-              </el-badge>
-              <el-icon v-else><component :is="item.icon" /></el-icon>
-            </span>
-            <span class="sidebar-label">{{ item.title }}</span>
-          </button>
+            <button
+              type="button"
+              class="sidebar-item"
+              :class="{ active: isMenuActive(item) }"
+              :aria-label="item.title"
+              @click="goMenu(item)"
+            >
+              <span class="sidebar-active-line" />
+              <span class="sidebar-icon">
+                <el-badge v-if="item.badge" :value="item.badge" class="sidebar-badge">
+                  <el-icon><component :is="item.icon" /></el-icon>
+                </el-badge>
+                <el-icon v-else><component :is="item.icon" /></el-icon>
+              </span>
+              <span class="sidebar-label">{{ item.title }}</span>
+            </button>
+          </el-tooltip>
         </nav>
       </el-scrollbar>
 
@@ -82,11 +104,11 @@
             </button>
           </el-tooltip>
 
-          <el-tooltip content="帮助" placement="bottom">
-            <button type="button" class="header-icon-button" @click="handleHelp">
-              <el-icon><QuestionFilled /></el-icon>
-            </button>
-          </el-tooltip>
+<!--          <el-tooltip content="帮助" placement="bottom">-->
+<!--            <button type="button" class="header-icon-button" @click="handleHelp">-->
+<!--              <el-icon><QuestionFilled /></el-icon>-->
+<!--            </button>-->
+<!--          </el-tooltip>-->
 
           <el-dropdown trigger="click">
             <button type="button" class="user-entry">
@@ -133,7 +155,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from '@/plugins/element-plus-api'
 import {
   ArrowDown,
@@ -143,7 +165,9 @@ import {
   Delete,
   Document,
   Download,
+  Expand,
   Files,
+  Fold,
   House,
   Operation,
   QuestionFilled,
@@ -158,6 +182,11 @@ import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+const SIDEBAR_COLLAPSED_KEY = 'ai-bid:sidebar-collapsed'
+const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
+const sidebarCollapsed = ref(readSidebarCollapsed())
+const sidebarCompact = computed(() => sidebarCollapsed.value || viewportWidth.value <= 720)
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -201,6 +230,35 @@ const productMenus = computed(() => [
   { title: '下载中心', path: '/download-center', icon: Download },
   { title: '回收站', path: '/recycle-bin', icon: Delete }
 ])
+
+function readSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  } catch (e) {
+    return false
+  }
+}
+
+function saveSidebarCollapsed(value) {
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? '1' : '0')
+  } catch (e) {
+    // 浏览器禁用本地存储时，仅保留当前会话状态。
+  }
+}
+
+function toggleSidebar() {
+  if (viewportWidth.value <= 720) {
+    ElMessage.info('当前窗口较窄，左侧菜单已自动折叠')
+    return
+  }
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  saveSidebarCollapsed(sidebarCollapsed.value)
+}
+
+function handleViewportResize() {
+  viewportWidth.value = window.innerWidth
+}
 
 function isMenuActive(item) {
   if (item.path === '/dashboard') return route.path === '/dashboard' || route.path === '/'
@@ -298,8 +356,14 @@ function handleHelp() {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', handleViewportResize, { passive: true })
+  handleViewportResize()
   loadQuota()
   loadApprovalPendingCount()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleViewportResize)
 })
 
 watch(() => route.fullPath, () => {
@@ -364,6 +428,46 @@ async function logout() {
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 8px 0 32px rgba(50, 65, 100, 0.04);
   backdrop-filter: blur(18px);
+  transition: width 0.22s ease, min-width 0.22s ease, flex-basis 0.22s ease, padding 0.22s ease;
+}
+
+.product-sidebar.is-collapsed {
+  flex-basis: 78px;
+  width: 78px;
+  min-width: 78px;
+  padding-right: 9px;
+  padding-left: 9px;
+}
+
+.sidebar-collapse-toggle {
+  position: absolute;
+  z-index: 8;
+  top: 72px;
+  right: -13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #e2e7f2;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 6px 16px rgba(61, 73, 108, 0.14);
+  color: #65718a;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: #6556ef;
+  background: #f7f5ff;
+  box-shadow: 0 8px 20px rgba(89, 75, 188, 0.18);
+  transform: translateY(-1px);
+}
+
+.sidebar-collapse-toggle :deep(.el-icon) {
+  font-size: 15px;
 }
 
 .brand {
@@ -418,6 +522,39 @@ async function logout() {
   font-size: 8px;
   letter-spacing: 0.8px;
   white-space: nowrap;
+}
+
+.product-sidebar.is-collapsed .brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.product-sidebar.is-collapsed .brand-copy,
+.product-sidebar.is-collapsed .sidebar-label {
+  display: none;
+}
+
+.product-sidebar.is-collapsed .sidebar-scroll {
+  margin-top: 24px;
+}
+
+.product-sidebar.is-collapsed .sidebar-menu {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.product-sidebar.is-collapsed .sidebar-item {
+  min-height: 50px;
+  justify-content: center;
+  padding: 0;
+}
+
+.product-sidebar.is-collapsed .sidebar-item:hover {
+  transform: translateY(-1px);
+}
+
+.product-sidebar.is-collapsed .sidebar-icon {
+  margin-right: 0;
 }
 
 .sidebar-scroll {
@@ -593,6 +730,38 @@ async function logout() {
   font-family: inherit;
   font-size: 11px;
   cursor: pointer;
+}
+
+.product-sidebar.is-collapsed .service-panel {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 14px;
+}
+
+.product-sidebar.is-collapsed .service-title {
+  align-items: center;
+}
+
+.product-sidebar.is-collapsed .service-title > span:first-child,
+.product-sidebar.is-collapsed .service-quota-label,
+.product-sidebar.is-collapsed .service-quota-value,
+.product-sidebar.is-collapsed .service-quota-foot,
+.product-sidebar.is-collapsed .service-sparkline,
+.product-sidebar.is-collapsed .service-link {
+  display: none;
+}
+
+.product-sidebar.is-collapsed .service-state {
+  gap: 0;
+  font-size: 0;
+}
+
+.product-sidebar.is-collapsed .service-state i {
+  width: 10px;
+  height: 10px;
 }
 
 .product-main {
@@ -789,60 +958,13 @@ async function logout() {
 }
 
 @media (max-width: 1200px) {
-  .product-sidebar {
-    flex-basis: 92px;
-    width: 92px;
-    min-width: 92px;
-    padding-right: 9px;
-    padding-left: 9px;
+  .product-header {
+    padding-right: 20px;
+    padding-left: 20px;
   }
 
-  .brand {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .brand-copy,
-  .sidebar-label,
-  .service-title > span:first-child,
-  .service-quota-label,
-  .service-quota-foot,
-  .service-link {
-    display: none;
-  }
-
-  .sidebar-item {
-    min-height: 58px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .sidebar-icon {
-    margin-right: 0;
-  }
-
-  .service-panel {
-    min-height: 112px;
-    padding: 13px 8px;
-    text-align: center;
-  }
-
-  .service-title {
-    align-items: center;
-  }
-
-  .service-state {
-    justify-content: center;
-    font-size: 10px;
-  }
-
-  .service-quota-value {
-    margin-top: 12px;
-    font-size: 16px;
-  }
-
-  .service-sparkline {
-    height: 32px;
+  .user-copy {
+    max-width: 104px;
   }
 }
 
@@ -870,11 +992,39 @@ async function logout() {
 }
 
 @media (max-width: 640px) {
-  .product-sidebar {
-    flex-basis: 70px;
-    width: 70px;
-    min-width: 70px;
+  .product-sidebar,
+  .product-sidebar.is-collapsed {
+    flex-basis: 68px;
+    width: 68px;
+    min-width: 68px;
     padding: 12px 6px;
+  }
+
+  .product-sidebar .brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .product-sidebar .brand-copy,
+  .product-sidebar .sidebar-label {
+    display: none;
+  }
+
+  .product-sidebar .sidebar-item {
+    min-height: 50px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .product-sidebar .sidebar-icon {
+    margin-right: 0;
+  }
+
+  .sidebar-collapse-toggle {
+    top: 66px;
+    right: -11px;
+    width: 22px;
+    height: 22px;
   }
 
   .brand-mark {
