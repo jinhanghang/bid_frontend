@@ -624,7 +624,7 @@
                               <span v-if="isTechnicalRunningByBackend">{{ technicalRunningTaskProgress }}%</span>
                               <small v-if="technicalGenerationTimingVisible">用时 {{ technicalGenerationElapsedText }}</small>
                             </div>
-                            <el-button v-if="isTechnicalRunningByBackend" size="small" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">取消任务</el-button>
+                            <el-button v-if="isTechnicalRunningByBackend" size="small" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">{{ technicalTaskCanceling ? '正在终止...' : '终止生成' }}</el-button>
                           </div>
                         </div>
                         <el-progress
@@ -651,7 +651,24 @@
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend" @click="openTechnicalVersionDialog">历史版本</el-button>
                       <el-button v-if="technicalRetryableLeafCount > 0" class="detail-action-btn" size="large" type="warning" plain :disabled="!canRetryTechnicalFailedSections" @click="openTechnicalFullGenerateDialog('RETRY_FAILED')" :loading="fullGenerating || isTechnicalRunningByBackend">重试失败章节({{ technicalRetryableLeafCount }})</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
-                      <el-button class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent" @click="openTechnicalFullGenerateDialog('GENERATE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ technicalGenerateButtonText }}</el-button>
+                      <el-button
+                        v-if="isTechnicalRunningByBackend"
+                        class="detail-action-btn"
+                        size="large"
+                        type="danger"
+                        :loading="technicalTaskCanceling"
+                        :disabled="technicalTaskCanceling"
+                        @click="cancelCurrentTechnicalTask"
+                      >{{ technicalTaskCanceling ? '正在终止...' : '终止生成' }}</el-button>
+                      <el-button
+                        v-else
+                        class="detail-action-btn"
+                        size="large"
+                        type="primary"
+                        :disabled="!canGenerateTechnicalContent"
+                        @click="openTechnicalFullGenerateDialog('GENERATE')"
+                        :loading="fullGenerating"
+                      >{{ technicalGenerateButtonText }}</el-button>
                       <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
                     </div>
                   </template>

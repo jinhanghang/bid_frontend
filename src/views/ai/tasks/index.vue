@@ -1,81 +1,141 @@
 <template>
   <div class="page ai-task-page">
-    <div class="page-header ai-task-header">
-      <div>
-        <h2>AI任务中心</h2>
-        <p>统一查看解析、生成、导出等长耗时任务，便于排查失败和运行状态。</p>
-      </div>
-      <div class="header-actions">
-        <el-switch v-model="autoRefresh" active-text="自动刷新" inactive-text="手动刷新" @change="scheduleAutoRefresh" />
-        <el-button type="primary" :loading="loading" @click="loadTasks">刷新</el-button>
-      </div>
-    </div>
-
     <div class="page-body ai-task-body">
-      <div class="card card--table ai-task-card">
-        <div class="page-toolbar ai-task-toolbar">
-          <div class="toolbar-left">
-            <el-input v-model="query.keyword" clearable placeholder="搜索任务号/消息/错误" class="toolbar-input" @input="onSearchInput" />
-            <el-select v-model="query.taskCategory" clearable placeholder="任务类型" class="toolbar-select" @change="onFilterChange">
-              <el-option label="资料解析" value="PARSE" />
-              <el-option label="AI生成" value="GENERATE" />
-              <el-option label="文档导出" value="EXPORT" />
-              <el-option label="知识库问答" value="ASK" />
-            </el-select>
-            <el-select v-model="query.status" clearable placeholder="状态" class="toolbar-select" @change="onFilterChange">
-              <el-option label="等待中" value="WAITING" />
-              <el-option label="运行中" value="RUNNING" />
-              <el-option label="成功" value="SUCCESS" />
-              <el-option label="部分成功" value="PARTIAL" />
-              <el-option label="失败" value="FAILED" />
-              <el-option label="已取消" value="CANCELED" />
-            </el-select>
+      <section class="task-page-header">
+        <div class="task-page-title">
+          <span class="title-symbol"><el-icon><MagicStick /></el-icon></span>
+          <div>
+            <h1>AI任务中心</h1>
+            <p>统一查看解析、生成、导出等长耗时任务，便于排查失败和运行状态。</p>
           </div>
         </div>
+        <el-button type="primary" class="refresh-button" :icon="Refresh" :loading="loading" @click="loadTasks">刷新</el-button>
+      </section>
 
-        <div class="ai-task-table-wrap">
-          <el-table class="ui-table ai-task-table" :data="tasks" v-loading="loading" border stripe :height="tableHeight">
-            <el-table-column label="序号" width="70" align="center">
-              <template #default="{ $index }">{{ (query.pageNum - 1) * query.pageSize + $index + 1 }}</template>
-            </el-table-column>
-            <el-table-column label="任务" min-width="180">
-              <template #default="{ row }">
-                <div class="task-title">{{ row.taskName || row.taskType || '-' }}</div>
-                <div class="task-sub">{{ row.taskNo || row.id }}</div>
-              </template>
-            </el-table-column>
-            <el-table-column label="类型" width="110" align="center">
-              <template #default="{ row }"><el-tag size="small" effect="light">{{ categoryLabel(row.taskCategory) }}</el-tag></template>
-            </el-table-column>
-            <el-table-column label="状态" width="110" align="center">
-              <template #default="{ row }"><el-tag :type="statusTagType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag></template>
-            </el-table-column>
-            <el-table-column label="进度" width="160">
-              <template #default="{ row }"><el-progress :percentage="safePercent(row.progress)" :stroke-width="8" /></template>
-            </el-table-column>
-            <el-table-column label="节点" width="130" align="center">
-              <template #default="{ row }">{{ row.finishedNodes || 0 }}/{{ row.totalNodes || 0 }}<span v-if="row.failedNodes">，失败{{ row.failedNodes }}</span></template>
-            </el-table-column>
-            <el-table-column prop="message" label="消息" min-width="220" show-overflow-tooltip />
-            <el-table-column label="失败原因" min-width="220" show-overflow-tooltip>
-              <template #default="{ row }">{{ safeErrorMessage(row.errorMessage) }}</template>
-            </el-table-column>
-            <el-table-column label="创建时间" width="180">
-              <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="150" fixed="right" align="center">
-              <template #default="{ row }">
-                <el-button link type="primary" :loading="detailLoading && detailTaskId === row.id" @click="openTaskDetail(row)">详情</el-button>
-                <el-button
-                  v-if="isCancelable(row)"
-                  link
-                  type="danger"
-                  :loading="cancelingId === row.id"
-                  @click="cancelTask(row)"
-                >取消</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+      <section class="task-stat-grid" v-loading="summaryLoading">
+        <article v-for="item in taskStats" :key="item.key" class="task-stat-card" :class="`tone-${item.tone}`">
+          <span class="task-stat-icon"><el-icon><component :is="item.icon" /></el-icon></span>
+          <span class="task-stat-copy">
+            <span class="task-stat-title">{{ item.title }}</span>
+            <strong>{{ item.value }}<small v-if="item.unit">{{ item.unit }}</small></strong>
+            <span class="task-stat-trend" :class="item.trendClass">{{ item.trend }}</span>
+          </span>
+          <svg class="task-stat-line" viewBox="0 0 90 34" aria-hidden="true">
+            <path :d="item.spark" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span class="task-stat-glow" />
+        </article>
+      </section>
+
+      <section class="task-filter-card">
+        <div class="task-filter-left">
+          <el-input
+            v-model="query.keyword"
+            clearable
+            placeholder="搜索任务名称、任务号、消息或错误"
+            class="task-search"
+            @input="onSearchInput"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+
+          <el-select v-model="query.taskCategory" clearable placeholder="任务类型" class="task-filter-select" @change="onFilterChange">
+            <el-option label="资料解析" value="PARSE" />
+            <el-option label="AI生成" value="GENERATE" />
+            <el-option label="文档导出" value="EXPORT" />
+            <el-option label="知识库问答" value="ASK" />
+          </el-select>
+
+          <el-select v-model="query.status" clearable placeholder="任务状态" class="task-filter-select" @change="onFilterChange">
+            <el-option label="等待中" value="WAITING" />
+            <el-option label="运行中" value="RUNNING" />
+            <el-option label="成功" value="SUCCESS" />
+            <el-option label="部分成功" value="PARTIAL" />
+            <el-option label="失败" value="FAILED" />
+            <el-option label="已取消" value="CANCELED" />
+          </el-select>
+
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            class="task-date-range"
+            @change="onFilterChange"
+          />
+        </div>
+
+        <div class="task-filter-right">
+          <el-switch v-model="autoRefresh" active-text="自动刷新" @change="scheduleAutoRefresh" />
+          <el-button :icon="RefreshLeft" @click="resetFilters">重置</el-button>
+        </div>
+      </section>
+
+      <section class="task-list-card" v-loading="loading">
+        <div class="task-list-scroll">
+          <div v-if="tasks.length" class="task-list">
+            <article
+              v-for="row in tasks"
+              :key="row.id"
+              class="task-row"
+              :class="{ 'is-failed': isFailureStatus(row.status), 'is-running': isRunningStatus(row.status) }"
+              @click="openTaskDetail(row)"
+            >
+            <div class="task-identity">
+              <span class="task-type-icon" :class="`tone-${taskTone(row)}`">
+                <el-icon><component :is="taskIcon(row)" /></el-icon>
+              </span>
+              <span class="task-identity-copy">
+                <strong>{{ row.taskName || row.taskType || '-' }}</strong>
+                <small>{{ row.taskNo || row.id }}</small>
+              </span>
+            </div>
+
+            <div class="task-status-cell">
+              <span class="status-pill" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span>
+            </div>
+
+            <div class="task-progress-cell">
+              <el-progress :percentage="safePercent(row.progress)" :stroke-width="7" :show-text="false" />
+              <strong>{{ safePercent(row.progress) }}%</strong>
+            </div>
+
+            <div class="task-node-cell">
+              <small>节点</small>
+              <strong>{{ row.finishedNodes || 0 }}/{{ row.totalNodes || 0 }}</strong>
+              <span v-if="row.failedNodes">失败 {{ row.failedNodes }}</span>
+            </div>
+
+            <div class="task-message-cell">
+              <small>消息</small>
+              <strong :class="{ danger: isFailureStatus(row.status) }">{{ taskMainMessage(row) }}</strong>
+              <span v-if="row.wordCount">已生成 {{ Number(row.wordCount).toLocaleString() }} 字</span>
+            </div>
+
+            <div class="task-result-cell">
+              <strong>{{ taskSecondaryMessage(row) }}</strong>
+              <time>{{ formatTime(row.createTime) }}</time>
+            </div>
+
+            <div class="task-action-cell" @click.stop>
+              <el-dropdown trigger="click" @command="(command) => handleTaskCommand(command, row)">
+                <button type="button" class="more-button" aria-label="任务操作">
+                  <el-icon><MoreFilled /></el-icon>
+                </button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="detail">查看详情</el-dropdown-item>
+                    <el-dropdown-item v-if="isCancelable(row)" command="cancel" divided>取消任务</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+            </article>
+          </div>
+
+          <el-empty v-else :image-size="94" description="暂无符合条件的任务" />
         </div>
 
         <PageFooterPager
@@ -84,9 +144,8 @@
           :total="total"
           @change="loadTasks"
         />
-      </div>
+      </section>
     </div>
-
 
     <el-drawer
       v-model="detailVisible"
@@ -235,12 +294,25 @@
         </template>
       </div>
     </el-drawer>
-
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import {
+  ChatDotRound,
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Clock,
+  Document,
+  MagicStick,
+  MoreFilled,
+  Operation,
+  Refresh,
+  RefreshLeft,
+  Search,
+  UploadFilled
+} from '@element-plus/icons-vue'
 import { cancelAiTask, getAiTaskDetail, pageAiTasks, pageAiTaskEventLogs } from '@/api/aiTaskCenter'
 import { formatDateTime } from '@/utils/format'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
@@ -249,9 +321,10 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const loading = ref(false)
+const summaryLoading = ref(false)
 const tasks = ref([])
+const summaryTasks = ref([])
 const total = ref(0)
-const tableHeight = ref(420)
 const cancelingId = ref('')
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -262,14 +335,79 @@ const eventLoading = ref(false)
 const retryingAll = ref(false)
 const retryingSectionId = ref('')
 const autoRefresh = ref(true)
+const dateRange = ref([])
 const hasRunningTasks = computed(() => tasks.value.some((task) => isRunningStatus(task.status)))
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', taskCategory: '', status: '' })
 let searchTimer = null
 let autoRefreshTimer = null
 
+const taskStats = computed(() => {
+  const now = new Date()
+  const todayStart = startOfDay(now)
+  const tomorrowStart = addDays(todayStart, 1)
+  const yesterdayStart = addDays(todayStart, -1)
+
+  const today = summaryTasks.value.filter((task) => inRange(task.createTime, todayStart, tomorrowStart))
+  const yesterday = summaryTasks.value.filter((task) => inRange(task.createTime, yesterdayStart, todayStart))
+
+  const running = summaryTasks.value.filter((task) => isRunningStatus(task.status)).length
+  const yesterdayRunning = yesterday.filter((task) => isRunningStatus(task.status)).length
+  const todaySuccess = today.filter((task) => isSuccessStatus(task.status)).length
+  const yesterdaySuccess = yesterday.filter((task) => isSuccessStatus(task.status)).length
+  const todayFailed = today.filter((task) => isFailureStatus(task.status)).length
+  const yesterdayFailed = yesterday.filter((task) => isFailureStatus(task.status)).length
+  const todayAverage = averageDuration(today)
+  const yesterdayAverage = averageDuration(yesterday)
+
+  return [
+    {
+      key: 'running',
+      title: '运行中任务',
+      value: running,
+      unit: '',
+      icon: Operation,
+      tone: 'blue',
+      trend: compareText(running, yesterdayRunning),
+      trendClass: compareClass(running, yesterdayRunning, false),
+      spark: 'M2 27 C14 24, 18 13, 30 18 S48 29, 58 17 S75 9, 88 14'
+    },
+    {
+      key: 'success',
+      title: '今日成功任务',
+      value: todaySuccess,
+      unit: '',
+      icon: CircleCheckFilled,
+      tone: 'green',
+      trend: compareText(todaySuccess, yesterdaySuccess),
+      trendClass: compareClass(todaySuccess, yesterdaySuccess, false),
+      spark: 'M2 28 C13 25, 21 29, 30 18 S47 12, 56 22 S72 27, 88 8'
+    },
+    {
+      key: 'failed',
+      title: '今日失败任务',
+      value: todayFailed,
+      unit: '',
+      icon: CircleCloseFilled,
+      tone: 'red',
+      trend: compareText(todayFailed, yesterdayFailed),
+      trendClass: compareClass(todayFailed, yesterdayFailed, true),
+      spark: 'M2 25 C15 21, 20 10, 32 19 S48 31, 60 17 S76 12, 88 21'
+    },
+    {
+      key: 'duration',
+      title: '平均耗时',
+      value: formatAverageDuration(todayAverage).value,
+      unit: formatAverageDuration(todayAverage).unit,
+      icon: Clock,
+      tone: 'violet',
+      trend: durationCompareText(todayAverage, yesterdayAverage),
+      trendClass: compareClass(todayAverage, yesterdayAverage, true),
+      spark: 'M2 25 C13 18, 20 29, 31 21 S48 9, 59 15 S75 28, 88 12'
+    }
+  ]
+})
+
 onMounted(() => {
-  updateTableHeight()
-  window.addEventListener('resize', updateTableHeight)
   document.addEventListener('visibilitychange', onVisibilityChange)
   loadTasks()
 })
@@ -277,17 +415,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearTimeout(searchTimer)
   clearTimeout(autoRefreshTimer)
-  window.removeEventListener('resize', updateTableHeight)
   document.removeEventListener('visibilitychange', onVisibilityChange)
 })
-
-function updateTableHeight() {
-  nextTick(() => {
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 900
-    // 页面头部、筛选条、卡片内边距和分页器都预留出来，确保分页始终露在可视区域。
-    tableHeight.value = Math.max(320, viewportHeight - 405)
-  })
-}
 
 function onSearchInput() {
   clearTimeout(searchTimer)
@@ -302,23 +431,45 @@ function onFilterChange() {
   loadTasks()
 }
 
+function resetFilters() {
+  query.keyword = ''
+  query.taskCategory = ''
+  query.status = ''
+  query.pageNum = 1
+  dateRange.value = []
+  loadTasks()
+}
+
+function buildTaskQuery() {
+  const params = { ...query }
+  if (Array.isArray(dateRange.value) && dateRange.value.length === 2) {
+    params.startTime = `${dateRange.value[0]} 00:00:00`
+    params.endTime = `${dateRange.value[1]} 23:59:59`
+  }
+  return params
+}
+
 async function loadTasks() {
   loading.value = true
+  summaryLoading.value = true
   try {
-    const res = await pageAiTasks(query)
+    const [res, summaryRes] = await Promise.all([
+      pageAiTasks(buildTaskQuery()),
+      pageAiTasks({ pageNum: 1, pageSize: 100 })
+    ])
     tasks.value = res?.records || []
     total.value = Number(res?.total || 0)
+    summaryTasks.value = summaryRes?.records || []
     if (total.value > 0 && tasks.value.length === 0 && query.pageNum > 1) {
       query.pageNum -= 1
       await loadTasks()
     }
   } finally {
     loading.value = false
-    updateTableHeight()
+    summaryLoading.value = false
     scheduleAutoRefresh()
   }
 }
-
 
 function scheduleAutoRefresh() {
   clearTimeout(autoRefreshTimer)
@@ -342,13 +493,61 @@ function onVisibilityChange() {
 
 function isRunningStatus(value) {
   const status = String(value || '').toUpperCase()
-  return ['WAITING', 'PENDING', 'RUNNING', 'PARSING', 'EXTRACTING'].includes(status)
+  return ['WAITING', 'PENDING', 'RUNNING', 'PARSING', 'EXTRACTING', 'CANCEL_REQUESTED'].includes(status)
+}
+
+function isSuccessStatus(value) {
+  return String(value || '').toUpperCase() === 'SUCCESS'
+}
+
+function isFailureStatus(value) {
+  return ['FAILED', 'TIMEOUT'].includes(String(value || '').toUpperCase())
 }
 
 function isCancelable(row) {
   return !!row?.cancelable && ['PARSE', 'GENERATE'].includes(String(row.taskCategory || '').toUpperCase()) && isRunningStatus(row.status)
 }
 
+function taskTone(row) {
+  const category = String(row?.taskCategory || '').toUpperCase()
+  if (category === 'GENERATE') return 'violet'
+  if (category === 'PARSE') return 'blue'
+  if (category === 'EXPORT') return 'amber'
+  if (category === 'ASK') return 'cyan'
+  return 'blue'
+}
+
+function taskIcon(row) {
+  const category = String(row?.taskCategory || '').toUpperCase()
+  if (category === 'GENERATE') return MagicStick
+  if (category === 'PARSE') return Document
+  if (category === 'EXPORT') return UploadFilled
+  if (category === 'ASK') return ChatDotRound
+  return Operation
+}
+
+function taskMainMessage(row) {
+  if (isFailureStatus(row?.status)) return safeErrorMessage(row?.errorMessage)
+  return row?.message || '任务处理中'
+}
+
+function taskSecondaryMessage(row) {
+  if (isFailureStatus(row?.status)) return '任务执行失败，请查看详情'
+  if (String(row?.status || '').toUpperCase() === 'PARTIAL') return '部分章节已完成，可重试失败章节'
+  if (String(row?.status || '').toUpperCase() === 'CANCELED') return '任务已取消，已完成内容仍然保留'
+  if (isRunningStatus(row?.status)) return row?.cancelTip || '任务正在执行，请耐心等待'
+  return row?.errorMessage ? safeErrorMessage(row.errorMessage) : '-'
+}
+
+function handleTaskCommand(command, row) {
+  if (command === 'detail') {
+    openTaskDetail(row)
+    return
+  }
+  if (command === 'cancel') {
+    cancelTask(row)
+  }
+}
 
 async function openTaskDetail(row) {
   if (!row?.id || !row?.taskCategory) return
@@ -446,9 +645,9 @@ async function cancelTask(row) {
   if (!row?.id || !isCancelable(row)) return
   try {
     await ElMessageBox.confirm(
-      '取消后后台会在当前安全检查点停止任务，已发出的模型调用不会被强制中断。确定取消该任务吗？',
-      '取消AI任务',
-      { type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '再等等' }
+      '终止后只停止尚未完成的内容，已经生成成功的章节会继续保留。确定终止该任务吗？',
+      '终止AI任务',
+      { type: 'warning', confirmButtonText: '确定终止', cancelButtonText: '再等等' }
     )
   } catch (e) {
     return
@@ -456,11 +655,63 @@ async function cancelTask(row) {
   cancelingId.value = row.id
   try {
     await cancelAiTask(row.taskCategory, row.id)
-    ElMessage.success('已提交取消请求')
+    ElMessage.success('已提交终止请求，已生成章节不会丢失')
     await loadTasks()
   } finally {
     cancelingId.value = ''
   }
+}
+
+function startOfDay(date) {
+  const value = new Date(date)
+  value.setHours(0, 0, 0, 0)
+  return value
+}
+
+function addDays(date, days) {
+  const value = new Date(date)
+  value.setDate(value.getDate() + days)
+  return value
+}
+
+function inRange(value, start, end) {
+  if (!value) return false
+  const normalized = typeof value === 'string' ? value.replace(' ', 'T') : value
+  const time = new Date(normalized).getTime()
+  return Number.isFinite(time) && time >= start.getTime() && time < end.getTime()
+}
+
+function averageDuration(list) {
+  const values = list.map((task) => Number(task.durationMs || 0)).filter((value) => Number.isFinite(value) && value > 0)
+  if (!values.length) return 0
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+}
+
+function compareText(current, previous) {
+  const delta = Number(current || 0) - Number(previous || 0)
+  if (delta === 0) return '较昨日持平'
+  return `较昨日 ${delta > 0 ? '+' : ''}${delta}`
+}
+
+function compareClass(current, previous, reverse) {
+  const delta = Number(current || 0) - Number(previous || 0)
+  if (delta === 0) return 'neutral'
+  const better = reverse ? delta < 0 : delta > 0
+  return better ? 'positive' : 'negative'
+}
+
+function formatAverageDuration(ms) {
+  const value = Number(ms || 0)
+  if (value <= 0) return { value: 0, unit: '分钟' }
+  if (value < 60000) return { value: Math.max(1, Math.round(value / 1000)), unit: '秒' }
+  return { value: Math.max(1, Math.round(value / 60000)), unit: '分钟' }
+}
+
+function durationCompareText(current, previous) {
+  if (!current && !previous) return '暂无历史数据'
+  const deltaMinutes = Math.round((Number(current || 0) - Number(previous || 0)) / 60000)
+  if (deltaMinutes === 0) return '较昨日持平'
+  return `较昨日 ${deltaMinutes > 0 ? '+' : ''}${deltaMinutes} 分钟`
 }
 
 function formatTime(value) {
@@ -473,8 +724,29 @@ function categoryLabel(value) {
 }
 
 function statusLabel(value) {
-  const map = { WAITING: '等待中', PENDING: '等待中', RUNNING: '运行中', SUCCESS: '成功', PARTIAL: '部分成功', FAILED: '失败', TIMEOUT: '已超时', CANCELED: '已取消' }
+  const map = {
+    WAITING: '等待中',
+    PENDING: '等待中',
+    RUNNING: '运行中',
+    CANCEL_REQUESTED: '终止中',
+    SUCCESS: '成功',
+    PARTIAL: '部分成功',
+    FAILED: '失败',
+    TIMEOUT: '已超时',
+    CANCELED: '已取消'
+  }
   return map[String(value || '').toUpperCase()] || value || '-'
+}
+
+function statusClass(value) {
+  const status = String(value || '').toUpperCase()
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED' || status === 'TIMEOUT') return 'danger'
+  if (status === 'PARTIAL') return 'warning'
+  if (status === 'CANCELED') return 'neutral'
+  if (status === 'CANCEL_REQUESTED') return 'orange'
+  if (isRunningStatus(status)) return 'running'
+  return 'neutral'
 }
 
 function statusTagType(value) {
@@ -482,7 +754,7 @@ function statusTagType(value) {
   if (status === 'SUCCESS') return 'success'
   if (status === 'FAILED' || status === 'TIMEOUT') return 'danger'
   if (status === 'CANCELED') return 'info'
-  if (status === 'PARTIAL') return 'warning'
+  if (status === 'PARTIAL' || status === 'CANCEL_REQUESTED') return 'warning'
   if (status === 'RUNNING' || status === 'WAITING' || status === 'PENDING') return 'warning'
   return 'info'
 }
@@ -530,73 +802,625 @@ function safeErrorMessage(value) {
 
 <style scoped>
 .ai-task-page {
-  display: flex;
   height: 100%;
   min-height: 0;
-  flex-direction: column;
+  padding: 10px 0 0;
   overflow: hidden;
-}
-
-.ai-task-header {
-  flex-shrink: 0;
+  background: transparent;
 }
 
 .ai-task-body {
   display: flex;
-  flex: 1;
+  width: 100%;
+  max-width: 1500px;
+  height: 100%;
   min-height: 0;
+  margin: 0 auto;
+  flex-direction: column;
+  gap: 18px;
   overflow: hidden;
 }
 
-.ai-task-card {
+.task-page-header,
+.task-stat-grid,
+.task-filter-card {
+  flex-shrink: 0;
+}
+
+.task-page-header {
   display: flex;
-  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  gap: 18px;
+}
+
+.task-page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(83, 117, 255, 0.13), rgba(139, 92, 246, 0.16));
+  color: #7257ee;
+}
+
+.title-symbol :deep(.el-icon) {
+  font-size: 21px;
+}
+
+.task-page-title h1 {
+  margin: 0;
+  color: #172033;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.task-page-title p {
+  margin: 6px 0 0;
+  color: #8a94a8;
+  font-size: 12px;
+}
+
+.refresh-button {
+  min-width: 82px;
+  border: 0;
+  background: linear-gradient(105deg, #4e78ff, #7e48ed);
+  box-shadow: 0 9px 20px rgba(88, 80, 221, 0.20);
+}
+
+.task-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.task-stat-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 132px;
+  padding: 21px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(227, 231, 242, 0.88);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 13px 31px rgba(49, 65, 104, 0.07);
+}
+
+.task-stat-icon {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  flex: 0 0 46px;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  color: #fff;
+  box-shadow: 0 10px 19px rgba(62, 77, 145, 0.17);
+}
+
+.task-stat-icon :deep(.el-icon) {
+  font-size: 23px;
+}
+
+.tone-blue .task-stat-icon { background: linear-gradient(145deg, #3b7df8, #5b9dff); }
+.tone-green .task-stat-icon { background: linear-gradient(145deg, #28c989, #52dfad); }
+.tone-red .task-stat-icon { background: linear-gradient(145deg, #ff5965, #ff7e82); }
+.tone-violet .task-stat-icon { background: linear-gradient(145deg, #9b4af2, #b36bf8); }
+
+.task-stat-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  margin-left: 14px;
+}
+
+.task-stat-title {
+  color: #657086;
+  font-size: 12px;
+}
+
+.task-stat-copy strong {
+  margin-top: 5px;
+  color: #172033;
+  font-size: 29px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.task-stat-copy strong small {
+  margin-left: 4px;
+  color: #6f7890;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.task-stat-trend {
+  margin-top: 9px;
+  color: #8d96a9;
+  font-size: 10px;
+}
+
+.task-stat-trend.positive { color: #20b978; }
+.task-stat-trend.negative { color: #ef5360; }
+.task-stat-trend.neutral { color: #8d96a9; }
+
+.task-stat-line {
+  position: absolute;
+  right: 14px;
+  bottom: 16px;
+  width: 84px;
+  height: 34px;
+  opacity: 0.72;
+}
+
+.tone-blue .task-stat-line { color: #5f8fff; }
+.tone-green .task-stat-line { color: #45d59b; }
+.tone-red .task-stat-line { color: #ff6b78; }
+.tone-violet .task-stat-line { color: #a85ef6; }
+
+.task-stat-glow {
+  position: absolute;
+  right: -42px;
+  bottom: -58px;
+  width: 125px;
+  height: 125px;
+  border-radius: 50%;
+  opacity: 0.09;
+}
+
+.tone-blue .task-stat-glow { background: #4f86ff; }
+.tone-green .task-stat-glow { background: #30cb91; }
+.tone-red .task-stat-glow { background: #ff5f6c; }
+.tone-violet .task-stat-glow { background: #9f50f2; }
+
+.task-filter-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 15px 16px;
+  border: 1px solid rgba(227, 231, 242, 0.88);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 11px 26px rgba(49, 65, 104, 0.06);
+}
+
+.task-filter-left,
+.task-filter-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-filter-left {
+  min-width: 0;
+  flex: 1;
+}
+
+.task-search {
+  width: 310px;
+}
+
+.task-filter-select {
+  width: 148px;
+}
+
+.task-date-range {
+  width: 280px;
+}
+
+.task-filter-card :deep(.el-input__wrapper),
+.task-filter-card :deep(.el-select__wrapper) {
+  min-height: 38px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #e7eaf2 inset;
+}
+
+.task-filter-card :deep(.el-input__wrapper.is-focus),
+.task-filter-card :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px #7664f4 inset;
+}
+
+.task-list-card {
+  display: flex;
+  flex: 1;
   min-height: 0;
   flex-direction: column;
+  padding: 10px 14px 12px;
   overflow: hidden;
+  border: 1px solid rgba(227, 231, 242, 0.88);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 13px 32px rgba(49, 65, 104, 0.07);
 }
 
-.ai-task-toolbar {
-  flex-shrink: 0;
-}
-
-.ai-task-table-wrap {
+.task-list-scroll {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
-.ai-task-table {
+.task-list-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.task-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(129, 139, 166, 0.35);
+}
+
+.task-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: minmax(225px, 1.4fr) 92px 160px 88px minmax(190px, 1.15fr) minmax(180px, 1fr) 34px;
+  align-items: center;
+  gap: 14px;
+  min-height: 82px;
+  padding: 13px 9px;
+  border-bottom: 1px solid #edf0f5;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.task-row:hover {
+  background: linear-gradient(90deg, rgba(247, 249, 255, 0.95), rgba(252, 253, 255, 0.95));
+  transform: translateY(-1px);
+}
+
+.task-row:last-child {
+  border-bottom: 0;
+}
+
+.task-row.is-failed {
+  background: linear-gradient(90deg, rgba(255, 249, 249, 0.68), transparent 70%);
+}
+
+.task-row.is-running {
+  background: linear-gradient(90deg, rgba(247, 249, 255, 0.70), transparent 75%);
+}
+
+.task-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.task-type-icon {
+  display: inline-flex;
+  flex: 0 0 42px;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(60, 75, 140, 0.15);
+}
+
+.task-type-icon.tone-violet { background: linear-gradient(145deg, #a34df3, #bf6af7); }
+.task-type-icon.tone-blue { background: linear-gradient(145deg, #5489f9, #65a8ff); }
+.task-type-icon.tone-amber { background: linear-gradient(145deg, #ffaf4e, #ffc46e); }
+.task-type-icon.tone-cyan { background: linear-gradient(145deg, #3fbfd7, #65d5e6); }
+
+.task-type-icon :deep(.el-icon) {
+  font-size: 21px;
+}
+
+.task-identity-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  margin-left: 12px;
+}
+
+.task-identity-copy strong,
+.task-identity-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-identity-copy strong {
+  color: #283146;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-identity-copy small {
+  margin-top: 7px;
+  color: #9aa3b5;
+  font-size: 9px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 23px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-pill.success { background: #eaf9f1; color: #25ae6e; }
+.status-pill.danger { background: #fff0f1; color: #ed4c5a; }
+.status-pill.warning { background: #fff5e3; color: #dc8a0b; }
+.status-pill.running { background: #eef3ff; color: #4d78ee; }
+.status-pill.orange { background: #fff3e6; color: #e47c18; }
+.status-pill.neutral { background: #f1f3f7; color: #7c8699; }
+
+.task-progress-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-progress-cell strong {
+  color: #58647b;
+  font-size: 10px;
+}
+
+.task-progress-cell :deep(.el-progress-bar__outer) {
+  background: #edf1f8;
+}
+
+.task-progress-cell :deep(.el-progress-bar__inner) {
+  background: linear-gradient(90deg, #4c83fa, #5d9cff);
+}
+
+.task-node-cell,
+.task-message-cell,
+.task-result-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.task-node-cell small,
+.task-message-cell small {
+  color: #9aa3b5;
+  font-size: 9px;
+}
+
+.task-node-cell strong,
+.task-message-cell strong,
+.task-result-cell strong {
+  overflow: hidden;
+  color: #556078;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-node-cell strong,
+.task-message-cell strong {
+  margin-top: 5px;
+}
+
+.task-node-cell span,
+.task-message-cell span {
+  margin-top: 3px;
+  color: #9aa3b5;
+  font-size: 9px;
+}
+
+.task-message-cell strong.danger {
+  color: #ef4c59;
+}
+
+.task-result-cell time {
+  margin-top: 7px;
+  color: #9aa3b5;
+  font-size: 9px;
+}
+
+.more-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #8993a6;
+  cursor: pointer;
+}
+
+.more-button:hover {
+  background: #f1f3f8;
+  color: #6658ee;
+}
+
+.task-list-card :deep(.page-footer-pager) {
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 15px 0 2px;
+  margin-top: 8px;
+  border-top: 1px solid #edf0f5;
+}
+
+.task-detail {
+  min-height: 240px;
+}
+
+.detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0 12px;
+}
+
+.detail-section-head h3 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.detail-section-head p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.failed-section-table,
+.section-task-table,
+.task-event-table {
   width: 100%;
 }
 
-.ai-task-card :deep(.page-footer-pager) {
-  flex-shrink: 0;
-  justify-content: flex-end;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid #edf2f7;
-  background: #fff;
+.section-task-table,
+.task-event-table {
+  margin-bottom: 18px;
 }
 
-.page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.page-header h2 { margin: 0; font-size: 22px; }
-.page-header p { margin: 6px 0 0; color: #64748b; }
-.toolbar-left { display: flex; align-items: center; gap: 12px; }
-.toolbar-input { width: 280px; }
-.toolbar-select { width: 150px; }
-.task-title { font-weight: 700; color: #1f2937; }
-.task-sub { margin-top: 4px; font-size: 12px; color: #94a3b8; }
-.task-action-disabled { color: #94a3b8; cursor: help; }
-.task-detail { min-height: 240px; }
-.detail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0 12px; }
-.detail-section-head h3 { margin: 0; font-size: 16px; color: #1f2937; }
-.detail-section-head p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
-.failed-section-table { width: 100%; }
-.section-task-table { width: 100%; margin-bottom: 18px; }
-.task-event-table { width: 100%; margin-bottom: 18px; }
-.detail-muted { color: #64748b; font-size: 13px; }
-.section-title { font-weight: 700; color: #1f2937; }
-.section-sub { margin-top: 4px; color: #94a3b8; font-size: 12px; }
+.detail-muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.section-title {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.section-sub {
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  .task-row {
+    grid-template-columns: minmax(210px, 1.4fr) 88px 145px 78px minmax(170px, 1fr) minmax(150px, 0.9fr) 32px;
+    gap: 10px;
+  }
+
+  .task-date-range {
+    width: 245px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .task-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-filter-card,
+  .task-filter-left {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .task-filter-card {
+    flex-direction: column;
+  }
+
+  .task-filter-right {
+    justify-content: flex-end;
+  }
+
+  .task-row {
+    grid-template-columns: minmax(250px, 1.5fr) 90px 160px 90px 34px;
+  }
+
+  .task-message-cell {
+    grid-column: 1 / 4;
+    padding-left: 54px;
+  }
+
+  .task-result-cell {
+    grid-column: 4 / 6;
+  }
+
+  .task-action-cell {
+    grid-column: 5;
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-page-header {
+    align-items: flex-start;
+  }
+
+  .task-page-title h1 {
+    font-size: 21px;
+  }
+
+  .task-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-search,
+  .task-filter-select,
+  .task-date-range {
+    width: 100%;
+  }
+
+  .task-filter-left {
+    flex-direction: column;
+  }
+
+  .task-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 10px;
+    padding: 16px 8px;
+  }
+
+  .task-identity {
+    grid-column: 1;
+  }
+
+  .task-action-cell {
+    grid-column: 2;
+  }
+
+  .task-status-cell,
+  .task-progress-cell,
+  .task-node-cell,
+  .task-message-cell,
+  .task-result-cell {
+    grid-column: 1 / 3;
+    padding-left: 54px;
+  }
+
+  .task-status-cell {
+    grid-row: auto;
+  }
+
+  .task-result-cell {
+    grid-row: auto;
+  }
+}
 </style>

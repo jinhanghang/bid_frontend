@@ -42,7 +42,7 @@ export function technicalTaskResultMessage(status, task) {
   if (normalized === 'PARTIAL') return message || '部分章节未生成完成，可重试失败章节'
   if (normalized === 'TIMEOUT') return message || '生成任务已超时，可刷新状态或重新生成'
   if (normalized === 'FAILED') return message || '生成失败，请查看失败原因后重试'
-  if (normalized === 'CANCELED') return message || '生成任务已取消'
+  if (normalized === 'CANCELED') return message || '已终止未生成章节，已完成章节内容已保留'
   return message || '任务已结束'
 }
 

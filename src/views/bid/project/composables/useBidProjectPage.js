@@ -3143,11 +3143,16 @@ async function cancelCurrentTechnicalTask() {
     return
   }
   try {
-    await ElMessageBox.confirm('取消后系统会释放未结算的预占额度；如果模型调用已经发出，后台会在当前调用返回后停止继续生成。是否取消当前任务？', '取消AI生成任务', {
-      type: 'warning',
-      confirmButtonText: '确认取消',
-      cancelButtonText: '继续等待'
-    })
+    await ElMessageBox.confirm(
+      '确定终止本次生成吗？系统只停止尚未生成的章节，已经生成并保存成功的章节正文不会删除。终止后可点击“继续生成”补齐剩余章节。',
+      '终止正文生成',
+      {
+        type: 'warning',
+        confirmButtonText: '确认终止',
+        cancelButtonText: '继续生成',
+        distinguishCancelAndClose: true
+      }
+    )
   } catch (e) {
     return
   }
@@ -3160,9 +3165,9 @@ async function cancelCurrentTechnicalTask() {
     fullGenerating.value = false
     await loadTechnicalSolution()
     await refreshWorkflow()
-    ElMessage.success(safeTechnicalTaskMessage(canceled?.message, '任务已取消'))
+    ElMessage.success(safeTechnicalTaskMessage(canceled?.message, '已终止未生成章节，已完成章节内容已保留'))
   } catch (e) {
-    ElMessage.warning('取消任务失败，请稍后重试或到任务中心查看状态')
+    ElMessage.warning('终止生成失败，请稍后重试或到任务中心查看状态')
   } finally {
     technicalTaskCanceling.value = false
   }

@@ -261,7 +261,7 @@ export function getBidProjectTechnicalTask(id, taskId) {
 }
 
 /**
- * AI标书：取消技术方案生成任务
+ * AI标书：终止尚未生成的技术方案章节（已完成章节保留）
  */
 export function cancelBidProjectTechnicalTask(id, taskId) {
   return request.post(`/bid-project/${id}/technical-solution/task/${taskId}/cancel`, null, {
