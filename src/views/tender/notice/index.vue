@@ -108,7 +108,7 @@
           </div>
         </template>
 
-        <el-empty v-else description="暂无标讯商机数据，请确认爬虫和导入程序是否已执行" :image-size="140" />
+        <el-empty v-else description="暂无标讯商机数据" :image-size="140" />
       </div>
 
       <div class="notice-pager-wrap">
