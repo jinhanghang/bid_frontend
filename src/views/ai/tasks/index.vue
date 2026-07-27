@@ -1,32 +1,6 @@
 <template>
   <div class="page ai-task-page">
     <div class="page-body ai-task-body">
-      <section class="task-page-header">
-        <div class="task-page-title">
-          <span class="title-symbol"><el-icon><MagicStick /></el-icon></span>
-          <div>
-            <h1>AI任务中心</h1>
-            <p>统一查看解析、生成、导出等长耗时任务，便于排查失败和运行状态。</p>
-          </div>
-        </div>
-        <el-button type="primary" class="refresh-button" :icon="Refresh" :loading="loading" @click="loadTasks">刷新</el-button>
-      </section>
-
-      <section class="task-stat-grid" v-loading="summaryLoading">
-        <article v-for="item in taskStats" :key="item.key" class="task-stat-card" :class="`tone-${item.tone}`">
-          <span class="task-stat-icon"><el-icon><component :is="item.icon" /></el-icon></span>
-          <span class="task-stat-copy">
-            <span class="task-stat-title">{{ item.title }}</span>
-            <strong>{{ item.value }}<small v-if="item.unit">{{ item.unit }}</small></strong>
-            <span class="task-stat-trend" :class="item.trendClass">{{ item.trend }}</span>
-          </span>
-          <svg class="task-stat-line" viewBox="0 0 90 34" aria-hidden="true">
-            <path :d="item.spark" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          <span class="task-stat-glow" />
-        </article>
-      </section>
-
       <section class="task-filter-card">
         <div class="task-filter-left">
           <el-input
@@ -301,14 +275,10 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ChatDotRound,
-  CircleCheckFilled,
-  CircleCloseFilled,
-  Clock,
   Document,
   MagicStick,
   MoreFilled,
   Operation,
-  Refresh,
   RefreshLeft,
   Search,
   UploadFilled
@@ -321,9 +291,7 @@ import PageFooterPager from '@/components/PageFooterPager.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const loading = ref(false)
-const summaryLoading = ref(false)
 const tasks = ref([])
-const summaryTasks = ref([])
 const total = ref(0)
 const cancelingId = ref('')
 const detailVisible = ref(false)
@@ -340,72 +308,6 @@ const hasRunningTasks = computed(() => tasks.value.some((task) => isRunningStatu
 const query = reactive({ pageNum: 1, pageSize: 10, keyword: '', taskCategory: '', status: '' })
 let searchTimer = null
 let autoRefreshTimer = null
-
-const taskStats = computed(() => {
-  const now = new Date()
-  const todayStart = startOfDay(now)
-  const tomorrowStart = addDays(todayStart, 1)
-  const yesterdayStart = addDays(todayStart, -1)
-
-  const today = summaryTasks.value.filter((task) => inRange(task.createTime, todayStart, tomorrowStart))
-  const yesterday = summaryTasks.value.filter((task) => inRange(task.createTime, yesterdayStart, todayStart))
-
-  const running = summaryTasks.value.filter((task) => isRunningStatus(task.status)).length
-  const yesterdayRunning = yesterday.filter((task) => isRunningStatus(task.status)).length
-  const todaySuccess = today.filter((task) => isSuccessStatus(task.status)).length
-  const yesterdaySuccess = yesterday.filter((task) => isSuccessStatus(task.status)).length
-  const todayFailed = today.filter((task) => isFailureStatus(task.status)).length
-  const yesterdayFailed = yesterday.filter((task) => isFailureStatus(task.status)).length
-  const todayAverage = averageDuration(today)
-  const yesterdayAverage = averageDuration(yesterday)
-
-  return [
-    {
-      key: 'running',
-      title: '运行中任务',
-      value: running,
-      unit: '',
-      icon: Operation,
-      tone: 'blue',
-      trend: compareText(running, yesterdayRunning),
-      trendClass: compareClass(running, yesterdayRunning, false),
-      spark: 'M2 27 C14 24, 18 13, 30 18 S48 29, 58 17 S75 9, 88 14'
-    },
-    {
-      key: 'success',
-      title: '今日成功任务',
-      value: todaySuccess,
-      unit: '',
-      icon: CircleCheckFilled,
-      tone: 'green',
-      trend: compareText(todaySuccess, yesterdaySuccess),
-      trendClass: compareClass(todaySuccess, yesterdaySuccess, false),
-      spark: 'M2 28 C13 25, 21 29, 30 18 S47 12, 56 22 S72 27, 88 8'
-    },
-    {
-      key: 'failed',
-      title: '今日失败任务',
-      value: todayFailed,
-      unit: '',
-      icon: CircleCloseFilled,
-      tone: 'red',
-      trend: compareText(todayFailed, yesterdayFailed),
-      trendClass: compareClass(todayFailed, yesterdayFailed, true),
-      spark: 'M2 25 C15 21, 20 10, 32 19 S48 31, 60 17 S76 12, 88 21'
-    },
-    {
-      key: 'duration',
-      title: '平均耗时',
-      value: formatAverageDuration(todayAverage).value,
-      unit: formatAverageDuration(todayAverage).unit,
-      icon: Clock,
-      tone: 'violet',
-      trend: durationCompareText(todayAverage, yesterdayAverage),
-      trendClass: compareClass(todayAverage, yesterdayAverage, true),
-      spark: 'M2 25 C13 18, 20 29, 31 21 S48 9, 59 15 S75 28, 88 12'
-    }
-  ]
-})
 
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
@@ -451,22 +353,16 @@ function buildTaskQuery() {
 
 async function loadTasks() {
   loading.value = true
-  summaryLoading.value = true
   try {
-    const [res, summaryRes] = await Promise.all([
-      pageAiTasks(buildTaskQuery()),
-      pageAiTasks({ pageNum: 1, pageSize: 100 })
-    ])
+    const res = await pageAiTasks(buildTaskQuery())
     tasks.value = res?.records || []
     total.value = Number(res?.total || 0)
-    summaryTasks.value = summaryRes?.records || []
     if (total.value > 0 && tasks.value.length === 0 && query.pageNum > 1) {
       query.pageNum -= 1
       await loadTasks()
     }
   } finally {
     loading.value = false
-    summaryLoading.value = false
     scheduleAutoRefresh()
   }
 }
@@ -662,58 +558,6 @@ async function cancelTask(row) {
   }
 }
 
-function startOfDay(date) {
-  const value = new Date(date)
-  value.setHours(0, 0, 0, 0)
-  return value
-}
-
-function addDays(date, days) {
-  const value = new Date(date)
-  value.setDate(value.getDate() + days)
-  return value
-}
-
-function inRange(value, start, end) {
-  if (!value) return false
-  const normalized = typeof value === 'string' ? value.replace(' ', 'T') : value
-  const time = new Date(normalized).getTime()
-  return Number.isFinite(time) && time >= start.getTime() && time < end.getTime()
-}
-
-function averageDuration(list) {
-  const values = list.map((task) => Number(task.durationMs || 0)).filter((value) => Number.isFinite(value) && value > 0)
-  if (!values.length) return 0
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
-}
-
-function compareText(current, previous) {
-  const delta = Number(current || 0) - Number(previous || 0)
-  if (delta === 0) return '较昨日持平'
-  return `较昨日 ${delta > 0 ? '+' : ''}${delta}`
-}
-
-function compareClass(current, previous, reverse) {
-  const delta = Number(current || 0) - Number(previous || 0)
-  if (delta === 0) return 'neutral'
-  const better = reverse ? delta < 0 : delta > 0
-  return better ? 'positive' : 'negative'
-}
-
-function formatAverageDuration(ms) {
-  const value = Number(ms || 0)
-  if (value <= 0) return { value: 0, unit: '分钟' }
-  if (value < 60000) return { value: Math.max(1, Math.round(value / 1000)), unit: '秒' }
-  return { value: Math.max(1, Math.round(value / 60000)), unit: '分钟' }
-}
-
-function durationCompareText(current, previous) {
-  if (!current && !previous) return '暂无历史数据'
-  const deltaMinutes = Math.round((Number(current || 0) - Number(previous || 0)) / 60000)
-  if (deltaMinutes === 0) return '较昨日持平'
-  return `较昨日 ${deltaMinutes > 0 ? '+' : ''}${deltaMinutes} 分钟`
-}
-
 function formatTime(value) {
   return value ? formatDateTime(value) : '-'
 }
@@ -804,7 +648,7 @@ function safeErrorMessage(value) {
 .ai-task-page {
   height: 100%;
   min-height: 0;
-  padding: 10px 0 0;
+  padding: 0;
   overflow: hidden;
   background: transparent;
 }
@@ -821,59 +665,9 @@ function safeErrorMessage(value) {
   overflow: hidden;
 }
 
-.task-page-header,
 .task-stat-grid,
 .task-filter-card {
   flex-shrink: 0;
-}
-
-.task-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
-  gap: 18px;
-}
-
-.task-page-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.title-symbol {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  background: linear-gradient(145deg, rgba(83, 117, 255, 0.13), rgba(139, 92, 246, 0.16));
-  color: #7257ee;
-}
-
-.title-symbol :deep(.el-icon) {
-  font-size: 21px;
-}
-
-.task-page-title h1 {
-  margin: 0;
-  color: #172033;
-  font-size: 24px;
-  font-weight: 900;
-}
-
-.task-page-title p {
-  margin: 6px 0 0;
-  color: #8a94a8;
-  font-size: 12px;
-}
-
-.refresh-button {
-  min-width: 82px;
-  border: 0;
-  background: linear-gradient(105deg, #4e78ff, #7e48ed);
-  box-shadow: 0 9px 20px rgba(88, 80, 221, 0.20);
 }
 
 .task-stat-grid {
@@ -1370,14 +1164,6 @@ function safeErrorMessage(value) {
 }
 
 @media (max-width: 720px) {
-  .task-page-header {
-    align-items: flex-start;
-  }
-
-  .task-page-title h1 {
-    font-size: 21px;
-  }
-
   .task-stat-grid {
     grid-template-columns: 1fr;
   }

@@ -60,7 +60,14 @@
             <i />{{ serviceOnline ? '运行正常' : '连接异常' }}
           </span>
         </div>
-        <div class="service-quota-label">剩余可用字数</div>
+        <div class="service-quota-heading">
+          <div class="service-quota-label">剩余可用字数</div>
+          <el-tooltip content="刷新额度" placement="top">
+            <button type="button" class="service-quota-refresh" :class="{ spinning: refreshing }" aria-label="刷新额度" @click.stop="reloadMe">
+              <el-icon><Refresh /></el-icon>
+            </button>
+          </el-tooltip>
+        </div>
         <div class="service-quota-value">{{ formatNumber(quota.availableWords) }}</div>
         <div class="service-quota-foot">点击查看会员与额度</div>
         <svg class="service-sparkline" viewBox="0 0 140 42" aria-hidden="true">
@@ -86,17 +93,6 @@
         </div>
 
         <div class="header-right">
-          <button type="button" class="quota-pill" @click="goMemberCenter">
-            <span>剩余总字数：{{ formatNumber(quota.availableWords) }}</span>
-            <strong>立即充值</strong>
-          </button>
-
-          <el-tooltip content="刷新额度" placement="bottom">
-            <button type="button" class="header-icon-button" :class="{ spinning: refreshing }" @click="reloadMe">
-              <el-icon><Refresh /></el-icon>
-            </button>
-          </el-tooltip>
-
           <el-tooltip content="通知" placement="bottom">
             <button type="button" class="header-icon-button notification-button" @click="handleNotificationClick">
               <el-icon><Bell /></el-icon>
@@ -194,7 +190,7 @@ const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
 const ROLE_ENTERPRISE_ADMIN = 'ENTERPRISEADMIN'
 
 const currentTitle = computed(() => route.meta.title || '恒鼎·智慧AI')
-const showLayoutTitle = computed(() => !['/dashboard', '/ai/tasks'].includes(route.path))
+const showLayoutTitle = computed(() => route.path !== '/dashboard')
 const avatarText = computed(() => (auth.displayName || '用').slice(0, 1))
 const userSubText = computed(() => auth.user?.enterpriseName || auth.user?.phone || auth.user?.username || '暂无账号信息')
 const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || []))
@@ -691,8 +687,31 @@ async function logout() {
   box-shadow: 0 0 0 4px rgba(239, 71, 111, 0.10);
 }
 
-.service-quota-label {
+.service-quota-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 15px;
+}
+
+.service-quota-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(91, 124, 250, 0.10);
+  color: rgb(91, 124, 250);
+  cursor: pointer;
+}
+
+.service-quota-refresh:hover { background: rgba(91, 124, 250, 0.18); }
+.service-quota-refresh.spinning :deep(.el-icon) { animation: spin 0.8s linear infinite; }
+
+.service-quota-label {
   color: #7b8499;
   font-size: 11px;
 }

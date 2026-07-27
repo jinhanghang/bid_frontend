@@ -11,14 +11,24 @@
           <span>当前结果</span>
           <strong>{{ pager.total }}</strong>
         </div>
-        <div class="stat-card">
+        <button
+          class="stat-card stat-filter"
+          :class="{ active: query.filterType === 'new' }"
+          type="button"
+          @click="toggleQuickFilter('new')"
+        >
           <span>本页新公告</span>
           <strong>{{ currentPageNewCount }}</strong>
-        </div>
-        <div class="stat-card danger">
+        </button>
+        <button
+          class="stat-card stat-filter danger"
+          :class="{ active: query.filterType === 'nearDeadline' }"
+          type="button"
+          @click="toggleQuickFilter('nearDeadline')"
+        >
           <span>临近截止</span>
           <strong>{{ nearDeadlineCount }}</strong>
-        </div>
+        </button>
       </div>
     </section>
 
@@ -29,8 +39,27 @@
             v-model="query.keyword"
             class="notice-search"
             clearable
-            placeholder="搜索公告标题 / 招标编号 / 采购人 / 代理机构 / 地区"
+            placeholder="搜索公告标题 / 招标编号 / 采购人 / 代理机构"
             :prefix-icon="Search"
+            @input="onKeywordInput"
+            @keyup.enter="triggerSearch"
+            @clear="triggerSearch"
+          />
+          <el-input
+            v-model="query.area"
+            class="filter-search"
+            clearable
+            placeholder="所属地区"
+            :prefix-icon="Location"
+            @input="onKeywordInput"
+            @keyup.enter="triggerSearch"
+            @clear="triggerSearch"
+          />
+          <el-input
+            v-model="query.industry"
+            class="filter-search"
+            clearable
+            placeholder="行业分类"
             @input="onKeywordInput"
             @keyup.enter="triggerSearch"
             @clear="triggerSearch"
@@ -214,7 +243,7 @@ const loading = ref(false)
 const rows = ref([])
 const detailVisible = ref(false)
 const detail = ref(null)
-const query = reactive({ keyword: '' })
+const query = reactive({ keyword: '', area: '', industry: '', filterType: '' })
 const pager = reactive({ page: 1, size: 20, total: 0 })
 let keywordTimer = null
 
@@ -236,6 +265,11 @@ function triggerSearch() {
   loadData()
 }
 
+function toggleQuickFilter(filterType) {
+  query.filterType = query.filterType === filterType ? '' : filterType
+  triggerSearch()
+}
+
 function onPageChange() {
   loadData()
 }
@@ -249,12 +283,17 @@ async function loadData() {
   loading.value = true
   try {
     const keyword = String(query.keyword || '').trim()
+    const area = String(query.area || '').trim()
+    const industry = String(query.industry || '').trim()
     const res = await pageTenderNotices({
       current: pager.page,
       size: pager.size,
       pageNum: pager.page,
       pageSize: pager.size,
-      keyword: keyword || undefined
+      keyword: keyword || undefined,
+      area: area || undefined,
+      industry: industry || undefined,
+      filterType: query.filterType || undefined
     })
     const records = res?.records || res?.list || res?.rows || []
     rows.value = Array.isArray(records) ? records : []
@@ -464,10 +503,34 @@ function deadlineBadge(row = {}) {
 }
 
 .stat-card {
+  appearance: none;
+  text-align: left;
+  font-family: inherit;
   border-radius: 14px;
   padding: 9px 10px;
   background: #f8fafc;
   border: 1px solid #edf2f7;
+}
+
+.stat-filter {
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.stat-filter:hover {
+  transform: translateY(-1px);
+  border-color: #93c5fd;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
+}
+
+.stat-filter.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+}
+
+.stat-filter.danger.active {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.14);
 }
 
 .stat-card span {
@@ -521,13 +584,23 @@ function deadlineBadge(row = {}) {
 .toolbar-left {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .notice-search {
-  max-width: 620px;
+  width: 420px;
+  max-width: 40%;
 }
 
-.notice-search :deep(.el-input__wrapper) {
+.filter-search {
+  width: 180px;
+  max-width: 20%;
+}
+
+.notice-search :deep(.el-input__wrapper),
+.filter-search :deep(.el-input__wrapper) {
   min-height: 36px;
   border-radius: 12px;
   box-shadow: 0 0 0 1px #dbe5f5 inset;
@@ -845,6 +918,16 @@ function deadlineBadge(row = {}) {
   .notice-pager-wrap {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .toolbar-left {
+    flex-wrap: wrap;
+  }
+
+  .notice-search,
+  .filter-search {
+    width: 100%;
+    max-width: none;
   }
 
   .notice-body {
