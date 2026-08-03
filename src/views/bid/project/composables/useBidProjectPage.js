@@ -510,7 +510,7 @@ const isCurrentTechnicalOutlineGenerating = computed(() => {
 const technicalForm = reactive({
   solutionType: 'SERVICE',
   solutionSubType: '不限',
-  aiLevel: '',
+  aiLevel: 'BASIC',
   solutionName: '',
   outlineWritingDirection: '',
   purchaseRequirement: '',
@@ -553,7 +553,7 @@ function resetTechnicalWorkspace() {
   Object.assign(technicalForm, {
     solutionType: 'SERVICE',
     solutionSubType: '不限',
-    aiLevel: '',
+    aiLevel: 'BASIC',
     solutionName: '',
     outlineWritingDirection: '',
     purchaseRequirement: '',
@@ -1999,10 +1999,10 @@ async function autoFillProjectBasicInfo() {
 async function openDocument(doc) {
   if (!selectedProject.value?.id) return
 
-  // 这三个子项没有固定先后顺序，但“解析报告”和“投标文件”依赖读标结果：
+  // 解析是技术方案生成和投标文件填充的共同前置步骤：
   // 1. 解析报告：可以随时打开，解析中显示进度，解析成功显示报告；
   // 2. 投标文件：必须等读标成功后才能进入商务标智能填充；
-  // 3. 技术方案：允许先进入，后续可以人工补充需求或等解析完成后自动带入。
+  // 3. 技术方案：允许先进入查看和维护已有内容，但生成目录前必须完成解析。
   const parseStatus = String(selectedProject.value?.parseStatus || workflow.value?.project?.parseStatus || '').toUpperCase()
   const parseDone = parseStatus === 'SUCCESS'
   const parseRunning = ['PARSING', 'EXTRACTING'].includes(parseStatus)
@@ -2491,7 +2491,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionName = solution.solutionName || (projectName.includes('技术方案') ? projectName : `${projectName}技术方案`)
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
-  technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel) || technicalForm.aiLevel || ''
+  technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel) || technicalForm.aiLevel || 'BASIC'
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
@@ -2553,16 +2553,25 @@ async function generateTechnicalOutline() {
     return
   }
 
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+
+  if (!isParseSuccess.value) {
+    const message = isParseRunning.value
+      ? '招标文件正在解析中，请解析完成后再生成目录'
+      : '生成目录前必须先完成招标文件解析'
+    ElMessage.warning(message)
+    activeDoc.value = 'PARSE_REPORT'
+    return
+  }
+
   if (!requireSelectedTechnicalAiLevel()) return
 
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
     ElMessage.warning('已有其他AI生成任务正在执行，请等待完成后再操作')
-    return
-  }
-
-  if (!selectedProject.value?.id) {
-    ElMessage.warning('请先选择项目')
     return
   }
 

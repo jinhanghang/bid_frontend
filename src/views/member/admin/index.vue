@@ -65,10 +65,11 @@
         />
       </el-tab-pane>
 
-      <el-tab-pane label="用户额度" name="accounts">
+      <el-tab-pane label="用户额度管理" name="accounts">
         <div class="toolbar">
           <el-input v-model="accountQuery.keyword" placeholder="搜索用户 / 手机号 / 企业" clearable @keyup.enter="searchAccounts" />
           <el-button type="primary" @click="searchAccounts">搜索</el-button>
+          <el-button type="success" @click="openGift()">赠送字数</el-button>
         </div>
         <el-table :data="accounts" class="ui-table" height="520">
           <el-table-column prop="fullName" label="姓名" min-width="120" />
@@ -87,7 +88,7 @@
           </el-table-column>
           <el-table-column prop="memberExpireTime" label="会员到期" min-width="160" />
           <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }"><el-button link type="primary" @click="openAdjust(row)">调整额度</el-button></template>
+            <template #default="{ row }"><el-button link type="primary" @click="openGift(row)">赠送字数</el-button></template>
           </el-table-column>
         </el-table>
         <PageFooterPager
@@ -119,6 +120,7 @@
           <el-table-column prop="beforeWords" label="变动前" width="110" />
           <el-table-column prop="afterWords" label="变动后" width="110" />
           <el-table-column prop="remark" label="说明" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="operatorName" label="操作管理员" min-width="120" show-overflow-tooltip />
           <el-table-column prop="createTime" label="时间" min-width="160" />
         </el-table>
         <PageFooterPager
@@ -444,16 +446,26 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="adjustDialog.visible" title="调整用户额度" width="520px" destroy-on-close>
-      <el-alert type="info" :closable="false" show-icon>正数表示增加额度，负数表示扣减额度。所有调整都会写入额度流水。</el-alert>
-      <el-form :model="adjustDialog.form" label-width="90px" style="margin-top: 16px">
-        <el-form-item label="目标用户"><el-input :value="adjustDialog.user?.fullName || adjustDialog.user?.phone" disabled /></el-form-item>
-        <el-form-item label="调整字数"><el-input-number v-model="adjustDialog.form.words" style="width: 100%" /></el-form-item>
-        <el-form-item label="备注"><el-input v-model="adjustDialog.form.remark" type="textarea" :rows="3" /></el-form-item>
+    <el-dialog v-model="adjustDialog.visible" title="赠送用户可用字数" width="560px" destroy-on-close>
+      <el-alert type="info" :closable="false" show-icon>赠送后立即生效，并自动写入“管理员赠送”额度流水。</el-alert>
+      <el-form :model="adjustDialog.form" label-width="105px" style="margin-top: 16px">
+        <el-form-item label="选择用户" required>
+          <el-select v-model="adjustDialog.userId" filterable remote reserve-keyword :remote-method="searchGiftUsers" :loading="adjustDialog.searching" placeholder="按姓名、手机号或企业搜索" style="width: 100%" @change="selectGiftUser">
+            <el-option v-for="item in adjustDialog.options" :key="item.userId" :label="userOptionLabel(item)" :value="item.userId" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="当前可用字数"><el-input :model-value="formatNumber(adjustDialog.user?.availableWords || 0)" disabled /></el-form-item>
+        <el-form-item label="赠送字数" required><el-input-number v-model="adjustDialog.form.words" :min="1" :step="10000" :precision="0" style="width: 100%" /></el-form-item>
+        <el-form-item label="有效期">
+          <el-radio-group v-model="adjustDialog.validity"><el-radio value="permanent">永久有效</el-radio><el-radio value="specified">指定日期</el-radio></el-radio-group>
+          <el-date-picker v-if="adjustDialog.validity === 'specified'" v-model="adjustDialog.form.expireTime" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="选择到期时间" style="width: 100%; margin-top: 10px" />
+        </el-form-item>
+        <el-form-item label="赠送原因" required><el-input v-model="adjustDialog.form.remark" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="例如：活动赠送、客户补偿、测试额度" /></el-form-item>
+        <el-form-item label="赠送后预计"><strong class="plus">{{ formatNumber(giftAfterWords) }} 字</strong></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="adjustDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="submitAdjust">确认调整</el-button>
+        <el-button type="primary" @click="submitAdjust">确认赠送</el-button>
       </template>
     </el-dialog>
 
@@ -589,7 +601,8 @@ const modelPager = reactive({ current: 1, size: 10, total: 0 })
 const routePager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
-const adjustDialog = reactive({ visible: false, user: null, form: { words: 100000, remark: '' } })
+const adjustDialog = reactive({ visible: false, searching: false, userId: '', user: null, options: [], validity: 'permanent', form: { words: 100000, remark: '', expireTime: null } })
+const giftAfterWords = computed(() => Number(adjustDialog.user?.availableWords || 0) + Number(adjustDialog.form.words || 0))
 const auditDialog = reactive({ visible: false, loading: false, result: null })
 const modelDialog = reactive({ visible: false, form: emptyModel() })
 const routeDialog = reactive({ visible: false, form: emptyRoute() })
@@ -648,7 +661,7 @@ async function refreshAll() {
 
 async function loadPlans() {
   const res = await pageMemberPlanManage({ current: 1, size: 100 })
-  plans.value = res?.records || []
+  plans.value = (res?.records || []).filter(item => !['ADMIN_ADJUST', 'QUOTA_RELEASE'].includes(String(item.planCode || '').toUpperCase()))
 }
 
 async function loadOrders() {
@@ -825,16 +838,40 @@ async function confirmPaid(row) {
   await Promise.all([loadOrders(), loadAccounts(), loadLogs()])
 }
 
-function openAdjust(row) {
-  adjustDialog.user = row
-  adjustDialog.form = { words: 100000, remark: '' }
+function openGift(row) {
+  adjustDialog.user = row || null
+  adjustDialog.userId = row?.userId || ''
+  adjustDialog.options = row ? [row] : accounts.value.slice(0, 20)
+  adjustDialog.validity = 'permanent'
+  adjustDialog.form = { words: 100000, remark: '', expireTime: null }
   adjustDialog.visible = true
 }
 
+async function searchGiftUsers(keyword) {
+  adjustDialog.searching = true
+  try {
+    const res = await pageMemberAccounts({ current: 1, size: 20, keyword })
+    adjustDialog.options = res?.records || []
+  } finally { adjustDialog.searching = false }
+}
+
+function selectGiftUser(userId) {
+  adjustDialog.user = adjustDialog.options.find(item => item.userId === userId) || null
+}
+
+function userOptionLabel(item) {
+  return `${item.fullName || item.username || '未命名用户'} / ${item.phone || '无手机号'} / ${item.enterpriseName || '无企业'}`
+}
+
 async function submitAdjust() {
-  if (!adjustDialog.user?.userId) return
-  await adjustMemberQuota(adjustDialog.user.userId, adjustDialog.form)
-  ElMessage.success('调整成功')
+  if (!adjustDialog.user?.userId) return ElMessage.warning('请选择用户')
+  if (!adjustDialog.form.words || adjustDialog.form.words <= 0) return ElMessage.warning('赠送字数必须大于0')
+  if (!String(adjustDialog.form.remark || '').trim()) return ElMessage.warning('请填写赠送原因')
+  if (adjustDialog.validity === 'specified' && !adjustDialog.form.expireTime) return ElMessage.warning('请选择额度到期时间')
+  const payload = { ...adjustDialog.form, expireTime: adjustDialog.validity === 'specified' ? adjustDialog.form.expireTime : null }
+  await ElMessageBox.confirm(`确认向“${adjustDialog.user.fullName || adjustDialog.user.phone}”赠送 ${formatNumber(payload.words)} 字吗？赠送后可用字数预计为 ${formatNumber(giftAfterWords.value)} 字。`, '赠送确认', { type: 'warning', confirmButtonText: '确认赠送' })
+  await adjustMemberQuota(adjustDialog.user.userId, payload)
+  ElMessage.success('赠送成功')
   adjustDialog.visible = false
   await Promise.all([loadAccounts(), loadLogs()])
 }

@@ -813,7 +813,7 @@
                 </el-scrollbar>
                 <div class="tech-preview-actions">
                   <el-button type="primary" :loading="isCurrentTechnicalOutlineGenerating" :disabled="isCurrentTechnicalOutlineGenerating" @click="generateTechnicalOutline">
-                    {{ isCurrentTechnicalOutlineGenerating ? '目录生成中' : '生成目录' }}
+                    {{ isCurrentTechnicalOutlineGenerating ? '目录生成中' : (isParseSuccess ? '生成目录' : '先解析再生成目录') }}
                   </el-button>
                 </div>
               </template>
