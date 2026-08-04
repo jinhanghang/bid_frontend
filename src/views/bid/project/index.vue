@@ -81,6 +81,19 @@
     </aside>
 
     <section class="workspace">
+      <el-alert
+        v-if="selectedProject?.id && !selectedProject?.enterpriseId"
+        class="project-enterprise-alert"
+        type="warning"
+        show-icon
+        :closable="false"
+      >
+        <template #title>
+          <span>当前项目未设置所属企业</span>
+          <el-button v-if="isPlatformUser" link type="warning" @click="openEnterpriseBindDialog">立即设置</el-button>
+          <span v-else>，请联系平台管理员设置</span>
+        </template>
+      </el-alert>
       <template v-if="!activeDoc">
         <div class="hero">
           <h1>AI标书</h1>
@@ -1522,11 +1535,14 @@
       <div class="company-material-selector" v-loading="companyMaterialDialog.loading">
         <el-alert
           v-if="!selectedProject?.enterpriseId"
-          title="当前项目未设置所属企业，请先完善项目所属企业后再关联企业资料。"
+          title="当前项目未设置所属企业，请先设置后再关联企业资料。"
           type="warning"
           show-icon
           :closable="false"
         />
+        <div v-if="!selectedProject?.enterpriseId && isPlatformUser" style="margin-top: 16px; text-align: center">
+          <el-button type="primary" @click="companyMaterialDialog.visible = false; openEnterpriseBindDialog()">设置所属企业</el-button>
+        </div>
         <div v-else class="company-material-option-list">
           <div
             v-for="item in companyMaterialOptions"
@@ -1548,6 +1564,40 @@
       <template #footer>
         <el-button @click="companyMaterialDialog.visible = false">取消</el-button>
         <el-button type="primary" :loading="companyMaterialDialog.saving" :disabled="!companyMaterialDialog.selectedId" @click="confirmCompanyMaterialBind">确定关联</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="enterpriseBindDialog.visible" title="设置项目所属企业" width="520px" append-to-body destroy-on-close>
+      <el-alert
+        title="设置后，当前项目只能选择该企业的资料档案和知识库。已有项目内容不会被删除。"
+        type="info"
+        show-icon
+        :closable="false"
+        style="margin-bottom: 18px"
+      />
+      <el-form label-width="100px">
+        <el-form-item label="当前项目">
+          <el-input :model-value="selectedProject?.projectName || '-'" disabled />
+        </el-form-item>
+        <el-form-item label="所属企业" required>
+          <el-select
+            v-model="enterpriseBindDialog.enterpriseId"
+            filterable
+            remote
+            clearable
+            style="width: 100%"
+            placeholder="请选择所属企业"
+            :loading="enterpriseLoading"
+            :remote-method="remoteSearchCreateEnterprises"
+            @visible-change="onCreateEnterpriseVisibleChange"
+          >
+            <el-option v-for="item in enterpriseOptions" :key="item.id" :label="item.enterpriseName || item.name" :value="item.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="enterpriseBindDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="enterpriseBindDialog.saving" :disabled="!enterpriseBindDialog.enterpriseId" @click="confirmEnterpriseBind">保存</el-button>
       </template>
     </el-dialog>
 
@@ -1713,7 +1763,7 @@ const {
   technicalScoreItemDialogVisible, technicalScoreItemSaving, technicalScoreItemEditingId, technicalRequirementItemDialogVisible, technicalRequirementItemSaving, technicalRequirementItemEditingId, technicalExtractSummaryForm, technicalScoreItemForm,
   technicalRequirementItemForm, technicalQualityCheckVisible, technicalQualityCheckLoading, technicalQualityCheckData, technicalWordCountVisible, technicalWordCountLoading, technicalWordCountStats, technicalDuplicateCheckData,
   technicalDuplicateCompressing, technicalReviewVisible, technicalReviewLoading, technicalConsistencyPackage, technicalReviewResult, technicalRequirementExtractTimer, requirementTypeOptions, riskLevelOptions,
-  createDialog, techSteps, aiLevels, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
+  createDialog, enterpriseBindDialog, techSteps, aiLevels, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
   technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
   parseProgress, hasTenderFile, tenderFileDisplayName, isParseRunning, isParseSuccess, parseStatusLabel, isPlatformUser, hasCompanyMaterial,
   bidDocumentContent, bidDocAnalysis, bidDocumentStatusLabel, canFillBidDocument, technicalOutlineLeafCount, technicalLeafNodes, technicalFinishedLeafCount, technicalRetryableLeafNodes,
@@ -1733,7 +1783,7 @@ const {
   isProjectExpanded, toggleProjectFold, refreshWorkflow, defaultTenderAnalysisKnowledgeIds, openTenderAnalysisDialog, runProjectTenderAnalysis, openCreateProject, loadCreateEnterprises,
   remoteSearchCreateEnterprises, onCreateEnterpriseVisibleChange, onCreateEnterpriseChange, closeCreateDialog, resetUploadFile, onTenderFileChange, onTenderFileExceed, onTenderFileRemove,
   uploadTenderOnly, triggerTechnicalTenderUpload, onTechnicalTenderFileChange, startReadTenderForSelected, startReadTenderFromTechnical, autoFillProjectBasicInfo, openDocument, openDocumentByType,
-  confirmDeleteProject, loadBidDocumentDetail, refreshBidDocument, openCompanyMaterialSelector, confirmCompanyMaterialBind, unbindSelectedCompanyMaterial, smartFillBidDocument, saveBidDocumentDraft,
+  confirmDeleteProject, loadBidDocumentDetail, refreshBidDocument, openCompanyMaterialSelector, openEnterpriseBindDialog, confirmEnterpriseBind, confirmCompanyMaterialBind, unbindSelectedCompanyMaterial, smartFillBidDocument, saveBidDocumentDraft,
   hydrateBidDocumentReviewForm, bidDocumentReviewStatusText, saveBidDocumentReview, exportBidDocumentWordFile, exportBidDocumentMarkdownFile, materialTypeLabel, loadTechnicalSolution, hydrateTechnicalOutlinesFromSolution,
   mapSolutionOutlineNode, syncTechnicalOutlineTree, technicalOutlineTreeSignature, reconcileTechnicalOutlineArray, reconcileTechnicalOutlineNode, normalizeAiLevel, requireSelectedTechnicalAiLevel, hydrateTechnicalSolutionForm,
   extractTechnicalRequirement, autoFillTechnicalRequirementAfterParse, generateTechnicalOutline, normalizeId, uniqueIds, normalizeKnowledgeIds, parseKnowledgeIds, stringifyKnowledgeIds,

@@ -42,6 +42,13 @@ export function updateBidProject(id, data) {
 }
 
 /**
+ * 为历史项目补充所属企业（仅平台管理员）。
+ */
+export function setBidProjectEnterprise(id, enterpriseId) {
+  return request.put(`/bid-project/${id}/enterprise`, { enterpriseId })
+}
+
+/**
  * 修改标书项目状态
  */
 export function updateBidProjectStatus(id, data) {

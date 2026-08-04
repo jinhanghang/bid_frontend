@@ -43,6 +43,7 @@ import {
   rewriteBidProjectTechnicalFull,
   retryBidProjectTechnicalFailedSections,
   startReadTenderProject,
+  setBidProjectEnterprise,
   streamBidProjectTechnicalSection,
   streamBidProjectTechnicalWritingDirection,
   uploadTenderProject,
@@ -473,6 +474,12 @@ const createDialog = reactive({
   loading: false,
   enterpriseId: null,
   ownerUserId: null
+})
+
+const enterpriseBindDialog = reactive({
+  visible: false,
+  enterpriseId: null,
+  saving: false
 })
 
 const techSteps = TECH_STEPS
@@ -2087,7 +2094,11 @@ async function openCompanyMaterialSelector() {
     return
   }
   if (!selectedProject.value.enterpriseId) {
-    ElMessage.warning('当前项目未设置所属企业，请先完善项目所属企业')
+    if (isPlatformUser.value) {
+      await openEnterpriseBindDialog()
+    } else {
+      ElMessage.warning('当前项目未设置所属企业，请联系平台管理员补充项目所属企业')
+    }
     return
   }
   companyMaterialDialog.visible = true
@@ -2097,6 +2108,37 @@ async function openCompanyMaterialSelector() {
     companyMaterialOptions.value = await listBidProjectCompanyMaterialOptions(selectedProject.value.id)
   } finally {
     companyMaterialDialog.loading = false
+  }
+}
+
+async function openEnterpriseBindDialog() {
+  if (!selectedProject.value?.id) {
+    ElMessage.warning('请先选择项目')
+    return
+  }
+  if (!isPlatformUser.value) {
+    ElMessage.warning('只有平台管理员可以设置项目所属企业')
+    return
+  }
+  enterpriseBindDialog.enterpriseId = selectedProject.value.enterpriseId || null
+  enterpriseBindDialog.visible = true
+  await loadCreateEnterprises()
+}
+
+async function confirmEnterpriseBind() {
+  if (!selectedProject.value?.id || !enterpriseBindDialog.enterpriseId) {
+    ElMessage.warning('请选择所属企业')
+    return
+  }
+  enterpriseBindDialog.saving = true
+  try {
+    await setBidProjectEnterprise(selectedProject.value.id, enterpriseBindDialog.enterpriseId)
+    enterpriseBindDialog.visible = false
+    await selectProject(selectedProject.value.id, false)
+    await loadProjects(selectedProject.value.id)
+    ElMessage.success('项目所属企业设置成功，现在可以选择企业资料档案')
+  } finally {
+    enterpriseBindDialog.saving = false
   }
 }
 
@@ -4890,7 +4932,7 @@ function technicalWordHealthType(node) {
     technicalScoreItemDialogVisible, technicalScoreItemSaving, technicalScoreItemEditingId, technicalRequirementItemDialogVisible, technicalRequirementItemSaving, technicalRequirementItemEditingId, technicalExtractSummaryForm, technicalScoreItemForm,
     technicalRequirementItemForm, technicalQualityCheckVisible, technicalQualityCheckLoading, technicalQualityCheckData, technicalWordCountVisible, technicalWordCountLoading, technicalWordCountStats, technicalDuplicateCheckData,
     technicalDuplicateCompressing, technicalReviewVisible, technicalReviewLoading, technicalConsistencyPackage, technicalReviewResult, technicalRequirementExtractTimer, requirementTypeOptions, riskLevelOptions,
-    createDialog, techSteps, aiLevels, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
+    createDialog, enterpriseBindDialog, techSteps, aiLevels, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
     technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
     parseProgress, hasTenderFile, tenderFileDisplayName, isParseRunning, isParseSuccess, parseStatusLabel, isPlatformUser, hasCompanyMaterial,
     bidDocumentContent, bidDocAnalysis, bidDocumentStatusLabel, canFillBidDocument, technicalOutlineLeafCount, technicalLeafNodes, technicalFinishedLeafCount, technicalRetryableLeafNodes,
@@ -4910,7 +4952,7 @@ function technicalWordHealthType(node) {
     isProjectExpanded, toggleProjectFold, refreshWorkflow, defaultTenderAnalysisKnowledgeIds, openTenderAnalysisDialog, runProjectTenderAnalysis, openCreateProject, loadCreateEnterprises,
     remoteSearchCreateEnterprises, onCreateEnterpriseVisibleChange, onCreateEnterpriseChange, closeCreateDialog, resetUploadFile, onTenderFileChange, onTenderFileExceed, onTenderFileRemove,
     uploadTenderOnly, triggerTechnicalTenderUpload, onTechnicalTenderFileChange, startReadTenderForSelected, startReadTenderFromTechnical, autoFillProjectBasicInfo, openDocument, openDocumentByType,
-    confirmDeleteProject, loadBidDocumentDetail, refreshBidDocument, openCompanyMaterialSelector, confirmCompanyMaterialBind, unbindSelectedCompanyMaterial, smartFillBidDocument, saveBidDocumentDraft,
+    confirmDeleteProject, loadBidDocumentDetail, refreshBidDocument, openCompanyMaterialSelector, openEnterpriseBindDialog, confirmEnterpriseBind, confirmCompanyMaterialBind, unbindSelectedCompanyMaterial, smartFillBidDocument, saveBidDocumentDraft,
     hydrateBidDocumentReviewForm, bidDocumentReviewStatusText, saveBidDocumentReview, exportBidDocumentWordFile, exportBidDocumentMarkdownFile, materialTypeLabel, loadTechnicalSolution, hydrateTechnicalOutlinesFromSolution,
     mapSolutionOutlineNode, syncTechnicalOutlineTree, technicalOutlineTreeSignature, reconcileTechnicalOutlineArray, reconcileTechnicalOutlineNode, normalizeAiLevel, requireSelectedTechnicalAiLevel, hydrateTechnicalSolutionForm,
     extractTechnicalRequirement, autoFillTechnicalRequirementAfterParse, generateTechnicalOutline, normalizeId, uniqueIds, normalizeKnowledgeIds, parseKnowledgeIds, stringifyKnowledgeIds,
