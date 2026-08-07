@@ -8,6 +8,10 @@ export function listDocumentTypes() {
   return request({ url: '/ai-document/types', method: 'get' })
 }
 
+export function listDocumentModels() {
+  return request({ url: '/ai-document/models', method: 'get' })
+}
+
 export function pageDocuments(params) {
   return request({ url: '/ai-document/page', method: 'get', params })
 }

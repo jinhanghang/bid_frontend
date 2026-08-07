@@ -11,7 +11,7 @@ const TemplateVariableManage = () => import('@/views/bid/templateVariables/index
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const MaterialLibraryLayout = () => import('@/views/material/MaterialLibraryLayout.vue')
 const ImageLibraryManage = () => import('@/views/material/image/index.vue')
-const AiDocument = () => import('@/views/ai/documents/index.vue')
+const AiDocument = () => import('@/views/ai/documents/chat.vue')
 const AiTasks = () => import('@/views/ai/tasks/index.vue')
 const DownloadCenter = () => import('@/views/download/index.vue')
 const RecycleBin = () => import('@/views/recycle/index.vue')

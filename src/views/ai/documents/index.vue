@@ -92,6 +92,7 @@
             <AiModelTrace scene-code="SOLUTION_SECTION_GENERATE" scene-name="AI文档章节生成" :ai-level="currentDoc.aiLevel || form.aiLevel" />
           </div>
           <div class="header-actions">
+            <el-button type="primary" :icon="ChatDotRound" :disabled="!currentDoc?.id" @click="chatVisible = true">AI 助手</el-button>
             <el-button type="primary" plain :disabled="isOperationLocked" @click="openFormDialog">填写/编辑信息</el-button>
             <el-button :icon="Refresh" :loading="detailLoading" @click="refreshCurrent">刷新</el-button>
             <el-button plain :disabled="!currentDoc?.id || isOperationLocked" @click="openDocumentWordCountDrawer">字数/重复检查</el-button>
@@ -604,6 +605,8 @@
       @run-review="runDocumentAiReviewNow"
     />
 
+    <AiDocumentChatDrawer v-model="chatVisible" :document="currentDoc" />
+
   </div>
 </template>
 
@@ -611,7 +614,7 @@
 import { computed, defineComponent, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElButton, ElIcon, ElMessage, ElMessageBox, ElTag, ElTooltip } from '@/plugins/element-plus-api'
-import { ArrowLeft, Document, InfoFilled, MagicStick, Plus, Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, ChatDotRound, Document, InfoFilled, MagicStick, Plus, Refresh, Search, UploadFilled } from '@element-plus/icons-vue'
 import {
   applyDocumentWordCountPreset,
   createDocument,
@@ -648,8 +651,10 @@ import { createSerialPoller } from '@/utils/serialPoller'
 import { openWordExportDialog } from '@/utils/wordExportDialog'
 import AiReviewDrawer from '@/components/ai/AiReviewDrawer.vue'
 import AiModelTrace from '@/components/ai/AiModelTrace.vue'
+import AiDocumentChatDrawer from '@/components/ai/AiDocumentChatDrawer.vue'
 
 const router = useRouter()
+const chatVisible = ref(false)
 
 const loading = ref(false)
 const appendLoading = ref(false)

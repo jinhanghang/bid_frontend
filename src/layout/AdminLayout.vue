@@ -69,7 +69,6 @@
           </el-tooltip>
         </div>
         <div class="service-quota-value">{{ formatNumber(quota.availableWords) }}</div>
-        <div class="service-quota-foot">点击查看会员与额度</div>
         <svg class="service-sparkline" viewBox="0 0 140 42" aria-hidden="true">
           <defs>
             <linearGradient id="sidebarLineGradient" x1="0" y1="0" x2="1" y2="0">
@@ -138,7 +137,13 @@
         </div>
       </header>
 
-      <main class="product-content" :class="{ 'task-center-content': route.path === '/ai/tasks' }">
+      <main
+        class="product-content"
+        :class="{
+          'task-center-content': route.path === '/ai/tasks',
+          'ai-document-content': route.path === '/ai/documents'
+        }"
+      >
         <router-view />
       </main>
     </section>
@@ -970,6 +975,10 @@ async function logout() {
 
 .product-content.task-center-content {
   padding-bottom: 18px;
+  overflow: hidden;
+}
+
+.product-content.ai-document-content {
   overflow: hidden;
 }
 
