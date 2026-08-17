@@ -7,6 +7,7 @@ let loginExpiredNotified = false
 let loginExpiredRedirecting = false
 
 const LOGIN_REQUIRED_CODE = 200001
+const ENTERPRISE_REQUIRED_CODE = 300002
 const AI_GENERIC_ERROR_MESSAGE = 'AI服务调用异常，请稍后重试'
 
 function createRequestError(message, alreadyNotified = false) {
@@ -137,6 +138,15 @@ service.interceptors.response.use(
         handleLoginExpired(message || '登录已过期，请重新登录')
         return Promise.reject(createRequestError(message, true))
       }
+      if (Number(body.code) === ENTERPRISE_REQUIRED_CODE) {
+        const alreadyOnEnterpriseApply = router.currentRoute.value?.path === '/system/enterprise-apply'
+        if (!alreadyOnEnterpriseApply) {
+          router.replace({ path: '/system/enterprise-apply', query: { required: '1' } })
+        }
+        const alreadyNotified = alreadyOnEnterpriseApply || Boolean(response.config?.silentError)
+        if (!alreadyNotified) ElMessage.warning(message)
+        return Promise.reject(createRequestError(message, alreadyNotified))
+      }
 
       const alreadyNotified = !response.config?.silentError
       if (alreadyNotified) ElMessage.error(message)
@@ -154,6 +164,15 @@ service.interceptors.response.use(
     }
 
     if (status === 403) {
+      if (Number(error?.response?.data?.code) === ENTERPRISE_REQUIRED_CODE) {
+        const alreadyOnEnterpriseApply = router.currentRoute.value?.path === '/system/enterprise-apply'
+        if (!alreadyOnEnterpriseApply) {
+          router.replace({ path: '/system/enterprise-apply', query: { required: '1' } })
+        }
+        const alreadyNotified = alreadyOnEnterpriseApply || Boolean(error?.config?.silentError)
+        if (!alreadyNotified) ElMessage.warning(message)
+        return Promise.reject(createRequestError(message, alreadyNotified))
+      }
       const finalMessage = isAiModuleRequest(error?.config) ? message : withTraceId('没有权限访问该功能', error?.response?.data?.traceId)
       const alreadyNotified = !error?.config?.silentError
       if (alreadyNotified) ElMessage.error(finalMessage)

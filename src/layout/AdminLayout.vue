@@ -53,7 +53,7 @@
         </nav>
       </el-scrollbar>
 
-      <div class="service-panel">
+      <div v-if="!enterpriseRestricted" class="service-panel">
         <div class="service-title">
           <span>AI服务状态</span>
           <span class="service-state" :class="{ offline: !serviceOnline }">
@@ -69,6 +69,7 @@
           </el-tooltip>
         </div>
         <div class="service-quota-value">{{ formatNumber(quota.availableWords) }}</div>
+        <div class="service-quota-foot">点击查看会员与额度</div>
         <svg class="service-sparkline" viewBox="0 0 140 42" aria-hidden="true">
           <defs>
             <linearGradient id="sidebarLineGradient" x1="0" y1="0" x2="1" y2="0">
@@ -202,6 +203,11 @@ const currentRoleCodes = computed(() => normalizeRoleList(auth.user?.roles || au
 const isSuperAdmin = computed(() => currentRoleCodes.value.includes(ROLE_SUPER_ADMIN))
 const isPlatformAdmin = computed(() => currentRoleCodes.value.includes(ROLE_PLATFORM_ADMIN))
 const isEnterpriseAdmin = computed(() => currentRoleCodes.value.includes(ROLE_ENTERPRISE_ADMIN))
+const enterpriseRestricted = computed(() => {
+  if (isSuperAdmin.value || isPlatformAdmin.value) return false
+  const status = String(auth.enterpriseAccessStatus || '').trim().toUpperCase()
+  return !auth.enterpriseId || auth.needCompleteEnterprise || status === 'UNBOUND' || status === 'DISABLED'
+})
 const showManagerEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value || isEnterpriseAdmin.value)
 const showMemberAdminEntry = computed(() => isSuperAdmin.value || isPlatformAdmin.value)
 const showCompanyApprovalEntry = computed(() => showManagerEntry.value)
@@ -222,7 +228,11 @@ const quota = reactive({
   paidRemainWords: 0
 })
 
-const productMenus = computed(() => [
+const productMenus = computed(() => {
+  if (enterpriseRestricted.value) {
+    return [{ title: '企业申请', path: '/system/enterprise-apply', icon: DataAnalysis }]
+  }
+  return [
   { title: '首页', path: '/dashboard', icon: House },
   { title: 'AI文档', path: '/ai/documents', icon: Document },
   { title: 'AI任务中心', path: '/ai/tasks', icon: Operation },
@@ -231,7 +241,8 @@ const productMenus = computed(() => [
   { title: '标讯商机', path: '/tender/notice', icon: DataAnalysis },
   { title: '下载中心', path: '/download-center', icon: Download },
   { title: '回收站', path: '/recycle-bin', icon: Delete }
-])
+  ]
+})
 
 function readSidebarCollapsed() {
   try {
@@ -295,15 +306,23 @@ async function reloadMe() {
   refreshing.value = true
   try {
     await auth.loadMe()
-    await Promise.all([loadQuota(), loadApprovalPendingCount()])
-    ElMessage.success('额度已刷新')
+    if (!enterpriseRestricted.value) {
+      await Promise.all([loadQuota(), loadApprovalPendingCount()])
+      ElMessage.success('额度已刷新')
+    }
   } finally {
     refreshing.value = false
   }
 }
 
 async function loadQuota() {
-  if (!auth.token) return
+  if (!auth.token || enterpriseRestricted.value) {
+    quota.availableWords = 0
+    quota.freeRemainWords = 0
+    quota.paidRemainWords = 0
+    serviceOnline.value = true
+    return
+  }
   try {
     const res = await getMemberSummary()
     quota.availableWords = Number(res?.availableWords || 0)

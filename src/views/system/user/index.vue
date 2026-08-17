@@ -29,6 +29,9 @@
           <el-table-column prop="fullName" label="姓名" min-width="130" show-overflow-tooltip />
           <el-table-column prop="phone" label="手机号" min-width="140" />
           <el-table-column prop="username" label="账号" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="industryCategory" label="行业类别" min-width="150" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.industryCategory || '未设置' }}</template>
+          </el-table-column>
 
           <el-table-column prop="isInternal" label="内部人员" width="100">
             <template #default="{ row }">
@@ -105,6 +108,10 @@
 
         <el-form-item label="邮箱">
           <el-input v-model="form.email" placeholder="请输入邮箱" />
+        </el-form-item>
+
+        <el-form-item label="行业类别">
+          <el-input v-model="form.industryCategory" clearable placeholder="用于标讯商机自动筛选，可由人员首次进入时选择" />
         </el-form-item>
 
         <el-form-item label="是否内部人员" prop="isInternal">
@@ -611,6 +618,7 @@ function resetForm(row = {}) {
     phone: row.phone ?? '',
     fullName: row.fullName ?? '',
     email: row.email ?? '',
+    industryCategory: row.industryCategory ?? '',
     isInternal: Number(row.isInternal) === 1 ? 1 : 0,
     oaUsername: row.oaUsername ?? '',
     status: row.status ?? 1,
@@ -647,6 +655,7 @@ function buildCreatePayload() {
     fullName: form.fullName,
     phone: form.phone,
     email: form.email || undefined,
+    industryCategory: String(form.industryCategory || '').trim() || undefined,
     isInternal: Number(form.isInternal) === 1 ? 1 : 0,
     oaUsername: Number(form.isInternal) === 1 ? String(form.oaUsername || '').trim() : '',
     status: form.status,
@@ -673,6 +682,7 @@ function buildUpdatePayload() {
     fullName: form.fullName,
     phone: form.phone,
     email: form.email || undefined,
+    industryCategory: form.industryCategory == null ? undefined : String(form.industryCategory).trim(),
     isInternal: Number(form.isInternal) === 1 ? 1 : 0,
     oaUsername: Number(form.isInternal) === 1 ? String(form.oaUsername || '').trim() : '',
     status: form.status,

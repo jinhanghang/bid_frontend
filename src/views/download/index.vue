@@ -77,6 +77,10 @@
           </template>
         </el-table-column>
 
+        <el-table-column label="生成模型" width="120" align="center">
+          <template #default="{ row }">{{ row.modelDisplayName || '-' }}</template>
+        </el-table-column>
+
         <el-table-column label="文件大小" width="150">
           <template #default="{ row }">{{ fileSize(row.fileSize) }}</template>
         </el-table-column>

@@ -6,7 +6,8 @@ const AdminLayout = () => import('@/layout/AdminLayout.vue')
 const Login = () => import('@/views/login/index.vue')
 const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
-const BidProject = () => import('@/views/bid/project/index.vue')
+const BidProject = () => import('@/views/bid/project/chat.vue')
+const BidProjectLegacy = () => import('@/views/bid/project/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
 const MaterialLibraryLayout = () => import('@/views/material/MaterialLibraryLayout.vue')
@@ -37,6 +38,7 @@ const routes = [
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '首页' } },
       { path: 'ai-bid', component: BidProject, meta: { title: 'AI标书', requiresBusiness: true } },
+      { path: 'ai-bid/workbench', component: BidProjectLegacy, meta: { title: 'AI标书专业工作台', requiresBusiness: true } },
       {
         path: 'materials',
         component: MaterialLibraryLayout,
@@ -120,7 +122,18 @@ router.beforeEach(async (to) => {
     }
   }
 
-  // 未绑定企业不再阻断业务页面。企业级数据权限由后端按企业/个人空间继续控制。
+  // 平台管理员负责企业审核，不要求绑定企业；其余人员必须先完成企业申请并审核通过。
+  const enterpriseWhiteList = ['/system/enterprise-apply']
+  const enterpriseStatus = String(auth.enterpriseAccessStatus || '').trim().toUpperCase()
+  const needsEnterprise = !isSuperAdmin && !isPlatformAdmin && (
+    !auth.enterpriseId
+    || auth.needCompleteEnterprise
+    || enterpriseStatus === 'UNBOUND'
+    || enterpriseStatus === 'DISABLED'
+  )
+  if (needsEnterprise && !enterpriseWhiteList.includes(to.path)) {
+    return { path: '/system/enterprise-apply', query: { required: '1' } }
+  }
 
   return true
 })

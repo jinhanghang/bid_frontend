@@ -380,7 +380,17 @@
                 </div>
 
                 <div class="tech-form-section">
-                  <div class="tech-label required">选择AI：</div>
+                  <div class="tech-label required">AI模型：</div>
+                  <el-select v-model="technicalForm.modelConfigId" class="tech-model-select" placeholder="请选择千问或豆包" :loading="aiModelsLoading" :disabled="technicalGeneratingOutline || isTechnicalRunningByBackend">
+                    <el-option v-for="model in aiModels" :key="model.id" :label="aiModelLabel(model)" :value="model.id">
+                      <span>{{ aiModelLabel(model) }}</span><span class="model-provider">{{ providerName(model.provider) }}</span>
+                    </el-option>
+                  </el-select>
+                  <div class="tech-model-tip">与 AI文档 共用已启用模型配置，生成目录和正文均使用该模型。</div>
+                </div>
+
+                <div class="tech-form-section">
+                  <div class="tech-label required">生成模式：</div>
                   <div class="tech-ai-levels">
                     <div
                       v-for="level in aiLevels"

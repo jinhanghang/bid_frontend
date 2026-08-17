@@ -20,7 +20,7 @@
         <div class="conversation-title"><h2 :title="current.solutionName">{{ current.solutionName }}</h2><p>当前文档信息、已有内容、历史消息和附件会自动传递给所选模型</p></div>
         <div class="head-actions">
           <el-tag type="primary">{{ typeName(current.solutionType, current) }}</el-tag>
-          <el-tag class="model-tag" type="success" :title="current.modelName || '系统默认模型'">{{ current.modelName || '系统默认模型' }}</el-tag>
+          <el-tag class="model-tag" type="success" :title="current.modelName || '系统默认模型'">{{ modelDisplayName(current) }}</el-tag>
           <el-dropdown @command="switchConversation">
             <el-button>历史对话<el-icon><ArrowDown /></el-icon></el-button>
             <template #dropdown><el-dropdown-menu>
@@ -107,8 +107,8 @@
         </el-form-item>
         <el-form-item label="生成模型" required>
           <el-select v-model="newForm.modelConfigId" style="width:100%" placeholder="请选择已配置的模型" :loading="loadingModels">
-            <el-option v-for="item in models" :key="item.id" :label="item.modelName" :value="item.id">
-              <span>{{ item.modelName }}</span><span class="model-provider">{{ providerName(item.provider) }}</span>
+            <el-option v-for="item in models" :key="item.id" :label="item.displayName || providerName(item.provider)" :value="item.id">
+              <span>{{ item.displayName || providerName(item.provider) }}</span>
             </el-option>
           </el-select>
           <div class="model-lock-tip">模型在文档创建后锁定，不可修改</div>
@@ -269,6 +269,7 @@ function sizeText(bytes) { const n = Number(bytes || 0); return n < 1024 * 1024 
 async function scrollBottom() { await nextTick(); if (messageBox.value) messageBox.value.scrollTop = messageBox.value.scrollHeight }
 function typeName(code, document) { return code === 'OTHER' ? (document?.solutionSubType || '其他') : (types.value.find(x => x.type === code)?.title || code || '通用文档') }
 function providerName(provider) { return ({ doubao: '豆包', bailian: '百炼', qwen: '百炼', openai: 'OpenAI', deepseek: 'DeepSeek' }[String(provider || '').toLowerCase()] || provider || '') }
+function modelDisplayName(value) { return providerName(value?.modelProvider || value?.provider) || value?.modelName || '系统默认模型' }
 function timeText(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 </script>
 

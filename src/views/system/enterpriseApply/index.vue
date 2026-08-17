@@ -117,6 +117,15 @@
       </template>
 
       <template v-else>
+        <el-alert
+          v-if="$route.query.required === '1'"
+          title="企业信息为必填项"
+          description="请创建企业或申请加入已有企业。审核通过且企业、成员均为启用状态后，才能使用系统其他功能。"
+          type="warning"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
         <div class="apply-hero card">
           <div>
             <div class="apply-title">你还没有加入企业</div>
@@ -139,8 +148,8 @@
                   <el-form-item label="企业名称" prop="enterpriseName">
                     <el-input v-model="registerForm.enterpriseName" placeholder="请输入企业名称" />
                   </el-form-item>
-                  <el-form-item label="统一信用代码">
-                    <el-input v-model="registerForm.creditCode" placeholder="请输入统一社会信用代码，可选" />
+                  <el-form-item label="统一信用代码" prop="creditCode">
+                    <el-input v-model="registerForm.creditCode" placeholder="请输入统一社会信用代码" maxlength="18" />
                   </el-form-item>
                   <el-form-item label="法定代表人">
                     <el-input v-model="registerForm.legalPerson" placeholder="请输入法定代表人，可选" />
@@ -382,7 +391,11 @@ const auditEmptyDesc = computed(() => {
 })
 
 const registerRules = {
-  enterpriseName: [{ required: true, message: '请输入企业名称', trigger: 'blur' }]
+  enterpriseName: [{ required: true, message: '请输入企业名称', trigger: 'blur' }],
+  creditCode: [
+    { required: true, message: '请输入统一社会信用代码', trigger: 'blur' },
+    { pattern: /^[0-9A-Z]{18}$/, message: '统一社会信用代码应为18位大写字母或数字', trigger: 'blur' }
+  ]
 }
 
 const joinRules = {

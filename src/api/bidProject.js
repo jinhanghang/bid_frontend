@@ -34,6 +34,14 @@ export function createBidProject(data) {
   return request.post('/bid-project', data)
 }
 
+export function createBidProjectFromNotice(noticeId, data = {}) {
+  return request.post(`/bid-project/from-tender-notice/${noticeId}`, data)
+}
+
+export function saveBidProjectChatDraft(id, data) {
+  return request.put(`/bid-project/${id}/chat-draft`, data)
+}
+
 /**
  * 修改标书项目
  */

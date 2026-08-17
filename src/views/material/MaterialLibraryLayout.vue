@@ -5,11 +5,26 @@
         <h2>资料库</h2>
         <p>统一管理企业资料、图片素材和知识库内容。</p>
       </div>
-      <el-tabs :model-value="activeTab" class="material-library-tabs" @tab-change="onTabChange">
-        <el-tab-pane label="企业资料" name="company" />
-        <el-tab-pane label="图片库" name="images" />
-        <el-tab-pane label="知识库" name="knowledge" />
-      </el-tabs>
+      <div class="material-library-tabs" role="tablist" aria-label="资料库分类">
+        <button
+          v-for="tab in tabs"
+          :key="tab.name"
+          class="material-tab-card"
+          :class="{ active: activeTab === tab.name }"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === tab.name"
+          @click="onTabChange(tab.name)"
+        >
+          <span class="material-tab-icon">
+            <el-icon><component :is="tab.icon" /></el-icon>
+          </span>
+          <span class="material-tab-copy">
+            <strong>{{ tab.label }}</strong>
+            <small>{{ tab.description }}</small>
+          </span>
+        </button>
+      </div>
     </div>
     <router-view />
   </div>
@@ -18,9 +33,16 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Collection, OfficeBuilding, Picture } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
+
+const tabs = [
+  { name: 'company', label: '企业资料', description: '企业档案与资质', icon: OfficeBuilding },
+  { name: 'images', label: '图片库', description: '统一管理图片素材', icon: Picture },
+  { name: 'knowledge', label: '知识库', description: '沉淀企业知识内容', icon: Collection }
+]
 
 const activeTab = computed(() => {
   if (route.path.includes('/materials/images')) return 'images'
@@ -45,10 +67,10 @@ function onTabChange(name) {
 }
 .material-library-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 18px 22px 0;
+  padding: 18px 22px;
   border-radius: 18px;
   background: #fff;
   border: 1px solid #e5edf7;
@@ -60,16 +82,89 @@ function onTabChange(name) {
   color: #0f172a;
 }
 .material-library-head p {
-  margin: 6px 0 16px;
+  margin: 6px 0 0;
   font-size: 13px;
   color: #64748b;
 }
 .material-library-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(148px, 1fr));
+  gap: 10px;
   flex-shrink: 0;
-  min-width: 330px;
+  min-width: 500px;
 }
-.material-library-tabs :deep(.el-tabs__header) {
-  margin-bottom: 0;
+
+.material-tab-card {
+  appearance: none;
+  min-height: 72px;
+  padding: 11px 14px;
+  border: 1px solid #e3e9f4;
+  border-radius: 14px;
+  background: #f8faff;
+  color: #34435d;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.material-tab-card:hover {
+  transform: translateY(-2px);
+  border-color: #a9b6ff;
+  background: #f4f3ff;
+  box-shadow: 0 9px 20px rgba(79, 70, 229, 0.12);
+}
+
+.material-tab-card.active {
+  border-color: #6558f5;
+  background: linear-gradient(135deg, #6658f5 0%, #775df8 100%);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(101, 88, 245, 0.24);
+}
+
+.material-tab-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eceeff;
+  color: #6257f2;
+  font-size: 20px;
+}
+
+.material-tab-card.active .material-tab-icon {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.material-tab-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.material-tab-copy strong {
+  font-size: 16px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.material-tab-copy small {
+  color: #7b879d;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.material-tab-card.active .material-tab-copy small {
+  color: rgba(255, 255, 255, 0.78);
 }
 @media (max-width: 900px) {
   .material-library-head {
@@ -79,6 +174,12 @@ function onTabChange(name) {
   .material-library-tabs {
     width: 100%;
     min-width: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .material-library-tabs {
+    grid-template-columns: 1fr;
   }
 }
 </style>

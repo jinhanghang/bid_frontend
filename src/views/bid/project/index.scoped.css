@@ -915,6 +915,10 @@
   gap: 12px;
 }
 
+.tech-model-select { width: 100%; max-width: 608px; }
+.tech-model-tip { margin-top: 8px; color: #98a2b3; font-size: 12px; }
+.model-provider { float: right; margin-left: 28px; color: #98a2b3; }
+
 .tech-strategy-note,
 .tech-form-tip {
   margin-top: 8px;

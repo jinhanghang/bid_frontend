@@ -8,6 +8,7 @@ import SectionContentPreview from '@/components/SectionContentPreview.vue'
 import { normalizeStreamErrorMessage } from '@/utils/streamError'
 import { createSerialPoller } from '@/utils/serialPoller'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { listDocumentModels } from '@/api/aiDocument'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
 import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
@@ -490,6 +491,29 @@ const aiLevels = [
   { value: 'FLAGSHIP', label: '旗舰版', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
 ]
 
+const aiModels = ref([])
+const aiModelsLoading = ref(false)
+
+function providerName(provider) {
+  return ({ doubao: '豆包', bailian: '千问', qwen: '千问', openai: 'OpenAI', deepseek: 'DeepSeek' }[String(provider || '').toLowerCase()] || provider || 'AI模型')
+}
+
+function aiModelLabel(model) {
+  return model?.displayName || providerName(model?.provider) || model?.modelName || 'AI模型'
+}
+
+async function loadAiModels() {
+  aiModelsLoading.value = true
+  try {
+    aiModels.value = await listDocumentModels() || []
+    if (!technicalForm.modelConfigId && aiModels.value.length) {
+      technicalForm.modelConfigId = (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0]).id
+    }
+  } finally {
+    aiModelsLoading.value = false
+  }
+}
+
 const technicalSubTypeMap = {
   SERVICE: ['物业管理', '审计服务', '广告印刷', '车辆维修', '医疗服务', '咨询服务', '运维服务'],
   ENGINEERING: ['房建工程', '拆除工程', '水利工程', '市政工程', '电信工程', '装饰装修工程', '园林绿化工程'],
@@ -518,6 +542,7 @@ const technicalForm = reactive({
   solutionType: 'SERVICE',
   solutionSubType: '不限',
   aiLevel: 'BASIC',
+  modelConfigId: '',
   solutionName: '',
   outlineWritingDirection: '',
   purchaseRequirement: '',
@@ -561,6 +586,7 @@ function resetTechnicalWorkspace() {
     solutionType: 'SERVICE',
     solutionSubType: '不限',
     aiLevel: 'BASIC',
+    modelConfigId: (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id || '',
     solutionName: '',
     outlineWritingDirection: '',
     purchaseRequirement: '',
@@ -1364,6 +1390,7 @@ onMounted(async () => {
     technicalGenerationClock.value = Date.now()
   }, 1000)
   await loadGlobalAiRunningTask()
+  await loadAiModels()
   await loadProjects()
   startPolling()
   startGlobalAiTaskPolling()
@@ -1945,10 +1972,14 @@ async function startReadTenderFromTechnical() {
     ElMessage.warning('请先选择AI等级，再开始解析')
     return
   }
+  if (!technicalForm.modelConfigId) {
+    ElMessage.warning('请先选择AI模型，再开始解析')
+    return
+  }
   const currentDoc = activeDoc.value || 'TECHNICAL_SOLUTION'
   readTenderLoading.value = true
   try {
-    workflow.value = await startReadTenderProject(selectedProject.value.id, { aiLevel: selectedAiLevel })
+    workflow.value = await startReadTenderProject(selectedProject.value.id, { aiLevel: selectedAiLevel, modelConfigId: technicalForm.modelConfigId })
     selectedProject.value = workflow.value?.project || selectedProject.value
     const status = String(workflow.value?.parseTask?.status || selectedProject.value?.parseStatus || '').toUpperCase()
     if (['WAITING', 'PARSING', 'EXTRACTING'].includes(status)) {
@@ -2534,6 +2565,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
   technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel) || technicalForm.aiLevel || 'BASIC'
+  technicalForm.modelConfigId = solution.modelConfigId || technicalForm.modelConfigId || (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id || ''
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
@@ -2610,6 +2642,10 @@ async function generateTechnicalOutline() {
   }
 
   if (!requireSelectedTechnicalAiLevel()) return
+  if (!technicalForm.modelConfigId) {
+    ElMessage.warning('请先选择AI模型')
+    return
+  }
 
   await loadGlobalAiRunningTask()
   if (hasOtherAiTaskRunning.value) {
@@ -2661,6 +2697,7 @@ async function generateTechnicalOutline() {
       solutionType: technicalForm.solutionType,
       solutionSubType: technicalForm.solutionSubType,
       aiLevel: normalizeAiLevel(technicalForm.aiLevel) || normalizeAiLevel(technicalSolution.value?.aiLevel),
+      modelConfigId: technicalForm.modelConfigId,
       writingStyle: 'GENERAL',
       outlineWritingDirection: technicalForm.outlineWritingDirection,
       purchaseRequirement: technicalForm.purchaseRequirement,
@@ -4932,7 +4969,7 @@ function technicalWordHealthType(node) {
     technicalScoreItemDialogVisible, technicalScoreItemSaving, technicalScoreItemEditingId, technicalRequirementItemDialogVisible, technicalRequirementItemSaving, technicalRequirementItemEditingId, technicalExtractSummaryForm, technicalScoreItemForm,
     technicalRequirementItemForm, technicalQualityCheckVisible, technicalQualityCheckLoading, technicalQualityCheckData, technicalWordCountVisible, technicalWordCountLoading, technicalWordCountStats, technicalDuplicateCheckData,
     technicalDuplicateCompressing, technicalReviewVisible, technicalReviewLoading, technicalConsistencyPackage, technicalReviewResult, technicalRequirementExtractTimer, requirementTypeOptions, riskLevelOptions,
-    createDialog, enterpriseBindDialog, techSteps, aiLevels, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
+    createDialog, enterpriseBindDialog, techSteps, aiLevels, aiModels, aiModelsLoading, providerName, aiModelLabel, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
     technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
     parseProgress, hasTenderFile, tenderFileDisplayName, isParseRunning, isParseSuccess, parseStatusLabel, isPlatformUser, hasCompanyMaterial,
     bidDocumentContent, bidDocAnalysis, bidDocumentStatusLabel, canFillBidDocument, technicalOutlineLeafCount, technicalLeafNodes, technicalFinishedLeafCount, technicalRetryableLeafNodes,

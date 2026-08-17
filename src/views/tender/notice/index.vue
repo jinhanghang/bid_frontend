@@ -55,17 +55,11 @@
             @keyup.enter="triggerSearch"
             @clear="triggerSearch"
           />
-          <el-input
-            v-model="query.industry"
-            class="filter-search"
-            clearable
-            placeholder="行业分类"
-            @input="onKeywordInput"
-            @keyup.enter="triggerSearch"
-            @clear="triggerSearch"
-          />
         </div>
         <div class="toolbar-right">
+          <el-button class="industry-btn" :icon="Setting" @click="openIndustryDialog(false)">
+            行业：{{ currentIndustry || '未设置' }}
+          </el-button>
           <el-button class="refresh-btn" :icon="Refresh" :loading="loading" @click="loadData">刷新</el-button>
         </div>
       </div>
@@ -130,6 +124,7 @@
                   <el-tag v-if="item.industry" size="small" type="info" effect="plain">{{ item.industry }}</el-tag>
                 </div>
                 <div class="notice-actions" @click.stop>
+                  <el-button link type="success" @click="createAiBid(item)">创建AI标书</el-button>
                   <el-button link type="primary" :icon="View" @click="openDetail(item)">查看详情</el-button>
                 </div>
               </div>
@@ -171,6 +166,7 @@
             <h2>{{ detail.noticeTitle || detail.notice_title || '未命名公告' }}</h2>
           </div>
           <el-button @click="detailVisible = false">关闭</el-button>
+          <el-button type="primary" @click="createAiBid(detail)">创建AI标书</el-button>
         </div>
 
         <div class="drawer-tags">
@@ -231,28 +227,111 @@
 
       </template>
     </el-drawer>
+
+    <el-dialog
+      v-model="industryDialog.visible"
+      :title="currentIndustry ? '变更行业类别' : '请选择行业类别'"
+      width="520px"
+      :close-on-click-modal="Boolean(currentIndustry)"
+      :close-on-press-escape="Boolean(currentIndustry)"
+      :show-close="Boolean(currentIndustry)"
+      destroy-on-close
+    >
+      <div class="industry-dialog-tip">
+        标讯商机将根据所选行业自动筛选。行业可在页面右上角随时变更。
+      </div>
+      <el-form label-position="top">
+        <el-form-item label="行业类别" required>
+          <el-select
+            v-model="industryDialog.value"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="请选择或输入行业类别"
+            style="width: 100%"
+          >
+            <el-option v-for="item in industryOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button v-if="currentIndustry" @click="industryDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="industryDialog.saving" @click="saveIndustry">保存并查看标讯</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Calendar, Document, Location, Refresh, Search, View } from '@element-plus/icons-vue'
-import { getTenderNotice, pageTenderNotices } from '@/api/tenderNotice'
+import { Calendar, Document, Location, Refresh, Search, Setting, View } from '@element-plus/icons-vue'
+import { ElMessage } from '@/plugins/element-plus-api'
+import { useRouter } from 'vue-router'
+import { createBidProjectFromNotice } from '@/api/bidProject'
+import {
+  getTenderIndustryPreference,
+  getTenderNotice,
+  listTenderIndustryOptions,
+  pageTenderNotices,
+  updateTenderIndustryPreference
+} from '@/api/tenderNotice'
 
 const loading = ref(false)
+const router = useRouter()
 const rows = ref([])
 const detailVisible = ref(false)
 const detail = ref(null)
-const query = reactive({ keyword: '', area: '', industry: '', filterType: '' })
+const query = reactive({ keyword: '', area: '', filterType: '' })
 const pager = reactive({ page: 1, size: 20, total: 0 })
+const currentIndustry = ref('')
+const industryOptions = ref([])
+const industryDialog = reactive({ visible: false, value: '', saving: false })
 let keywordTimer = null
 
 const currentPageNewCount = computed(() => rows.value.filter((item) => String(item.status || '').toLowerCase() === 'new').length)
 const nearDeadlineCount = computed(() => rows.value.filter(isNearDeadline).length)
 
-onMounted(() => {
-  loadData()
+onMounted(async () => {
+  await initializeIndustry()
 })
+
+async function initializeIndustry() {
+  const [preference, options] = await Promise.all([
+    getTenderIndustryPreference(),
+    listTenderIndustryOptions()
+  ])
+  currentIndustry.value = String(preference?.industryCategory || '').trim()
+  industryOptions.value = Array.isArray(options) ? options.filter(Boolean) : []
+  if (!currentIndustry.value) {
+    openIndustryDialog(true)
+    return
+  }
+  await loadData()
+}
+
+function openIndustryDialog(required = false) {
+  industryDialog.value = currentIndustry.value || ''
+  industryDialog.visible = true
+}
+
+async function saveIndustry() {
+  const value = String(industryDialog.value || '').trim()
+  if (!value) {
+    ElMessage.warning('请选择行业类别')
+    return
+  }
+  industryDialog.saving = true
+  try {
+    await updateTenderIndustryPreference(value)
+    currentIndustry.value = value
+    industryDialog.visible = false
+    pager.page = 1
+    ElMessage.success('行业类别已保存')
+    await loadData()
+  } finally {
+    industryDialog.saving = false
+  }
+}
 
 function onKeywordInput() {
   clearTimeout(keywordTimer)
@@ -280,11 +359,14 @@ function onSizeChange() {
 }
 
 async function loadData() {
+  if (!currentIndustry.value) {
+    openIndustryDialog(true)
+    return
+  }
   loading.value = true
   try {
     const keyword = String(query.keyword || '').trim()
     const area = String(query.area || '').trim()
-    const industry = String(query.industry || '').trim()
     const res = await pageTenderNotices({
       current: pager.page,
       size: pager.size,
@@ -292,7 +374,6 @@ async function loadData() {
       pageSize: pager.size,
       keyword: keyword || undefined,
       area: area || undefined,
-      industry: industry || undefined,
       filterType: query.filterType || undefined
     })
     const records = res?.records || res?.list || res?.rows || []
@@ -312,6 +393,13 @@ async function openDetail(row) {
   } catch (e) {
     // 列表数据足够展示时，不强制关闭抽屉。
   }
+}
+
+async function createAiBid(row) {
+  if (!row?.id) return
+  const projectId = await createBidProjectFromNotice(row.id)
+  ElMessage.success('已从标讯创建AI标书')
+  router.push({ path: '/ai-bid', query: { projectId } })
 }
 
 function statusLabel(status) {
@@ -604,6 +692,29 @@ function deadlineBadge(row = {}) {
   min-height: 36px;
   border-radius: 12px;
   box-shadow: 0 0 0 1px #dbe5f5 inset;
+}
+
+.industry-btn {
+  max-width: 260px;
+  border-color: #c9c2ff;
+  color: #5d4ee8;
+  background: #f7f5ff;
+}
+
+.industry-btn :deep(span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.industry-dialog-tip {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid #e4e0ff;
+  border-radius: 10px;
+  color: #5f6473;
+  background: #f8f7ff;
+  line-height: 1.7;
 }
 
 .refresh-btn {
