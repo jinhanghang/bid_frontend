@@ -14,6 +14,13 @@
   background: #fff;
 }
 
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .project-pane {
   display: flex;
   flex-direction: column;
@@ -602,6 +609,22 @@
   width: 100%;
 }
 
+.create-model-field {
+  margin-bottom: 16px;
+}
+
+.create-model-field > label {
+  display: block;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.create-model-field > label span {
+  color: #ef4444;
+}
+
 .create-space-tip {
   grid-column: 1 / -1;
   color: #64748b;
@@ -754,6 +777,14 @@
   height: 54px;
   padding: 0 12px;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.tech-header-model {
+  flex: 0 0 auto;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bid-tech-workflow-alert {

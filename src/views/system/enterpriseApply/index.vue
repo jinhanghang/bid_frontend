@@ -307,7 +307,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import PageFooterPager from '@/components/PageFooterPager.vue'
 import { listEnterprises } from '@/api/enterprise'
 import {
@@ -321,8 +321,13 @@ import {
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 const isAuditPage = computed(() => Boolean(route.meta.audit))
+const isPlatformManager = computed(() => {
+  const roles = auth.roleCodes || []
+  return roles.includes('SUPERADMIN') || roles.includes('PLATFORMADMIN')
+})
 
 const activeTab = ref('register')
 const submitLoading = ref(false)
@@ -421,6 +426,10 @@ onMounted(() => {
 })
 
 function initPage() {
+  if (isPlatformManager.value && !isAuditPage.value) {
+    router.replace('/system/enterprise-apply-audit')
+    return
+  }
   if (isAuditPage.value) {
     loadAuditList()
   } else {

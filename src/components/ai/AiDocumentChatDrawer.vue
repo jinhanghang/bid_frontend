@@ -29,14 +29,7 @@
               <span v-for="file in attachments[message.id]" :key="file.id"><el-icon><Paperclip /></el-icon>{{ file.fileName }}</span>
             </div>
             <div v-if="message.status === 'GENERATING'" class="generation-progress">
-              <div class="progress-title"><strong>{{ message.progress?.stageText || '正在准备生成任务' }}</strong><span>{{ message.progress?.progress || 0 }}%</span></div>
-              <el-progress :percentage="message.progress?.progress || 0" :stroke-width="6" :show-text="false" />
-              <div class="progress-detail">
-                <span v-if="message.progress?.currentPart">第 {{ message.progress.currentPart }}/{{ message.progress.totalParts }} 部分</span>
-                <span>已生成 {{ formatNumber(message.progress?.generatedChars || message.content?.length || 0) }} 字</span>
-                <span>用时 {{ formatElapsed(message.progress?.elapsedSeconds || 0) }}</span>
-              </div>
-              <div v-if="(message.progress?.elapsedSeconds || 0) >= 30 && !message.content" class="slow-tip">模型正在处理较长内容，请稍候…</div>
+              <strong>正在生成中</strong>
             </div>
             <div class="message-content">{{ message.content }}<i v-if="message.status === 'GENERATING'" class="typing-caret" /></div>
             <div v-if="message.role === 'assistant' && message.status !== 'GENERATING'" class="message-tools">

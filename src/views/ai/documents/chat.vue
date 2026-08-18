@@ -49,11 +49,8 @@
             </div>
             <div class="bubble">
               <div v-if="message.status === 'GENERATING' && !message.content" class="stream-status">
-                <span>{{ message.stageText || '正在连接所选模型' }}</span>
-                <span v-if="message.progress != null">{{ message.progress }}%</span>
+                <span>正在生成中</span>
               </div>
-              <el-progress v-if="message.status === 'GENERATING' && !message.content && message.progress != null"
-                :percentage="message.progress" :show-text="false" :stroke-width="4" />
               {{ message.content }}<i v-if="message.status === 'GENERATING'" />
             </div>
             <div v-if="message.role === 'assistant' && message.status !== 'GENERATING'" class="message-actions">
@@ -216,7 +213,7 @@ async function regenerate(message) { const assistant = reactive({ id: `a-${Date.
 function handlers(assistant) { return { onEvent(event, data) {
   if (event === 'start') { activeRunId.value = data.runId; assistant.id = data.messageId; assistant.runId = data.runId; startRunPolling(assistant) }
   if (event === 'progress' || event === 'heartbeat') { assistant.stageText = data.stageText || assistant.stageText; assistant.progress = data.progress ?? assistant.progress }
-  if (event === 'delta') { assistant.content += data.content || ''; assistant.stageText = '正在生成正文'; scrollBottom() }
+  if (event === 'delta') { assistant.content += data.content || ''; assistant.stageText = '正在生成中'; scrollBottom() }
   if (event === 'done' || event === 'stopped') { applyRunSnapshot(assistant, data); assistant.status = event === 'done' ? 'COMPLETE' : 'CANCELLED'; finishRun(); refreshConversations(); if (event === 'done' && pendingAutoArtifactFormat.value) { const format = pendingAutoArtifactFormat.value; pendingAutoArtifactFormat.value = ''; saveArtifact(assistant, format) } }
   if (event === 'error') fail(assistant, new Error(data.message || '生成失败'))
 }, onError: e => fail(assistant, e) } }

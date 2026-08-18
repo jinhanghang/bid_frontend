@@ -12,6 +12,7 @@ export function getConversationRun(runId) { return request.get(`/ai-conversation
 
 export function listDocumentArtifacts(params) { return request.get('/ai-document-artifacts', { params }) }
 export function saveDocumentArtifact(documentId, data) { return request.post(`/ai-document-artifacts/documents/${documentId}`, data, { timeout: 0 }) }
+export function saveBidArtifact(projectId, data) { return request.post(`/ai-document-artifacts/bid-projects/${projectId}`, data, { timeout: 0 }) }
 export function regenerateDocumentArtifact(id) { return request.post(`/ai-document-artifacts/${id}/regenerate`, null, { timeout: 0 }) }
 export function renameDocumentArtifact(id, artifactName) { return request.put(`/ai-document-artifacts/${id}/name`, { artifactName }) }
 export function deleteDocumentArtifact(id) { return request.delete(`/ai-document-artifacts/${id}`) }

@@ -486,9 +486,9 @@ const enterpriseBindDialog = reactive({
 const techSteps = TECH_STEPS
 
 const aiLevels = [
-  { value: 'BASIC', label: '基础版', desc: '标准生成质量，适合常规文档与快速出稿。' },
-  { value: 'STANDARD', label: '标准版', desc: '标准生成质量，增加关键质量校验与结构优化。' },
-  { value: 'FLAGSHIP', label: '旗舰版', desc: '标准生成质量，增强评分项对齐和审稿建议。' }
+  { value: 'BASIC', label: '快速生成', desc: '减少增强步骤，适合常规文档与快速出稿。' },
+  { value: 'STANDARD', label: '标准生成', desc: '增加关键质量校验与结构优化。' },
+  { value: 'FLAGSHIP', label: '深度生成', desc: '增强评分项对齐、完整性检查和审稿建议。' }
 ]
 
 const aiModels = ref([])
@@ -1668,6 +1668,9 @@ async function selectProject(id, resetDoc = true) {
 
   workflow.value = await getBidProjectWorkflow(id)
   selectedProject.value = workflow.value?.project || projects.value.find((item) => String(item.id) === String(id)) || null
+  technicalForm.modelConfigId = selectedProject.value?.modelConfigId
+    || (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id
+    || ''
   expandedProjectId.value = selectedProject.value?.id ? String(selectedProject.value.id) : ''
   if (String(technicalOutlinePendingProjectId.value || '') === String(id)) {
     technicalGeneratingOutline.value = true
@@ -1973,7 +1976,7 @@ async function startReadTenderFromTechnical() {
     return
   }
   if (!technicalForm.modelConfigId) {
-    ElMessage.warning('请先选择AI模型，再开始解析')
+    ElMessage.warning('当前项目未锁定AI模型，请返回AI标书重新创建项目')
     return
   }
   const currentDoc = activeDoc.value || 'TECHNICAL_SOLUTION'
@@ -2565,7 +2568,7 @@ function hydrateTechnicalSolutionForm() {
   technicalForm.solutionType = solution.solutionType || technicalForm.solutionType
   technicalForm.solutionSubType = solution.solutionSubType || technicalForm.solutionSubType
   technicalForm.aiLevel = normalizeAiLevel(solution.aiLevel) || technicalForm.aiLevel || 'BASIC'
-  technicalForm.modelConfigId = solution.modelConfigId || technicalForm.modelConfigId || (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id || ''
+  technicalForm.modelConfigId = solution.modelConfigId || selectedProject.value?.modelConfigId || technicalForm.modelConfigId || (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id || ''
   technicalForm.outlineWritingDirection = solution.overallWritingRequirement || technicalForm.outlineWritingDirection
   technicalForm.purchaseRequirement = requirement.purchaseRequirement || technicalForm.purchaseRequirement
   technicalForm.scoreRequirement = requirement.scoreRequirement || requirement.technicalScoreItems || technicalForm.scoreRequirement
@@ -2643,7 +2646,7 @@ async function generateTechnicalOutline() {
 
   if (!requireSelectedTechnicalAiLevel()) return
   if (!technicalForm.modelConfigId) {
-    ElMessage.warning('请先选择AI模型')
+    ElMessage.warning('当前项目未锁定AI模型，请返回AI标书重新创建项目')
     return
   }
 
