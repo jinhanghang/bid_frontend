@@ -215,7 +215,7 @@
         <el-tabs v-model="modelManageTab" class="model-manage-tabs">
           <el-tab-pane label="模型列表" name="list">
             <div class="toolbar model-toolbar">
-              <el-input v-model="modelQuery.keyword" placeholder="搜索服务商 / 模型 / 备注" clearable @keyup.enter="searchModels" />
+              <el-input v-model="modelQuery.keyword" placeholder="搜索显示名称 / 服务商 / 模型 / 备注" clearable @keyup.enter="searchModels" />
               <el-select v-model="modelQuery.modelType" placeholder="模型类型" clearable>
                 <el-option label="Chat" value="chat" />
                 <el-option label="Rerank" value="rerank" />
@@ -226,6 +226,7 @@
 
             <el-table :data="models" class="ui-table" height="500" v-loading="modelLoading">
               <el-table-column prop="provider" label="服务商" width="110" />
+              <el-table-column prop="displayName" label="显示名称" min-width="150" show-overflow-tooltip />
               <el-table-column prop="modelName" label="模型名称" min-width="210" show-overflow-tooltip />
               <el-table-column label="类型" width="100">
                 <template #default="{ row }"><el-tag>{{ modelTypeText(row.modelType) }}</el-tag></template>
@@ -332,6 +333,7 @@
         <el-row :gutter="14">
           <el-col :span="12"><el-form-item label="服务商"><el-input v-model="modelDialog.form.provider" placeholder="如 bailian" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="模型名称"><el-input v-model="modelDialog.form.modelName" placeholder="如 qwen-plus / qwen-max" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="显示名称"><el-input v-model="modelDialog.form.displayName" placeholder="如 千问增强版 / 豆包极速版" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="模型类型">
             <el-select v-model="modelDialog.form.modelType" style="width: 100%">
               <el-option label="Chat：文本生成主链路" value="chat" />
@@ -757,7 +759,7 @@ function emptyPlan() {
 }
 
 function emptyModel() {
-  return { provider: 'bailian', modelName: '', modelType: 'chat', sceneCode: '', aiLevel: null, apiBase: '', apiKeyRef: 'DASHSCOPE_API_KEY', temperature: 0.7, maxTokens: 8192, sortNo: 10, defaultFlag: 0, status: 1, remark: '' }
+  return { provider: 'bailian', modelName: '', displayName: '', modelType: 'chat', sceneCode: '', aiLevel: null, apiBase: '', apiKeyRef: 'DASHSCOPE_API_KEY', temperature: 0.7, maxTokens: 8192, sortNo: 10, defaultFlag: 0, status: 1, remark: '' }
 }
 
 function emptyRoute() {
@@ -840,8 +842,8 @@ function openModelDialog(row) {
 }
 
 async function saveModel() {
-  if (!modelDialog.form.provider || !modelDialog.form.modelName || !modelDialog.form.modelType) {
-    ElMessage.warning('请填写服务商、模型名称和模型类型')
+  if (!modelDialog.form.provider || !modelDialog.form.modelName || !modelDialog.form.displayName || !modelDialog.form.modelType) {
+    ElMessage.warning('请填写服务商、模型名称、显示名称和模型类型')
     return
   }
   const payload = { ...modelDialog.form }

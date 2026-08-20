@@ -63,7 +63,7 @@
 
     <el-dialog v-model="createDialog" title="新建AI标书" width="760px" destroy-on-close>
       <el-form label-position="top" class="create-model-form"><el-form-item label="生成模型" required>
-        <el-select v-model="createForm.modelConfigId" style="width:100%" placeholder="请选择已配置的模型" :loading="loadingModels"><el-option v-for="item in models" :key="item.id" :label="item.displayName || providerName(item.provider)" :value="item.id" /></el-select>
+        <el-select v-model="createForm.modelConfigId" style="width:100%" placeholder="请选择已配置的模型" :loading="loadingModels"><el-option v-for="item in models" :key="item.id" :label="item.displayName || item.modelName" :value="item.id" /></el-select>
         <div class="model-lock-tip">模型在AI标书创建后锁定，不可修改</div>
       </el-form-item></el-form>
       <el-form v-if="isPlatformManager" label-position="top" class="create-admin-form">
@@ -125,7 +125,7 @@ const referenceForm=reactive({knowledgeIds:[],companyMaterialId:''})
 const artifactDrawer=ref(false), artifactLoading=ref(false), artifacts=ref([]), savingMessageId=ref(''), artifactBusyId=ref('')
 const prompts=['分析招标文件，提取资格条件、废标项和重要时间','根据评分办法生成评分响应矩阵','结合资料库生成完整投标文件目录','检查当前标书缺失的资料和未响应评分项']
 const canSend=computed(()=>!generating.value&&!uploading.value&&(!!draft.value.trim()||pendingFiles.value.length>0))
-const currentModelDisplayName=computed(()=>{const item=models.value.find(x=>x.id===current.value?.modelConfigId);return item?.displayName||providerName(item?.provider)||current.value?.modelName||'系统默认模型'})
+const currentModelDisplayName=computed(()=>{const item=models.value.find(x=>x.id===current.value?.modelConfigId);return item?.displayName||current.value?.modelName||providerName(item?.provider)||'系统默认模型'})
 const isPlatformManager=computed(()=>{const roles=auth.roleCodes||[];return roles.includes('SUPERADMIN')||roles.includes('PLATFORMADMIN')})
 let timer=0, runPollTimer=0
 
