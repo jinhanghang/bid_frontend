@@ -17,13 +17,11 @@
         <div class="title"><h2>{{ current.projectName }}</h2><p>{{ current.projectCode }} · {{ current.tenderNoticeTitle || '未关联标讯' }}</p></div>
         <div class="head-actions">
           <el-tag class="model-tag" type="success" effect="light" :title="currentModelDisplayName">{{ currentModelDisplayName }}</el-tag>
-          <el-tag :type="current.parseStatus==='SUCCESS'?'success':'info'">{{ parseText(current.parseStatus) }}</el-tag>
           <el-dropdown @command="switchConversation"><el-button>历史对话<el-icon><ArrowDown /></el-icon></el-button>
             <template #dropdown><el-dropdown-menu><el-dropdown-item command="__new__">＋ 新建对话</el-dropdown-item><el-dropdown-item v-for="c in conversations" :key="c.id" :command="c.id">{{ c.title }}</el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
           <el-button @click="referenceDrawer=true;loadReferences()">关联资料</el-button>
           <el-button @click="artifactDrawer=true;loadArtifacts()">标书成果</el-button>
-          <el-button @click="router.push({path:'/ai-bid/workbench',query:{projectId:current.id}})">专业工作台</el-button>
         </div>
       </header>
 
@@ -36,11 +34,10 @@
           <div class="avatar">{{ m.role==='user'?'我':'AI' }}</div><div class="bubble-wrap">
             <div v-if="attachments[m.id]?.length" class="chips"><span v-for="f in attachments[m.id]" :key="f.id">{{ f.fileName }}</span></div>
             <div class="bubble"><div v-if="m.status==='GENERATING'&&!m.content" class="stream-status"><span>正在生成中</span></div>
-              {{ m.content }}<i v-if="m.status==='GENERATING'" />
+              <MarkdownContent v-if="m.role==='assistant'" :content="m.content"/><template v-else>{{ m.content }}</template><i v-if="m.status==='GENERATING'" />
             </div>
             <div v-if="m.role==='assistant'&&m.status!=='GENERATING'" class="message-actions">
               <el-button link @click="copyText(m.content)">复制</el-button><el-button link :disabled="generating" @click="regenerate(m)">重新生成</el-button>
-              <el-button link type="primary" :loading="adoptingId===m.id" @click="adopt(m)">保存为标书草稿</el-button>
               <el-dropdown @command="format=>saveArtifact(m,format)"><el-button link :loading="savingMessageId===m.id">保存文档</el-button>
                 <template #dropdown><el-dropdown-menu><el-dropdown-item command="word">保存为 Word</el-dropdown-item><el-dropdown-item command="pdf">保存为 PDF</el-dropdown-item></el-dropdown-menu></template>
               </el-dropdown>
@@ -104,18 +101,19 @@ import { ArrowDown, Paperclip, Plus, Promotion, Search, UploadFilled, VideoPause
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { getToken } from '@/utils/storage'
 import { useAuthStore } from '@/stores/auth'
-import { useRoute, useRouter } from 'vue-router'
-import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, saveBidProjectChatDraft, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
+import { useRoute } from 'vue-router'
+import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { listDocumentModels } from '@/api/aiDocument'
 import { listEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
 import { pageTenderNotices } from '@/api/tenderNotice'
 import { createConversation, deleteDocumentArtifact, documentArtifactDownloadUrl, getConversationMessages, getConversationRun, listConversations, listDocumentArtifacts, regenerateConversationMessage, regenerateDocumentArtifact, renameDocumentArtifact, resumeConversationRun, saveBidArtifact, stopConversationRun, streamConversationMessage, uploadConversationAttachment } from '@/api/aiConversation'
+import MarkdownContent from '@/components/ai/MarkdownContent.vue'
 
-const router=useRouter(), route=useRoute(), auth=useAuthStore(), projects=ref([]), current=ref(null), keyword=ref(''), loadingProjects=ref(false)
+const route=useRoute(), auth=useAuthStore(), projects=ref([]), current=ref(null), keyword=ref(''), loadingProjects=ref(false)
 const conversations=ref([]), conversationId=ref(''), messages=ref([]), attachments=ref({}), pendingFiles=ref([]), draft=ref('')
-const generating=ref(false), uploading=ref(false), activeRunId=ref(''), activeStream=ref(null), messageBox=ref(null), adoptingId=ref('')
+const generating=ref(false), uploading=ref(false), activeRunId=ref(''), activeStream=ref(null), messageBox=ref(null)
 const createDialog=ref(false), createTab=ref('notice'), creating=ref(false), notices=ref([]), noticeKeyword=ref(''), loadingNotices=ref(false)
 const createForm=reactive({noticeId:'',projectName:'',projectType:'',file:null,modelConfigId:'',enterpriseId:'',ownerUserId:''})
 const models=ref([]), loadingModels=ref(false)
@@ -148,7 +146,6 @@ function stopPolling(){if(runPollTimer)clearTimeout(runPollTimer);runPollTimer=0
 async function stop(){if(!activeRunId.value)return;await stopConversationRun(activeRunId.value);activeStream.value?.abort?.();finish();await loadMessages()}
 function fail(m,e){if(activeRunId.value||m.runId){startPolling(m);return}m.status='FAILED';finish();ElMessage.error(e?.message||'连接中断')}
 async function refreshConversations(){const p=await listConversations({current:1,size:50,bizType:'AI_BID',bizId:current.value.id});conversations.value=p?.records||[]}
-async function adopt(m){adoptingId.value=m.id;try{await saveBidProjectChatDraft(current.value.id,{content:m.content,messageId:m.id});current.value=await getBidProject(current.value.id);ElMessage.success('已采用到标书草稿，可进入专业工作台继续编辑和导出')}finally{adoptingId.value=''}}
 async function loadArtifacts(){if(!current.value?.id)return;artifactLoading.value=true;try{const p=await listDocumentArtifacts({documentId:current.value.id,bizType:'AI_BID',current:1,size:100});artifacts.value=p?.records||[]}finally{artifactLoading.value=false}}
 async function saveArtifact(m,format){savingMessageId.value=m.id;try{await saveBidArtifact(current.value.id,{messageId:m.id,format,artifactName:current.value.projectName,styleCode:'BUSINESS'});ElMessage.success(format==='pdf'?'PDF已生成并保存':'Word已生成并保存');await loadArtifacts();artifactDrawer.value=true}finally{savingMessageId.value=''}}
 async function rebuildArtifact(item){artifactBusyId.value=item.id;try{await regenerateDocumentArtifact(item.id);ElMessage.success('已生成新版本');await loadArtifacts()}finally{artifactBusyId.value=''}}
@@ -170,7 +167,7 @@ async function createProject(){if(!createForm.modelConfigId)return ElMessage.war
 async function loadReferences(){const [kb,cm]=await Promise.all([listKnowledgeBases({status:1}),listBidProjectCompanyMaterialOptions(current.value.id)]);knowledgeBases.value=kb||[];companyMaterials.value=cm||[];referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||''}
 async function saveReferences(){savingReferences.value=true;try{await updateBidProject(current.value.id,{projectName:current.value.projectName,projectType:current.value.projectType,clientName:current.value.clientName,bidderName:current.value.bidderName,budgetAmount:current.value.budgetAmount,tenderDeadline:current.value.tenderDeadline,bidOpenTime:current.value.bidOpenTime,periodDays:current.value.periodDays,ownerUserId:current.value.ownerUserId,knowledgeIds:referenceForm.knowledgeIds,remark:current.value.remark});if(referenceForm.companyMaterialId){await bindBidProjectCompanyMaterial(current.value.id,{companyMaterialId:referenceForm.companyMaterialId})}else if(current.value.companyMaterialId){await unbindBidProjectCompanyMaterial(current.value.id)}current.value=await getBidProject(current.value.id);ElMessage.success('关联资料已保存，后续对话自动生效')}finally{savingReferences.value=false}}
 async function startRead(){reading.value=true;try{await startReadTenderProject(current.value.id,{aiLevel:'FLAGSHIP'});current.value=await getBidProject(current.value.id);ElMessage.success('已启动招标文件解析')}finally{reading.value=false}}
-function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'待校审',EXPORTED:'已导出'}[x.status]||x.status||'草稿')} function parseText(x){return({SUCCESS:'解析完成',PARSING:'解析中',FAILED:'解析失败',WAIT_PARSE:'待解析'}[x]||'待解析')} function timeText(v){return v?String(v).replace('T',' ').slice(0,16):''}
+function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'待校审',EXPORTED:'已导出'}[x.status]||x.status||'草稿')} function timeText(v){return v?String(v).replace('T',' ').slice(0,16):''}
 </script>
 
 <style scoped>

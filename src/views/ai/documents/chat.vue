@@ -51,7 +51,8 @@
               <div v-if="message.status === 'GENERATING' && !message.content" class="stream-status">
                 <span>正在生成中</span>
               </div>
-              {{ message.content }}<i v-if="message.status === 'GENERATING'" />
+              <MarkdownContent v-if="message.role === 'assistant'" :content="message.content" />
+              <template v-else>{{ message.content }}</template><i v-if="message.status === 'GENERATING'" />
             </div>
             <div v-if="message.role === 'assistant' && message.status !== 'GENERATING'" class="message-actions">
               <el-button link @click="copy(message.content)">复制</el-button>
@@ -135,6 +136,7 @@ import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { getToken } from '@/utils/storage'
 import { createDocument, getDocument, listDocumentModels, listDocumentTypes, pageDocuments } from '@/api/aiDocument'
 import { createConversation, deleteDocumentArtifact, documentArtifactDownloadUrl, getConversationMessages, getConversationRun, listConversations, listDocumentArtifacts, regenerateConversationMessage, regenerateDocumentArtifact, renameDocumentArtifact, resumeConversationRun, saveDocumentArtifact, stopConversationRun, streamConversationMessage, uploadConversationAttachment } from '@/api/aiConversation'
+import MarkdownContent from '@/components/ai/MarkdownContent.vue'
 
 const documents = ref([]), types = ref([]), models = ref([]), current = ref(null), keyword = ref(''), loadingDocs = ref(false), loadingModels = ref(false)
 const conversations = ref([]), conversationId = ref(''), messages = ref([]), attachments = ref({})
