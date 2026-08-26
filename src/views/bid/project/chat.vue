@@ -17,18 +17,19 @@
         <div class="title"><h2>{{ current.projectName }}</h2><p>{{ current.projectCode }} · {{ current.tenderNoticeTitle || '未关联标讯' }}</p></div>
         <div class="head-actions">
           <el-tag class="model-tag" type="success" effect="light" :title="currentModelDisplayName">{{ currentModelDisplayName }}</el-tag>
-          <el-dropdown @command="switchConversation"><el-button>历史对话<el-icon><ArrowDown /></el-icon></el-button>
-            <template #dropdown><el-dropdown-menu><el-dropdown-item command="__new__">＋ 新建对话</el-dropdown-item><el-dropdown-item v-for="c in conversations" :key="c.id" :command="c.id">{{ c.title }}</el-dropdown-item></el-dropdown-menu></template>
-          </el-dropdown>
-          <el-button @click="referenceDrawer=true;loadReferences()">关联资料</el-button>
+          <el-tag class="context-tag" effect="plain" @click="openReferences">已关联 {{ contextCount }} 项资料</el-tag>
           <el-button @click="artifactDrawer=true;loadArtifacts()">标书成果</el-button>
+          <el-dropdown @command="handleHeaderCommand"><el-button>更多<el-icon><ArrowDown /></el-icon></el-button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item command="new">新建对话</el-dropdown-item><el-dropdown-item command="history">历史对话</el-dropdown-item><el-dropdown-item command="references">关联资料</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
         </div>
       </header>
 
       <section ref="messageBox" class="messages">
-        <div v-if="!messages.length" class="welcome"><div class="ai-mark">AI</div><h1>告诉我这份标书要怎么编制</h1>
-          <p>标讯、招标文件解析结果、企业资料和知识库会自动加入对话上下文。</p>
-          <div class="suggestions"><button v-for="p in prompts" :key="p" @click="draft=p">{{ p }}</button></div>
+        <div v-if="!messages.length" class="welcome"><div class="ai-mark">AI</div><h1>这份标书，您想先做什么？</h1>
+          <p>已自动关联当前项目资料，选择一个任务即可开始，也可以直接在下方输入要求。</p>
+          <div class="start-steps"><span><b>1</b>关联项目资料</span><i></i><span><b>2</b>选择编制任务</span><i></i><span><b>3</b>编辑并导出</span></div>
+          <div class="guide-grid"><button v-for="(task,index) in guideTasks" :key="task.title" @click="chooseGuide(task)"><i>{{ index+1 }}</i><span><strong>{{ task.title }}</strong><small>{{ task.description }}</small></span></button></div>
         </div>
         <article v-for="m in messages" :key="m.id" class="message" :class="m.role">
           <div class="avatar">{{ m.role==='user'?'我':'AI' }}</div><div class="bubble-wrap">
@@ -37,20 +38,25 @@
               <MarkdownContent v-if="m.role==='assistant'" :content="m.content"/><template v-else>{{ m.content }}</template><i v-if="m.status==='GENERATING'" />
             </div>
             <div v-if="m.role==='assistant'&&m.status!=='GENERATING'" class="message-actions">
-              <el-button link @click="copyText(m.content)">复制</el-button><el-button link :disabled="generating" @click="regenerate(m)">重新生成</el-button>
-              <el-dropdown @command="format=>saveArtifact(m,format)"><el-button link :loading="savingMessageId===m.id">保存文档</el-button>
-                <template #dropdown><el-dropdown-menu><el-dropdown-item command="word">保存为 Word</el-dropdown-item><el-dropdown-item command="pdf">保存为 PDF</el-dropdown-item></el-dropdown-menu></template>
+              <el-button link @click="continueFrom(m)">继续追问</el-button>
+              <el-button link type="primary" @click="openEditor(m)">在线编辑</el-button>
+              <el-dropdown @command="format=>saveArtifact(m,format)"><el-button link :loading="savingMessageId===m.id">导出</el-button>
+                <template #dropdown><el-dropdown-menu><el-dropdown-item command="word">导出 Word</el-dropdown-item><el-dropdown-item command="pdf">导出 PDF</el-dropdown-item></el-dropdown-menu></template>
+              </el-dropdown>
+              <el-dropdown @command="command=>handleMessageCommand(m,command)"><el-button link>更多</el-button>
+                <template #dropdown><el-dropdown-menu><el-dropdown-item command="copy">复制</el-dropdown-item><el-dropdown-item command="regenerate" :disabled="generating">重新生成</el-dropdown-item></el-dropdown-menu></template>
               </el-dropdown>
             </div>
+            <div v-if="m.id===latestAssistantMessageId&&m.status!=='GENERATING'" class="next-guide"><span>接下来可以：</span><button v-for="item in nextSuggestions" :key="item" @click="chooseSuggestion(item)">{{ item }}</button></div>
           </div>
         </article>
       </section>
 
       <footer class="composer">
         <div v-if="pendingFiles.length" class="chips pending"><span v-for="f in pendingFiles" :key="f.attachment.id">{{ f.attachment.fileName }}<button @click="removePending(f)">×</button></span></div>
-        <el-input v-model="draft" type="textarea" resize="none" :autosize="{minRows:2,maxRows:7}" placeholder="例如：提取废标项并生成评分响应矩阵，Enter发送" @keydown="onKeydown" />
-        <div class="composer-tools"><div><el-upload :show-file-list="false" :http-request="uploadChatFile" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md"><el-button text :icon="Paperclip" :loading="uploading">添加招标文件或资料</el-button></el-upload>
-          <span class="context-state"><i></i> 已关联项目上下文</span></div>
+        <el-input v-model="draft" type="textarea" resize="none" :autosize="{minRows:2,maxRows:7}" :placeholder="composerPlaceholder" @keydown="onKeydown" />
+        <div class="composer-tools"><div><el-upload :show-file-list="false" :http-request="uploadChatFile" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md"><el-tooltip content="添加招标文件或资料" placement="top"><el-button circle :icon="Paperclip" :loading="uploading" /></el-tooltip></el-upload>
+          <span class="context-state"><i></i> 已关联 {{ contextCount }} 项项目资料</span></div>
           <el-button v-if="generating" type="danger" :icon="VideoPause" circle @click="stop"/><el-button v-else type="primary" :icon="Promotion" circle :disabled="!canSend" @click="send"/>
         </div>
       </footer>
@@ -78,18 +84,22 @@
       <template #footer><el-button @click="createDialog=false">取消</el-button><el-button type="primary" :loading="creating" @click="createProject">创建并开始对话</el-button></template>
     </el-dialog>
 
+    <el-drawer v-model="conversationDrawer" title="历史对话" size="420px"><div class="conversation-list">
+      <el-button type="primary" plain class="new-conversation" @click="switchConversation('__new__');conversationDrawer=false">＋ 新建对话</el-button>
+      <button v-for="item in conversations" :key="item.id" :class="{active:item.id===conversationId}" @click="switchConversation(item.id);conversationDrawer=false"><strong>{{ item.title||'新对话' }}</strong><span>{{ timeText(item.lastMessageTime||item.updateTime||item.createTime) }}</span></button>
+    </div></el-drawer>
+
     <el-drawer v-model="referenceDrawer" title="项目上下文与关联资料" size="520px">
       <div v-if="current" class="context-summary"><h3>自动关联</h3><p>标讯：{{ current.tenderNoticeTitle||'未关联' }}</p><p>招标文件：{{ current.tenderFileName||'未上传' }}</p><p>企业资料：{{ current.companyMaterialName||'未关联' }}</p></div>
       <h3>知识库</h3><el-select v-model="referenceForm.knowledgeIds" multiple filterable placeholder="选择用于本项目的知识库" style="width:100%"><el-option v-for="k in knowledgeBases" :key="k.id" :label="k.kbName" :value="k.id"/></el-select>
       <h3>企业资料档案</h3><el-select v-model="referenceForm.companyMaterialId" clearable filterable placeholder="选择企业资料" style="width:100%"><el-option v-for="m in companyMaterials" :key="m.id" :label="m.title" :value="m.id"/></el-select>
       <div class="drawer-actions"><el-button type="primary" :loading="savingReferences" @click="saveReferences">保存关联</el-button><el-button v-if="current.tenderFileId&&current.parseStatus!=='SUCCESS'" :loading="reading" @click="startRead">开始解析招标文件</el-button></div>
-      <el-divider/><h3>当前标书草稿</h3><div class="draft-preview">{{ current.bidDocFinalContent||current.contentMarkdown||'尚未采用AI回复' }}</div>
     </el-drawer>
     <el-drawer v-model="artifactDrawer" title="标书成果" size="520px">
       <div class="artifact-toolbar"><span>保存后的Word/PDF会长期保留，并按版本管理</span><el-button link @click="loadArtifacts">刷新</el-button></div>
       <div v-loading="artifactLoading" class="artifact-list"><div v-for="item in artifacts" :key="item.id" class="artifact-card">
         <div class="artifact-icon">{{ item.format==='pdf'?'PDF':'W' }}</div><div class="artifact-main"><strong>{{ item.artifactName }}</strong><span>V{{ item.versionNo }} · {{ sizeText(item.fileSize) }} · {{ timeText(item.createTime) }}</span>
-          <div><el-button v-if="item.format==='pdf'" link @click="previewArtifact(item)">预览</el-button><el-button link @click="downloadArtifact(item)">下载</el-button><el-button link @click="renameArtifact(item)">重命名</el-button><el-button link :loading="artifactBusyId===item.id" @click="rebuildArtifact(item)">重新生成</el-button><el-button link type="danger" @click="removeArtifact(item)">删除</el-button></div>
+          <div><el-button v-if="item.format==='pdf'" link @click="previewArtifact(item)">预览</el-button><el-button link @click="downloadArtifact(item)">下载</el-button><el-button link @click="renameArtifact(item)">重命名</el-button><el-button v-if="item.sourceMessageId" link :loading="artifactBusyId===item.id" @click="rebuildArtifact(item)">重新生成</el-button><el-button link type="danger" @click="removeArtifact(item)">删除</el-button></div>
         </div></div><el-empty v-if="!artifacts.length&&!artifactLoading" description="暂无标书成果" /></div>
     </el-drawer>
   </div>
@@ -101,7 +111,7 @@ import { ArrowDown, Paperclip, Plus, Promotion, Search, UploadFilled, VideoPause
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { getToken } from '@/utils/storage'
 import { useAuthStore } from '@/stores/auth'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { listDocumentModels } from '@/api/aiDocument'
@@ -111,7 +121,7 @@ import { pageTenderNotices } from '@/api/tenderNotice'
 import { createConversation, deleteDocumentArtifact, documentArtifactDownloadUrl, getConversationMessages, getConversationRun, listConversations, listDocumentArtifacts, regenerateConversationMessage, regenerateDocumentArtifact, renameDocumentArtifact, resumeConversationRun, saveBidArtifact, stopConversationRun, streamConversationMessage, uploadConversationAttachment } from '@/api/aiConversation'
 import MarkdownContent from '@/components/ai/MarkdownContent.vue'
 
-const route=useRoute(), auth=useAuthStore(), projects=ref([]), current=ref(null), keyword=ref(''), loadingProjects=ref(false)
+const route=useRoute(), router=useRouter(), auth=useAuthStore(), projects=ref([]), current=ref(null), keyword=ref(''), loadingProjects=ref(false)
 const conversations=ref([]), conversationId=ref(''), messages=ref([]), attachments=ref({}), pendingFiles=ref([]), draft=ref('')
 const generating=ref(false), uploading=ref(false), activeRunId=ref(''), activeStream=ref(null), messageBox=ref(null)
 const createDialog=ref(false), createTab=ref('notice'), creating=ref(false), notices=ref([]), noticeKeyword=ref(''), loadingNotices=ref(false)
@@ -121,10 +131,22 @@ const enterprises=ref([]), owners=ref([]), loadingEnterprises=ref(false), loadin
 const referenceDrawer=ref(false), knowledgeBases=ref([]), companyMaterials=ref([]), savingReferences=ref(false), reading=ref(false)
 const referenceForm=reactive({knowledgeIds:[],companyMaterialId:''})
 const artifactDrawer=ref(false), artifactLoading=ref(false), artifacts=ref([]), savingMessageId=ref(''), artifactBusyId=ref('')
-const prompts=['分析招标文件，提取资格条件、废标项和重要时间','根据评分办法生成评分响应矩阵','结合资料库生成完整投标文件目录','检查当前标书缺失的资料和未响应评分项']
+const conversationDrawer=ref(false)
+const guideTasks=[
+  {title:'分析招标文件',description:'提取资格条件、废标项和重要时间',prompt:'请分析当前项目的招标文件，提取资格条件、废标项、重要时间节点和需要重点关注的风险。'},
+  {title:'生成评分响应表',description:'根据评分办法逐项给出响应建议',prompt:'请根据招标文件中的评分办法，生成完整的评分响应矩阵，并给出每个评分项的响应建议和所需证明材料。'},
+  {title:'编制投标目录',description:'结合项目资料生成完整目录',prompt:'请结合招标文件、标讯和已关联资料，生成一份完整、层级清晰的投标文件目录。'},
+  {title:'撰写标书章节',description:'编写商务、技术或服务方案',prompt:'请根据当前项目资料协助撰写标书章节。先列出可撰写的章节并询问我从哪一章开始。'},
+  {title:'检查标书风险',description:'检查遗漏、冲突和未响应内容',prompt:'请检查当前项目可能存在的资格、废标、评分响应和资料完整性风险，并输出可执行的整改清单。'}
+]
 const canSend=computed(()=>!generating.value&&!uploading.value&&(!!draft.value.trim()||pendingFiles.value.length>0))
 const currentModelDisplayName=computed(()=>{const item=models.value.find(x=>x.id===current.value?.modelConfigId);return item?.displayName||current.value?.modelName||providerName(item?.provider)||'系统默认模型'})
 const isPlatformManager=computed(()=>{const roles=auth.roleCodes||[];return roles.includes('SUPERADMIN')||roles.includes('PLATFORMADMIN')})
+const contextCount=computed(()=>[current.value?.tenderNoticeId,current.value?.tenderFileId,current.value?.companyMaterialId].filter(Boolean).length+(current.value?.knowledgeIdList?.length||0))
+const latestAssistant=computed(()=>[...messages.value].reverse().find(item=>item.role==='assistant')||null)
+const latestAssistantMessageId=computed(()=>latestAssistant.value?.id||'')
+const nextSuggestions=computed(()=>suggestionsFor(latestAssistant.value?.content||''))
+const composerPlaceholder=computed(()=>current.value?.tenderFileId?'告诉AI你想完成什么，或从上方建议中选择……':'告诉AI你想完成什么，也可以先上传招标文件……')
 let timer=0, runPollTimer=0
 
 onMounted(async()=>{await loadModels();await loadProjects(route.query.projectId)}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling()})
@@ -134,6 +156,7 @@ async function selectProject(item){current.value=await getBidProject(item.id);re
 async function initChat(){const p=await listConversations({current:1,size:50,bizType:'AI_BID',bizId:current.value.id});conversations.value=p?.records||[];conversationId.value=conversations.value[0]?.id||(await newConversation()).id;await loadMessages()}
 async function newConversation(){const c=await createConversation({title:'新对话',bizType:'AI_BID',bizId:current.value.id,aiLevel:'FLAGSHIP'});conversations.value.unshift(c);conversationId.value=c.id;messages.value=[];attachments.value={};return c}
 async function switchConversation(id){if(id==='__new__')await newConversation();else{conversationId.value=id;await loadMessages()}}
+async function handleHeaderCommand(command){if(command==='new')await switchConversation('__new__');if(command==='history')conversationDrawer.value=true;if(command==='references')openReferences()}
 async function loadMessages(){const d=await getConversationMessages(conversationId.value);messages.value=d?.messages||[];attachments.value=d?.attachments||{};await scrollBottom();const running=[...messages.value].reverse().find(x=>x.role==='assistant'&&x.status==='GENERATING'&&x.runId);if(running){generating.value=true;activeRunId.value=running.runId;startPolling(running);activeStream.value=await resumeConversationRun(running.runId,running.content?.length||0,handlers(running))}}
 async function uploadChatFile({file}){uploading.value=true;try{pendingFiles.value.push(await uploadConversationAttachment(conversationId.value,file));ElMessage.success('资料已加入本轮对话')}finally{uploading.value=false}}
 function removePending(f){pendingFiles.value=pendingFiles.value.filter(x=>x.attachment.id!==f.attachment.id)}
@@ -155,6 +178,27 @@ async function downloadArtifact(item){const response=await fetch(documentArtifac
 async function previewArtifact(item){const response=await fetch(documentArtifactDownloadUrl(item.id),{headers:{Authorization:`Bearer ${getToken()}`}});if(!response.ok)return ElMessage.error('预览失败');const url=URL.createObjectURL(await response.blob());window.open(url,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(url),60000)}
 function sizeText(bytes){const n=Number(bytes||0);return n<1024*1024?`${Math.max(1,Math.round(n/1024))}KB`:`${(n/1024/1024).toFixed(1)}MB`}
 async function copyText(t){await navigator.clipboard.writeText(t||'');ElMessage.success('已复制')} function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}} async function scrollBottom(){await nextTick();if(messageBox.value)messageBox.value.scrollTop=messageBox.value.scrollHeight}
+function openEditor(message){router.push({path:'/ai-bid/editor',query:{projectId:current.value.id,messageId:message.id}})}
+function chooseGuide(task){draft.value=task.prompt;nextTick(()=>scrollBottom())}
+function chooseSuggestion(text){draft.value=suggestionPrompt(text);nextTick(()=>scrollBottom())}
+function continueFrom(message){draft.value=`请基于上一条回复继续完善，重点补充：`;nextTick(()=>scrollBottom())}
+function handleMessageCommand(message,command){if(command==='copy')copyText(message.content);if(command==='regenerate')regenerate(message)}
+function openReferences(){referenceDrawer.value=true;loadReferences()}
+function suggestionsFor(content){
+  const text=String(content||'')
+  if(/评分|得分|响应矩阵/.test(text))return ['补充评分证明材料','生成逐项响应内容','检查评分项遗漏']
+  if(/目录|章节|大纲/.test(text))return ['撰写第一章','检查目录完整性','调整目录结构']
+  if(/资格|废标|否决/.test(text))return ['生成资格审查表','生成废标项清单','继续分析评分办法']
+  if(/风险|缺失|遗漏/.test(text))return ['生成整改清单','补充缺失资料','重新检查完整性']
+  return ['继续完善内容','检查遗漏和风险','整理为正式标书章节']
+}
+function suggestionPrompt(text){return({
+  '补充评分证明材料':'请基于上一条回复，补充每个评分项所需的证明材料和资料来源。','生成逐项响应内容':'请根据上一条评分分析，生成可直接写入投标文件的逐项响应内容。','检查评分项遗漏':'请检查上一条评分响应是否存在遗漏、重复或无法得分的内容。',
+  '撰写第一章':'请按照上一条目录开始撰写第一章，内容要完整、正式并符合投标文件语言。','检查目录完整性':'请检查上一条目录是否完整响应招标文件要求，并指出需要补充的章节。','调整目录结构':'请优化上一条目录的层级和章节顺序，使其更适合正式投标文件。',
+  '生成资格审查表':'请根据上一条分析生成资格审查对照表，列明要求、响应材料和风险状态。','生成废标项清单':'请将上一条内容整理成废标项清单，并标明核验方式和责任人。','继续分析评分办法':'请继续读取评分办法，整理评分项目、分值、得分条件和响应建议。',
+  '生成整改清单':'请将上一条风险分析整理成可执行的整改清单，并标注优先级。','补充缺失资料':'请列出当前缺失资料，并说明获取方式、责任人和完成时限。','重新检查完整性':'请结合当前全部项目资料重新检查投标响应完整性。',
+  '继续完善内容':'请基于上一条回复继续补充细节，使内容可以直接用于正式投标文件。','检查遗漏和风险':'请检查上一条回复中的遗漏、矛盾、风险和不明确内容。','整理为正式标书章节':'请将上一条回复整理成格式规范、语言正式的标书章节。'
+}[text]||text)}
 
 function providerName(provider){return({doubao:'豆包',bailian:'百炼',qwen:'千问',deepseek:'DeepSeek'}[String(provider||'').toLowerCase()]||provider||'系统默认模型')}
 async function loadModels(){loadingModels.value=true;try{models.value=await listDocumentModels()||[];const preferred=models.value.find(x=>x.defaultFlag)||models.value[0];if(!createForm.modelConfigId&&preferred)createForm.modelConfigId=preferred.id}finally{loadingModels.value=false}}
@@ -175,4 +219,6 @@ function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'
 .create-model-form{margin-bottom:4px}.model-lock-tip{margin-top:6px;color:#8a96a8;font-size:12px}.model-tag{max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .artifact-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;color:#7b8798;font-size:12px}.artifact-card{display:flex;gap:12px;padding:14px;margin-bottom:10px;border:1px solid #e2e7ef;border-radius:12px}.artifact-icon{width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:#eef2ff;color:#536fe5;font-weight:800}.artifact-main{min-width:0;flex:1}.artifact-main strong,.artifact-main span{display:block}.artifact-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.artifact-main span{margin:5px 0;color:#8a96a8;font-size:12px}
 .create-admin-form{margin-bottom:8px;padding:12px 14px;border:1px solid #e7e3ff;border-radius:12px;background:#faf9ff}.admin-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}.create-admin-form :deep(.el-form-item){margin-bottom:4px}
+.context-tag{cursor:pointer}.welcome{max-width:820px;margin:5vh auto 0}.welcome h1{margin:0 0 10px;font-size:27px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:26px;text-align:left}.guide-grid button{display:flex;align-items:flex-start;gap:12px;min-height:82px;padding:16px;border:1px solid #e0e5ee;border-radius:14px;background:#fff;color:#24324a;cursor:pointer;transition:.2s}.guide-grid button:last-child{grid-column:1/-1}.guide-grid button:hover{border-color:#7567e9;box-shadow:0 8px 22px rgba(89,75,210,.1);transform:translateY(-1px)}.guide-grid i{width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:grid;place-items:center;background:#f0edff;color:#6657df;font-size:12px;font-style:normal;font-weight:700}.guide-grid strong,.guide-grid small{display:block}.guide-grid strong{margin-bottom:7px;font-size:15px}.guide-grid small{color:#8490a3;font-size:12px;line-height:1.5}.message-actions{display:flex;align-items:center;margin-top:7px;opacity:1}.next-guide{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7f8fc}.next-guide span{color:#7c8799;font-size:12px}.next-guide button{padding:5px 10px;border:1px solid #dce2ec;border-radius:999px;background:#fff;color:#52627b;font-size:12px;cursor:pointer}.next-guide button:hover{border-color:#7567e9;color:#6657df}.composer{padding:13px 16px}.composer-tools{margin-top:4px}.conversation-list{display:flex;flex-direction:column;gap:9px}.conversation-list .new-conversation{width:100%;margin-bottom:5px}.conversation-list>button:not(.el-button){padding:13px 14px;text-align:left;border:1px solid #e3e7ef;border-radius:12px;background:#fafbfc;cursor:pointer}.conversation-list>button.active{border-color:#7567e9;background:#f3f1ff}.conversation-list strong,.conversation-list span{display:block}.conversation-list span{margin-top:5px;color:#8b96a8;font-size:12px}@media(max-width:850px){.guide-grid{grid-template-columns:1fr}.guide-grid button:last-child{grid-column:auto}}
+.start-steps{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px auto 0;color:#748096;font-size:12px}.start-steps span{display:flex;align-items:center;gap:6px}.start-steps b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#ece9ff;color:#6657df}.start-steps>i{width:32px;height:1px;background:#dce1ea}
 </style>

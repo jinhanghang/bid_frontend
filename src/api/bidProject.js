@@ -42,6 +42,12 @@ export function saveBidProjectChatDraft(id, data) {
   return request.put(`/bid-project/${id}/chat-draft`, data)
 }
 
+export function getBidDocumentEditor(id, messageId) { return request.get(`/bid-project/${id}/editor`, { params: { messageId } }) }
+export function saveBidDocumentEditor(id, messageId, data) { return request.put(`/bid-project/${id}/editor`, data, { params: { messageId } }) }
+export function listBidDocumentEditorVersions(id, messageId) { return request.get(`/bid-project/${id}/editor/versions`, { params: { messageId } }) }
+export function restoreBidDocumentEditorVersion(id, messageId, versionId) { return request.post(`/bid-project/${id}/editor/versions/${versionId}/restore`, null, { params: { messageId } }) }
+export function exportBidDocumentEditor(id, messageId, data) { return request.post(`/bid-project/${id}/editor/export`, data, { params: { messageId }, timeout: NO_TIMEOUT }) }
+
 /**
  * 修改标书项目
  */

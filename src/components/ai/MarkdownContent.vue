@@ -40,7 +40,7 @@ function renderMarkdown(source) {
   let index = 0
   while (index < lines.length) {
     const line = lines[index]
-    if (!line.trim()) { index += 1; continue }
+    if (!line.trim()) { html.push('<div class="blank-line" aria-hidden="true"></div>'); index += 1; continue }
 
     if (/^\s*```/.test(line)) {
       const code = []
@@ -92,13 +92,13 @@ function renderMarkdown(source) {
       continue
     }
 
-    const paragraph = [line.trim()]
+    const paragraph = [line]
     index += 1
     while (index < lines.length && lines[index].trim()
       && !/^\s*(#{1,6})\s+/.test(lines[index]) && !/^\s*```/.test(lines[index])
       && !/^\s*([-+*]|\d+[.)])\s+/.test(lines[index])
       && !(lines[index].includes('|') && index + 1 < lines.length && isDivider(lines[index + 1]))) {
-      paragraph.push(lines[index++].trim())
+      paragraph.push(lines[index++])
     }
     html.push(`<p>${paragraph.map(inline).join('<br>')}</p>`)
   }
@@ -107,10 +107,11 @@ function renderMarkdown(source) {
 </script>
 
 <style scoped>
-.markdown-content{font-size:15px;line-height:1.85;color:inherit;overflow-wrap:anywhere}
+.markdown-content{font-size:15px;line-height:1.85;color:inherit;overflow-wrap:anywhere;overflow-anchor:none}
 .markdown-content :deep(h1),.markdown-content :deep(h2),.markdown-content :deep(h3),.markdown-content :deep(h4){margin:20px 0 10px;color:#17243a;line-height:1.4}.markdown-content :deep(h1){font-size:24px}.markdown-content :deep(h2){font-size:21px}.markdown-content :deep(h3){font-size:18px}.markdown-content :deep(h4){font-size:16px}
-.markdown-content :deep(p){margin:8px 0}.markdown-content :deep(ul),.markdown-content :deep(ol){margin:8px 0;padding-left:26px}.markdown-content :deep(li){margin:5px 0}.markdown-content :deep(strong){font-weight:700;color:#13213a}.markdown-content :deep(a){color:#526ff0;text-decoration:none}.markdown-content :deep(a:hover){text-decoration:underline}
+.markdown-content :deep(p){margin:8px 0;white-space:break-spaces}.markdown-content :deep(.blank-line){height:1.85em}.markdown-content :deep(ul),.markdown-content :deep(ol){margin:8px 0;padding-left:26px}.markdown-content :deep(li){margin:5px 0;white-space:break-spaces}.markdown-content :deep(strong){font-weight:700;color:#13213a}.markdown-content :deep(a){color:#526ff0;text-decoration:none}.markdown-content :deep(a:hover){text-decoration:underline}
 .markdown-content :deep(hr){margin:18px 0;border:0;border-top:1px solid #e2e7ef}.markdown-content :deep(blockquote){margin:12px 0;padding:10px 14px;border-left:4px solid #7589ee;background:#f4f6ff;color:#55627a}
 .markdown-content :deep(pre){margin:12px 0;padding:14px;overflow:auto;border-radius:10px;background:#172033;color:#e8edf6;line-height:1.65}.markdown-content :deep(code){padding:2px 5px;border-radius:4px;background:#eef1f7;font-family:Consolas,monospace;font-size:13px}.markdown-content :deep(pre code){padding:0;background:transparent;color:inherit}
 .markdown-content :deep(.table-wrap){width:100%;margin:14px 0;overflow-x:auto;border:1px solid #dfe5ee;border-radius:10px}.markdown-content :deep(table){width:100%;min-width:620px;border-collapse:collapse;background:#fff}.markdown-content :deep(th),.markdown-content :deep(td){padding:10px 12px;border-right:1px solid #e4e8ef;border-bottom:1px solid #e4e8ef;text-align:left;vertical-align:top}.markdown-content :deep(th){background:#f5f7fb;color:#273650;font-weight:700}.markdown-content :deep(tr:last-child td){border-bottom:0}.markdown-content :deep(th:last-child),.markdown-content :deep(td:last-child){border-right:0}
+.markdown-content :deep(th),.markdown-content :deep(td),.markdown-content :deep(blockquote),.markdown-content :deep(h1),.markdown-content :deep(h2),.markdown-content :deep(h3),.markdown-content :deep(h4){white-space:break-spaces}
 </style>

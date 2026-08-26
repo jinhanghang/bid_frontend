@@ -387,10 +387,6 @@
                 </el-table>
               </template>
 
-              <div class="fixed-save-bar" v-if="canEditCurrentArchive">
-                <el-button @click="resetCurrentArchive">重置</el-button>
-                <el-button type="primary" :loading="saving" @click="saveArchive">保存修改</el-button>
-              </div>
             </section>
           </div>
         </template>
@@ -1782,12 +1778,21 @@ function normalizeRoleList(values = []) {
   display: flex;
   flex-direction: column;
   background: #fff;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 
 .detail-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex: 0 0 auto;
   min-height: 64px;
   padding: 10px 22px;
   border-bottom: 1px solid #eef2f7;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1844,6 +1849,7 @@ function normalizeRoleList(values = []) {
 }
 
 .upload-row {
+  flex: 0 0 auto;
   margin: 14px 22px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1910,13 +1916,14 @@ function normalizeRoleList(values = []) {
 .workspace {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: calc(100% - 65px);
   margin-top: 0;
   border-top: 0;
 }
 
 .section-nav {
+  align-self: stretch;
   border-right: 1px solid #eef2f7;
   padding: 16px 12px;
   background: #fbfdff;
@@ -1947,8 +1954,8 @@ function normalizeRoleList(values = []) {
 .section-panel {
   position: relative;
   min-width: 0;
-  padding: 20px 22px 74px;
-  overflow: auto;
+  padding: 20px 22px 28px;
+  overflow: visible;
 }
 
 .panel-head {
@@ -1999,21 +2006,6 @@ function normalizeRoleList(values = []) {
 
 .archive-data-table {
   width: 100%;
-}
-
-.fixed-save-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 58px;
-  border-top: 1px solid #eef2f7;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(8px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
 }
 
 .empty-landing {
