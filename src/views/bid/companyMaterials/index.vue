@@ -126,6 +126,7 @@
             <el-tag v-if="formDirty" type="warning" effect="light">有未保存修改</el-tag>
             <div class="top-spacer"></div>
             <div class="top-actions">
+              <el-button v-if="route.query.fromProject" plain @click="returnToBidProject">返回AI标书</el-button>
               <el-button :icon="View" :disabled="!canDownloadArchiveFile(selectedArchive)" @click="openFile(selectedArchive)">下载/查看附件</el-button>
               <el-button v-if="canEditCurrentArchive" plain :disabled="!selectedArchive?.fileId" @click="openKnowledgeLinkDialog">加入知识库</el-button>
               <el-button v-if="canEditCurrentArchive" :icon="Upload" @click="showUpload = !showUpload">添加文件</el-button>
@@ -138,9 +139,9 @@
               <div class="upload-card__title">上传资料附件</div>
               <div class="upload-card__desc">一个档案暂关联一个主附件，适合上传营业执照、证书扫描件、业绩合同或财务资料。</div>
               <FileUploadBox
-                v-if="canEditCurrentArchive && profile.id"
+                v-if="canEditCurrentArchive && currentArchiveId"
                 module-type="company_material"
-                :biz-id="profile.id"
+                :biz-id="currentArchiveId"
                 :private-flag="true"
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar"
                 :max-count="1"
@@ -513,6 +514,36 @@
             />
           </el-form-item>
         </div>
+        <div class="record-attachment-box">
+          <div class="record-attachment-head">
+            <div>
+              <strong>证明附件</strong>
+              <span>上传与本条记录对应的证书、合同、人员证明或财务文件</span>
+            </div>
+            <el-tag size="small" effect="plain">{{ recordDialog.form.attachments?.length || 0 }} 个</el-tag>
+          </div>
+          <div v-if="recordDialog.form.attachments?.length" class="record-attachment-list">
+            <div v-for="(file, fileIndex) in recordDialog.form.attachments" :key="file.id || fileIndex" class="record-attachment-item">
+              <span>{{ file.originalName || file.fileName || '证明附件' }}</span>
+              <div>
+                <el-button link type="primary" @click="openRecordAttachment(file)">查看</el-button>
+                <el-button link type="danger" @click="removeRecordAttachment(fileIndex)">移除</el-button>
+              </div>
+            </div>
+          </div>
+          <FileUploadBox
+            v-if="currentArchiveId"
+            module-type="company_material"
+            :biz-id="currentArchiveId"
+            :private-flag="true"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar"
+            :max-count="5"
+            :max-size-mb="50"
+            tip="可上传多个证明文件；保存本条记录后会自动保存到企业档案。"
+            @success="onRecordAttachmentSuccess"
+          />
+          <el-alert v-else title="请先保存企业资料档案，再为明细上传证明附件。" type="info" :closable="false" show-icon />
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="recordDialog.visible = false">取消</el-button>
@@ -540,7 +571,7 @@ import {
   User,
   View
 } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageKnowledgeBases } from '@/api/knowledge'
@@ -556,6 +587,7 @@ import {
 import FileUploadBox from '@/components/FileUploadBox.vue'
 import { downloadFileBlob } from '@/api/file'
 
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
@@ -759,6 +791,8 @@ const canManageCompanyMaterial = computed(() => canManagePlatform.value || curre
 const hasEnterprise = computed(() => Boolean(auth.user?.enterpriseId))
 const showEnterpriseRequiredGuide = computed(() => !canManagePlatform.value && !hasEnterprise.value)
 const canEditCurrentArchive = computed(() => canManageCompanyMaterial.value && (!selectedArchive.value?.id || Boolean(selectedArchive.value?.canEdit)))
+// 数据库详情 ID 优先作为当前主档案标识；兼容旧档案 content 中 profile.id 为空的情况。
+const currentArchiveId = computed(() => selectedArchive.value?.id || profile.id || null)
 const currentTitle = computed(() => profile.license.companyName || selectedArchive.value?.title || '未命名资料档案')
 const currentEnterpriseName = computed(() => enterprises.value.find((item) => String(item.id) === String(profile.enterpriseId))?.enterpriseName || '')
 const formDirty = computed(() => editMode.value && profileSnapshot.value && profileSnapshot.value !== snapshotProfile())
@@ -774,7 +808,12 @@ function canEditArchive(item) {
 onMounted(async () => {
   if (showEnterpriseRequiredGuide.value) return
   await loadEnterprises()
-  await loadArchives()
+  const archiveId = String(route.query.archiveId || '')
+  await loadArchives(archiveId || undefined)
+  if (archiveId && String(selectedArchive.value?.id || '') !== archiveId) {
+    await selectArchive({ id: archiveId }, { skipConfirm: true })
+  }
+  await applyRouteGuide()
 })
 
 onBeforeUnmount(() => {
@@ -1237,6 +1276,29 @@ async function selectArchive(row, options = {}) {
   activeTab.value = 'license'
 }
 
+async function applyRouteGuide() {
+  if (!selectedArchive.value?.id) return
+  const targetTab = String(route.query.tab || 'license')
+  if (tabs.some((item) => item.key === targetTab)) activeTab.value = targetTab
+  if (route.query.action === 'upload') {
+    showUpload.value = true
+    return
+  }
+  if (route.query.action === 'add' && tableMetas[targetTab]) {
+    await nextTick()
+    openRecordDialog(targetTab)
+    return
+  }
+  const recordIndex = Number(route.query.recordIndex)
+  if (route.query.action === 'edit' && tableMetas[targetTab] && Number.isInteger(recordIndex) && recordIndex >= 0) {
+    const rows = profile[tableMetas[targetTab].listKey] || []
+    if (rows[recordIndex]) {
+      await nextTick()
+      openRecordDialog(targetTab, rows[recordIndex], recordIndex)
+    }
+  }
+}
+
 async function openCreate() {
   if (!canManageCompanyMaterial.value) {
     ElMessage.warning('普通用户只能查看资料库，不能新增资料')
@@ -1264,6 +1326,10 @@ async function loadCurrentUser() {
 
 function goEnterpriseApply() {
   router.push('/system/enterprise-apply')
+}
+
+function returnToBidProject() {
+  router.push({ path: '/ai-bid', query: { projectId: route.query.fromProject } })
 }
 
 function closeDetail() {
@@ -1319,10 +1385,17 @@ function parseMaterialContent(material = {}) {
   try {
     const parsed = JSON.parse(material.content)
     if (parsed?.version === CONTENT_VERSION && parsed.profile) {
-      return deepMerge(base, parsed.profile)
+      const merged = deepMerge(base, parsed.profile)
+      // content 是业务内容，不能用其中的空值或旧值覆盖数据库主键。
+      merged.id = material.id || null
+      merged.enterpriseId = material.enterpriseId || merged.enterpriseId || ''
+      return merged
     }
     if (parsed?.license || parsed?.company || parsed?.bank) {
-      return deepMerge(base, parsed)
+      const merged = deepMerge(base, parsed)
+      merged.id = material.id || null
+      merged.enterpriseId = material.enterpriseId || merged.enterpriseId || ''
+      return merged
     }
   } catch (e) {
     // 兼容旧资料正文，作为描述保留。
@@ -1356,6 +1429,7 @@ async function confirmDiscardChanges() {
 }
 
 async function saveArchive() {
+  if (saving.value) return
   if (!canEditCurrentArchive.value) {
     ElMessage.warning('当前账号无权编辑该企业资料')
     return
@@ -1386,14 +1460,24 @@ async function saveArchive() {
       remark: payloadProfile.meta.description || null
     }
 
-    let savedId = profile.id
-    if (profile.id) {
-      await updateCompanyMaterial(profile.id, payload)
+    // profile.id 是表单快照中的主档案 ID，selectedArchive.id 是当前详情的主档案 ID。
+    // 两者任意一个存在都只能执行更新，避免页面状态尚未回填时重复创建主数据。
+    let savedId = profile.id || selectedArchive.value?.id || null
+    if (savedId) {
+      await updateCompanyMaterial(savedId, payload)
       ElMessage.success('资料档案已保存')
     } else {
       savedId = await createCompanyMaterial(payload)
+      if (!savedId) throw new Error('创建资料档案后未返回档案ID')
+      // 创建成功后必须立即回填 ID。不能等列表刷新，否则快速点击主保存或小项保存
+      // 仍会把当前表单当成新档案，再次调用新增接口。
+      profile.id = savedId
       ElMessage.success('资料档案已创建')
     }
+    const detail = await getCompanyMaterial(savedId)
+    ensureEnterpriseOption(detail?.enterpriseId, detail?.enterpriseName)
+    selectedArchive.value = detail
+    fillProfileFromMaterial(detail)
     await loadArchives(savedId)
   } finally {
     saving.value = false
@@ -1405,13 +1489,14 @@ async function onUploadSuccess(file) {
     ElMessage.warning('当前账号无权编辑该企业资料')
     return
   }
-  if (!profile.id) {
+  const archiveId = currentArchiveId.value
+  if (!archiveId) {
     ElMessage.warning('请先保存资料档案')
     return
   }
-  await attachCompanyMaterialFile(profile.id, file.id)
+  await attachCompanyMaterialFile(archiveId, file.id)
   ElMessage.success('附件已关联到资料档案')
-  await loadArchives(profile.id)
+  await loadArchives(archiveId)
 }
 
 async function removeArchive(row) {
@@ -1437,6 +1522,7 @@ function openRecordDialog(section, row = null, index = -1) {
   recordDialog.index = index
   recordDialog.fields = meta.fields
   recordDialog.form = buildRecordForm(meta.fields, row)
+  recordDialog.form.attachments = Array.isArray(row?.attachments) ? JSON.parse(JSON.stringify(row.attachments)) : []
   recordDialog.visible = true
 }
 
@@ -1450,12 +1536,17 @@ function buildRecordForm(fields = [], row = null) {
   return Object.assign(target, row || {})
 }
 
-function saveRecord() {
+async function saveRecord() {
   const meta = tableMetas[recordDialog.section]
   if (!meta) return
   const missing = meta.fields.find((field) => field.required && !recordDialog.form[field.prop])
   if (missing) {
     ElMessage.warning(`请填写${missing.label}`)
+    return
+  }
+  const archiveId = profile.id || selectedArchive.value?.id
+  if (!archiveId) {
+    ElMessage.warning('请先点击顶部“保存修改”创建资料档案，再保存小项')
     return
   }
   const list = profile[meta.listKey]
@@ -1466,6 +1557,36 @@ function saveRecord() {
     list.push(row)
   }
   recordDialog.visible = false
+  // 小项保存只允许更新既有主档案，永远不参与创建主数据。
+  profile.id = archiveId
+  await saveArchive()
+}
+
+function onRecordAttachmentSuccess(file) {
+  if (!file?.id) return
+  if (!Array.isArray(recordDialog.form.attachments)) recordDialog.form.attachments = []
+  if (recordDialog.form.attachments.some((item) => String(item.id) === String(file.id))) return
+  recordDialog.form.attachments.push({
+    id: file.id,
+    originalName: file.originalName || file.fileName || '证明附件',
+    fileName: file.fileName || '',
+    fileExt: file.fileExt || '',
+    mimeType: file.mimeType || '',
+    fileSize: file.fileSize || 0
+  })
+}
+
+function removeRecordAttachment(index) {
+  if (!Array.isArray(recordDialog.form.attachments)) return
+  recordDialog.form.attachments.splice(index, 1)
+}
+
+async function openRecordAttachment(file) {
+  if (!file?.id) return
+  const blob = await downloadFileBlob(file.id)
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank')
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000)
 }
 
 async function removeRecord(section, index) {
@@ -2120,6 +2241,50 @@ function normalizeRoleList(values = []) {
 
 .knowledge-link-alert {
   margin-bottom: 12px;
+}
+
+.record-attachment-box {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dfe6f1;
+  border-radius: 14px;
+  background: #f8faff;
+}
+
+.record-attachment-head,
+.record-attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.record-attachment-head span {
+  display: block;
+  margin-top: 5px;
+  color: #7b8798;
+  font-size: 12px;
+}
+
+.record-attachment-list {
+  margin: 12px 0;
+}
+
+.record-attachment-item {
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.record-attachment-item + .record-attachment-item {
+  margin-top: 7px;
+}
+
+.record-attachment-item > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1280px) {

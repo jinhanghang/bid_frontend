@@ -26,6 +26,17 @@
       </header>
 
       <section ref="messageBox" class="messages">
+        <div v-if="materialGuideItems.length" class="material-guide-card">
+          <div class="material-guide-title">
+            <div><strong>企业资料待补充</strong><span>补齐后，AI会在后续对话和标书生成中自动使用</span></div>
+            <el-tag type="warning" effect="light">{{ materialGuideItems.length }} 项</el-tag>
+          </div>
+          <div class="material-guide-items">
+            <button v-for="item in materialGuideItems" :key="item.key" @click="goSupplementMaterial(item)">
+              <span><b>{{ item.label }}</b><small>{{ item.reason }}</small></span><i>去补充 →</i>
+            </button>
+          </div>
+        </div>
         <div v-if="!messages.length" class="welcome"><div class="ai-mark">AI</div><h1>这份标书，您想先做什么？</h1>
           <p>已自动关联当前项目资料，选择一个任务即可开始，也可以直接在下方输入要求。</p>
           <div class="start-steps"><span><b>1</b>关联项目资料</span><i></i><span><b>2</b>选择编制任务</span><i></i><span><b>3</b>编辑并导出</span></div>
@@ -114,6 +125,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRoute, useRouter } from 'vue-router'
 import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
+import { getCompanyMaterial } from '@/api/companyMaterial'
 import { listDocumentModels } from '@/api/aiDocument'
 import { listEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
@@ -132,6 +144,7 @@ const referenceDrawer=ref(false), knowledgeBases=ref([]), companyMaterials=ref([
 const referenceForm=reactive({knowledgeIds:[],companyMaterialId:''})
 const artifactDrawer=ref(false), artifactLoading=ref(false), artifacts=ref([]), savingMessageId=ref(''), artifactBusyId=ref('')
 const conversationDrawer=ref(false)
+const materialGuideItems=ref([])
 const guideTasks=[
   {title:'分析招标文件',description:'提取资格条件、废标项和重要时间',prompt:'请分析当前项目的招标文件，提取资格条件、废标项、重要时间节点和需要重点关注的风险。'},
   {title:'生成评分响应表',description:'根据评分办法逐项给出响应建议',prompt:'请根据招标文件中的评分办法，生成完整的评分响应矩阵，并给出每个评分项的响应建议和所需证明材料。'},
@@ -152,7 +165,7 @@ let timer=0, runPollTimer=0
 onMounted(async()=>{await loadModels();await loadProjects(route.query.projectId)}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling()})
 function debouncedLoad(){clearTimeout(timer);timer=setTimeout(loadProjects,300)}
 async function loadProjects(selectId){loadingProjects.value=true;try{const p=await pageBidProjects({pageNum:1,pageSize:100,keyword:keyword.value||undefined});projects.value=p?.records||[];const target=selectId?projects.value.find(x=>x.id===selectId):(!current.value&&projects.value[0]);if(target)await selectProject(target)}finally{loadingProjects.value=false}}
-async function selectProject(item){current.value=await getBidProject(item.id);referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||'';conversationId.value='';await initChat()}
+async function selectProject(item){current.value=await getBidProject(item.id);referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||'';conversationId.value='';await checkCompanyMaterialCompleteness();await initChat()}
 async function initChat(){const p=await listConversations({current:1,size:50,bizType:'AI_BID',bizId:current.value.id});conversations.value=p?.records||[];conversationId.value=conversations.value[0]?.id||(await newConversation()).id;await loadMessages()}
 async function newConversation(){const c=await createConversation({title:'新对话',bizType:'AI_BID',bizId:current.value.id,aiLevel:'FLAGSHIP'});conversations.value.unshift(c);conversationId.value=c.id;messages.value=[];attachments.value={};return c}
 async function switchConversation(id){if(id==='__new__')await newConversation();else{conversationId.value=id;await loadMessages()}}
@@ -184,6 +197,34 @@ function chooseSuggestion(text){draft.value=suggestionPrompt(text);nextTick(()=>
 function continueFrom(message){draft.value=`请基于上一条回复继续完善，重点补充：`;nextTick(()=>scrollBottom())}
 function handleMessageCommand(message,command){if(command==='copy')copyText(message.content);if(command==='regenerate')regenerate(message)}
 function openReferences(){referenceDrawer.value=true;loadReferences()}
+async function checkCompanyMaterialCompleteness(){
+  materialGuideItems.value=[]
+  const archiveId=current.value?.companyMaterialId
+  if(!archiveId){materialGuideItems.value=[{key:'archive',label:'关联企业资料档案',reason:'当前项目尚未关联企业资料',action:'references'}];return}
+  try{
+    const material=await getCompanyMaterial(archiveId)
+    let profile={}
+    try{const root=JSON.parse(material?.content||'{}');profile=root?.profile||root||{}}catch(_){profile={}}
+    const license=profile.license||{},members=Array.isArray(profile.members)?profile.members:[],certificates=Array.isArray(profile.certificates)?profile.certificates:[],cases=Array.isArray(profile.cases)?profile.cases:[],financials=Array.isArray(profile.financials)?profile.financials:[]
+    const items=[]
+    if(!license.companyName||!license.creditCode||!license.legalRepresentative)items.push({key:'license-fields',label:'补全营业执照信息',reason:'企业名称、信用代码或法定代表人不完整',tab:'license'})
+    if(!material?.fileId||Number(material?.fileExists)!==1)items.push({key:'license-file',label:'上传营业执照附件',reason:'尚未上传可用的营业执照扫描件',tab:'license',action:'upload'})
+    appendDetailGuide(items,'members','补充项目成员及证明',members,'尚未维护项目成员信息','人员记录缺少身份证、职称证、社保等证明附件')
+    appendDetailGuide(items,'certificates','补充企业资质证书',certificates,'尚未维护企业资质证书','资质记录缺少对应证书附件')
+    appendDetailGuide(items,'cases','补充企业业绩证明',cases,'尚未维护企业业绩','业绩记录缺少合同、中标通知书或验收证明')
+    appendDetailGuide(items,'financials','补充财务证明资料',financials,'尚未维护财务资料','财务记录缺少审计报告或报表附件')
+    materialGuideItems.value=items
+  }catch(_){materialGuideItems.value=[{key:'archive-check',label:'检查企业资料档案',reason:'暂时无法读取当前关联档案，请进入资料库确认',tab:'license'}]}
+}
+function appendDetailGuide(items,tab,label,rows,emptyReason,attachmentReason){
+  if(!rows.length){items.push({key:`${tab}-empty`,label,reason:emptyReason,tab,action:'add'});return}
+  const index=rows.findIndex(row=>!Array.isArray(row?.attachments)||!row.attachments.length)
+  if(index>=0)items.push({key:`${tab}-file-${index}`,label,reason:attachmentReason,tab,action:'edit',recordIndex:index})
+}
+function goSupplementMaterial(item){
+  if(item.action==='references'||!current.value?.companyMaterialId){openReferences();return}
+  router.push({path:'/materials/company',query:{archiveId:current.value.companyMaterialId,tab:item.tab||'license',action:item.action||'focus',recordIndex:item.recordIndex??undefined,fromProject:current.value.id}})
+}
 function suggestionsFor(content){
   const text=String(content||'')
   if(/评分|得分|响应矩阵/.test(text))return ['补充评分证明材料','生成逐项响应内容','检查评分项遗漏']
@@ -209,7 +250,7 @@ async function loadNotices(){loadingNotices.value=true;try{const p=await pageTen
 function onTenderFile(file){createForm.file=file.raw}
 async function createProject(){if(!createForm.modelConfigId)return ElMessage.warning('请选择生成模型');if(isPlatformManager.value&&!createForm.enterpriseId)return ElMessage.warning('请选择所属企业');if(isPlatformManager.value&&!createForm.ownerUserId)return ElMessage.warning('请选择项目负责人');creating.value=true;try{const scope={modelConfigId:createForm.modelConfigId,enterpriseId:createForm.enterpriseId||undefined,ownerUserId:createForm.ownerUserId||undefined};let id;if(createTab.value==='notice'){if(!createForm.noticeId)return ElMessage.warning('请选择标讯商机');id=await createBidProjectFromNotice(createForm.noticeId,scope)}else if(createTab.value==='upload'){if(!createForm.file)return ElMessage.warning('请选择招标文件');const fd=new FormData();fd.append('file',createForm.file);Object.entries(scope).forEach(([key,value])=>{if(value)fd.append(key,value)});const w=await uploadTenderProject(fd);id=w?.project?.id||w?.id}else{if(!createForm.projectName.trim())return ElMessage.warning('请输入项目名称');id=await createBidProject({projectName:createForm.projectName,projectType:createForm.projectType,...scope})}createDialog.value=false;const preferred=models.value.find(x=>x.defaultFlag)||models.value[0];Object.assign(createForm,{noticeId:'',projectName:'',projectType:'',file:null,modelConfigId:preferred?.id||'',enterpriseId:'',ownerUserId:''});await loadProjects(id);ElMessage.success('AI标书项目已创建')}finally{creating.value=false}}
 async function loadReferences(){const [kb,cm]=await Promise.all([listKnowledgeBases({status:1}),listBidProjectCompanyMaterialOptions(current.value.id)]);knowledgeBases.value=kb||[];companyMaterials.value=cm||[];referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||''}
-async function saveReferences(){savingReferences.value=true;try{await updateBidProject(current.value.id,{projectName:current.value.projectName,projectType:current.value.projectType,clientName:current.value.clientName,bidderName:current.value.bidderName,budgetAmount:current.value.budgetAmount,tenderDeadline:current.value.tenderDeadline,bidOpenTime:current.value.bidOpenTime,periodDays:current.value.periodDays,ownerUserId:current.value.ownerUserId,knowledgeIds:referenceForm.knowledgeIds,remark:current.value.remark});if(referenceForm.companyMaterialId){await bindBidProjectCompanyMaterial(current.value.id,{companyMaterialId:referenceForm.companyMaterialId})}else if(current.value.companyMaterialId){await unbindBidProjectCompanyMaterial(current.value.id)}current.value=await getBidProject(current.value.id);ElMessage.success('关联资料已保存，后续对话自动生效')}finally{savingReferences.value=false}}
+async function saveReferences(){savingReferences.value=true;try{await updateBidProject(current.value.id,{projectName:current.value.projectName,projectType:current.value.projectType,clientName:current.value.clientName,bidderName:current.value.bidderName,budgetAmount:current.value.budgetAmount,tenderDeadline:current.value.tenderDeadline,bidOpenTime:current.value.bidOpenTime,periodDays:current.value.periodDays,ownerUserId:current.value.ownerUserId,knowledgeIds:referenceForm.knowledgeIds,remark:current.value.remark});if(referenceForm.companyMaterialId){await bindBidProjectCompanyMaterial(current.value.id,{companyMaterialId:referenceForm.companyMaterialId})}else if(current.value.companyMaterialId){await unbindBidProjectCompanyMaterial(current.value.id)}current.value=await getBidProject(current.value.id);await checkCompanyMaterialCompleteness();ElMessage.success('关联资料已保存，后续对话自动生效')}finally{savingReferences.value=false}}
 async function startRead(){reading.value=true;try{await startReadTenderProject(current.value.id,{aiLevel:'FLAGSHIP'});current.value=await getBidProject(current.value.id);ElMessage.success('已启动招标文件解析')}finally{reading.value=false}}
 function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'待校审',EXPORTED:'已导出'}[x.status]||x.status||'草稿')} function timeText(v){return v?String(v).replace('T',' ').slice(0,16):''}
 </script>
@@ -221,4 +262,5 @@ function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'
 .create-admin-form{margin-bottom:8px;padding:12px 14px;border:1px solid #e7e3ff;border-radius:12px;background:#faf9ff}.admin-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}.create-admin-form :deep(.el-form-item){margin-bottom:4px}
 .context-tag{cursor:pointer}.welcome{max-width:820px;margin:5vh auto 0}.welcome h1{margin:0 0 10px;font-size:27px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:26px;text-align:left}.guide-grid button{display:flex;align-items:flex-start;gap:12px;min-height:82px;padding:16px;border:1px solid #e0e5ee;border-radius:14px;background:#fff;color:#24324a;cursor:pointer;transition:.2s}.guide-grid button:last-child{grid-column:1/-1}.guide-grid button:hover{border-color:#7567e9;box-shadow:0 8px 22px rgba(89,75,210,.1);transform:translateY(-1px)}.guide-grid i{width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:grid;place-items:center;background:#f0edff;color:#6657df;font-size:12px;font-style:normal;font-weight:700}.guide-grid strong,.guide-grid small{display:block}.guide-grid strong{margin-bottom:7px;font-size:15px}.guide-grid small{color:#8490a3;font-size:12px;line-height:1.5}.message-actions{display:flex;align-items:center;margin-top:7px;opacity:1}.next-guide{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7f8fc}.next-guide span{color:#7c8799;font-size:12px}.next-guide button{padding:5px 10px;border:1px solid #dce2ec;border-radius:999px;background:#fff;color:#52627b;font-size:12px;cursor:pointer}.next-guide button:hover{border-color:#7567e9;color:#6657df}.composer{padding:13px 16px}.composer-tools{margin-top:4px}.conversation-list{display:flex;flex-direction:column;gap:9px}.conversation-list .new-conversation{width:100%;margin-bottom:5px}.conversation-list>button:not(.el-button){padding:13px 14px;text-align:left;border:1px solid #e3e7ef;border-radius:12px;background:#fafbfc;cursor:pointer}.conversation-list>button.active{border-color:#7567e9;background:#f3f1ff}.conversation-list strong,.conversation-list span{display:block}.conversation-list span{margin-top:5px;color:#8b96a8;font-size:12px}@media(max-width:850px){.guide-grid{grid-template-columns:1fr}.guide-grid button:last-child{grid-column:auto}}
 .start-steps{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px auto 0;color:#748096;font-size:12px}.start-steps span{display:flex;align-items:center;gap:6px}.start-steps b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#ece9ff;color:#6657df}.start-steps>i{width:32px;height:1px;background:#dce1ea}
+.material-guide-card{max-width:920px;margin:0 auto 20px;padding:16px;border:1px solid #f1d49a;border-radius:15px;background:#fffaf0;box-shadow:0 8px 22px rgba(120,83,20,.06)}.material-guide-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.material-guide-title strong,.material-guide-title span{display:block}.material-guide-title span{margin-top:4px;color:#8a7350;font-size:12px}.material-guide-items{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.material-guide-items button{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;text-align:left;border:1px solid #f0dfbd;border-radius:11px;background:#fff;cursor:pointer}.material-guide-items button:hover{border-color:#e7b34d;background:#fffdf7}.material-guide-items b,.material-guide-items small{display:block}.material-guide-items b{color:#4b3a1e;font-size:13px}.material-guide-items small{margin-top:4px;color:#8c7a5f;font-size:11px}.material-guide-items i{flex:0 0 auto;color:#b47708;font-size:12px;font-style:normal}@media(max-width:850px){.material-guide-items{grid-template-columns:1fr}}
 </style>
