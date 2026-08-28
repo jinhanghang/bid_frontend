@@ -89,7 +89,7 @@
             <div class="guide-copy">
               <span class="guide-label">ENTERPRISE WORKSPACE</span>
               <h3>需要企业后再申请</h3>
-              <p>企业资料库、企业共享知识库、团队成员和企业协作能力，需要注册新企业或加入已有企业并通过审批。</p>
+              <p>注册新企业后可立即使用企业功能；加入已有企业需等待管理员审批。</p>
               <button type="button" @click="$router.push('/system/enterprise-apply')">
                 发起企业申请
                 <el-icon><ArrowRight /></el-icon>

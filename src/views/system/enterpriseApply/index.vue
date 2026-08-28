@@ -7,7 +7,7 @@
             <div>
               <div class="audit-guide-title">公司审批怎么用</div>
               <div class="audit-guide-desc">
-                这里处理用户提交的“注册新企业”和“加入已有企业”申请。没有数据通常表示当前没有申请，或被上方筛选条件过滤。
+                这里主要处理用户提交的“加入已有企业”申请；注册新企业提交后会自动通过。没有数据通常表示当前没有待处理申请，或被上方筛选条件过滤。
               </div>
             </div>
             <div class="audit-guide-actions">
@@ -17,11 +17,11 @@
             </div>
           </div>
           <div class="audit-guide-steps">
-            <span>用户无企业时提交申请</span>
+            <span>用户申请加入已有企业</span>
             <em>→</em>
             <span>管理员在本页查看详情</span>
             <em>→</em>
-            <span>通过后创建企业或加入企业</span>
+            <span>通过后加入目标企业</span>
             <em>→</em>
             <span>驳回时填写原因</span>
           </div>
@@ -120,7 +120,7 @@
         <el-alert
           v-if="$route.query.required === '1'"
           title="企业信息为必填项"
-          description="请创建企业或申请加入已有企业。审核通过且企业、成员均为启用状态后，才能使用系统其他功能。"
+          description="注册新企业将立即创建并生效；加入已有企业需等待管理员审批。"
           type="warning"
           show-icon
           :closable="false"
@@ -130,7 +130,7 @@
           <div>
             <div class="apply-title">你还没有加入企业</div>
             <div class="apply-sub">
-              请选择“加入已有企业”或“注册新企业”。注册新企业采用审核流程，平台管理员审核通过后才会正式创建企业，你会成为该企业管理员。
+              请选择“注册新企业”或“加入已有企业”。注册新企业提交后立即创建，你会成为该企业管理员；加入已有企业需要等待管理员审批。
             </div>
           </div>
         </div>
@@ -175,7 +175,7 @@
                     />
                   </el-form-item>
                   <el-form-item>
-                    <el-button type="primary" :loading="submitLoading" @click="submitRegister">提交企业入驻申请</el-button>
+                    <el-button type="primary" :loading="submitLoading" @click="submitRegister">立即注册企业</el-button>
                   </el-form-item>
                 </el-form>
               </el-tab-pane>
@@ -392,7 +392,7 @@ const auditEmptyTitle = computed(() => {
 const auditEmptyDesc = computed(() => {
   if (auditQuery.status === 0) return '当前没有待审核申请。可以点击“查看全部申请”查看已通过或已驳回记录。'
   if (auditQuery.keyword || auditQuery.applyType || auditQuery.status !== '') return '请调整企业名称、申请类型或审核状态后重新查询。'
-  return '用户需要先在“首页 / 企业申请”提交注册企业或加入企业申请，本页才会出现待审核记录。'
+  return '用户申请加入已有企业后，本页才会出现待审核记录；注册新企业会自动通过。'
 })
 
 const registerRules = {
@@ -500,9 +500,10 @@ async function submitRegister() {
   submitLoading.value = true
   try {
     await submitRegisterApply({ ...registerForm })
-    ElMessage.success('企业入驻申请已提交，请等待平台管理员审核')
+    await auth.loadMe()
+    ElMessage.success('企业注册成功，你已成为该企业管理员')
     clearRegisterForm()
-    await loadMyList()
+    await router.replace('/dashboard')
   } finally {
     submitLoading.value = false
   }
