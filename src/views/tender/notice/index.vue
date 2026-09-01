@@ -267,7 +267,6 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Calendar, Document, Location, Refresh, Search, Setting, View } from '@element-plus/icons-vue'
 import { ElMessage } from '@/plugins/element-plus-api'
 import { useRouter } from 'vue-router'
-import { createBidProjectFromNotice } from '@/api/bidProject'
 import {
   getTenderIndustryPreference,
   getTenderNotice,
@@ -397,9 +396,14 @@ async function openDetail(row) {
 
 async function createAiBid(row) {
   if (!row?.id) return
-  const projectId = await createBidProjectFromNotice(row.id)
-  ElMessage.success('已从标讯创建AI标书')
-  router.push({ path: '/ai-bid', query: { projectId } })
+  detailVisible.value = false
+  await router.push({
+    path: '/ai-bid',
+    query: {
+      create: 'notice',
+      noticeId: String(row.id)
+    }
+  })
 }
 
 function statusLabel(status) {

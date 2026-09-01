@@ -568,7 +568,7 @@ const diagnoseDialog = reactive({ visible: false, loading: false, records: [] })
 
 const canManageModels = computed(() => {
   const roles = normalizeRoleList(auth.user?.roles || auth.user?.roleCodes || [])
-  return roles.includes('SUPERADMIN') || roles.includes('PLATFORMADMIN')
+  return roles.includes('SUPERADMIN')
 })
 const enabledChatModels = computed(() => ((routeModelOptions.value && routeModelOptions.value.length ? routeModelOptions.value : models.value) || []).filter((item) => item.modelType === 'chat' && item.status === 1 && item.deleted !== 1))
 

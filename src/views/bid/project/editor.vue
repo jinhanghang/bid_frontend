@@ -31,7 +31,7 @@ import { downloadFileResource, exportBidDocumentEditor, getBidDocumentEditor, li
 const route=useRoute(),router=useRouter(),projectId=String(route.query.projectId||''),messageId=String(route.query.messageId||'')
 const editorDoc=reactive({projectName:'',messageId:'',updateTime:''}),content=ref(''),textarea=ref(null),loading=ref(false),saving=ref(false),dirty=ref(false),savedAt=ref('')
 const versionDrawer=ref(false),versionLoading=ref(false),versions=ref([])
-let saveTimer=0,initialized=false
+let saveTimer=0,initialized=false,savePromise=null
 const tools=[{label:'标题',before:'## ',after:''},{label:'加粗',before:'**',after:'**'},{label:'列表',before:'- ',after:''},{label:'编号',before:'1. ',after:''},{label:'表格',before:'\n| 项目 | 内容 |\n| --- | --- |\n|  |  |\n',after:''},{label:'引用',before:'> ',after:''},{label:'分隔线',before:'\n---\n',after:''}]
 const wordCount=computed(()=>String(content.value||'').replace(/\s/g,'').length)
 const saveStateText=computed(()=>saving.value?'正在保存':dirty.value?'有未保存修改':savedAt.value?`已保存 ${savedAt.value}`:'已加载')
@@ -41,9 +41,42 @@ onBeforeUnmount(()=>{clearTimeout(saveTimer);window.removeEventListener('beforeu
 watch(content,()=>{if(!initialized)return;dirty.value=true;clearTimeout(saveTimer);saveTimer=setTimeout(()=>save(false),2000)})
 
 async function load(){if(!projectId||!messageId){ElMessage.error('缺少需要编辑的AI回复');return router.push({path:'/ai-bid',query:{projectId}})}loading.value=true;try{const data=await getBidDocumentEditor(projectId,messageId);Object.assign(editorDoc,data||{});content.value=data?.content||'';initialized=true;window.addEventListener('beforeunload',beforeUnload)}finally{loading.value=false}}
-async function save(createVersion){if(saving.value)return;clearTimeout(saveTimer);saving.value=true;try{await saveBidDocumentEditor(projectId,messageId,{content:content.value,createVersion,sourceType:'MANUAL'});dirty.value=false;savedAt.value=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});if(createVersion){ElMessage.success('该回复已保存新版本');await loadVersions()}}finally{saving.value=false}}
+async function save(createVersion){
+  clearTimeout(saveTimer)
+  if(savePromise){
+    await savePromise
+    if(!createVersion&&!dirty.value)return
+  }
+  const savingContent=content.value
+  saving.value=true
+  savePromise=saveBidDocumentEditor(projectId,messageId,{content:savingContent,createVersion,sourceType:'MANUAL'})
+  try{
+    const data=await savePromise
+    dirty.value=content.value!==savingContent
+    savedAt.value=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})
+    if(createVersion){
+      ElMessage.success(data?.versionCreated?'已保存新版本':'内容与最新版本相同，无需重复创建')
+      await loadVersions()
+    }
+  }finally{
+    savePromise=null
+    saving.value=false
+  }
+}
 async function loadVersions(){versionLoading.value=true;try{versions.value=await listBidDocumentEditorVersions(projectId,messageId)||[]}finally{versionLoading.value=false}}
-async function restore(item){await ElMessageBox.confirm(`确定将这条回复恢复到 V${item.versionNo}？当前编辑内容将被替换。`,'恢复版本',{type:'warning'});const data=await restoreBidDocumentEditorVersion(projectId,messageId,item.id);initialized=false;content.value=data?.content||'';initialized=true;dirty.value=false;ElMessage.success('该回复版本已恢复');versionDrawer.value=false;await loadVersions()}
+async function restore(item){
+  await ElMessageBox.confirm(`确定将这条回复恢复到 V${item.versionNo}？当前编辑内容将被替换，恢复操作不会创建新版本。`,'恢复版本',{type:'warning'})
+  clearTimeout(saveTimer)
+  if(savePromise)await savePromise
+  const data=await restoreBidDocumentEditorVersion(projectId,messageId,item.id)
+  initialized=false
+  content.value=data?.content||''
+  initialized=true
+  dirty.value=false
+  savedAt.value=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})
+  ElMessage.success(`已恢复到 V${item.versionNo}，未创建新版本`)
+  versionDrawer.value=false
+}
 async function exportFile(format){await save(false);const artifact=await exportBidDocumentEditor(projectId,messageId,{content:content.value,format,artifactName:editorDoc.projectName,styleCode:'BUSINESS'});const blob=await downloadFileResource(artifact.fileResourceId);const url=URL.createObjectURL(blob),link=window.document.createElement('a');link.href=url;link.download=`${editorDoc.projectName||'AI标书'}.${format==='pdf'?'pdf':'docx'}`;link.click();URL.revokeObjectURL(url);ElMessage.success('已按当前回复导出，并保存到标书成果和下载中心')}
 function handleInput(event){
   const el=event.target,scrollTop=el.scrollTop,scrollLeft=el.scrollLeft,start=el.selectionStart,end=el.selectionEnd

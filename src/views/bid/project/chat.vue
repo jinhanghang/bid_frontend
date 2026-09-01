@@ -129,7 +129,7 @@ import { getCompanyMaterial } from '@/api/companyMaterial'
 import { listDocumentModels } from '@/api/aiDocument'
 import { listEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
-import { pageTenderNotices } from '@/api/tenderNotice'
+import { getTenderNotice, pageTenderNotices } from '@/api/tenderNotice'
 import { createConversation, deleteDocumentArtifact, documentArtifactDownloadUrl, getConversationMessages, getConversationRun, listConversations, listDocumentArtifacts, regenerateConversationMessage, regenerateDocumentArtifact, renameDocumentArtifact, resumeConversationRun, saveBidArtifact, stopConversationRun, streamConversationMessage, uploadConversationAttachment } from '@/api/aiConversation'
 import MarkdownContent from '@/components/ai/MarkdownContent.vue'
 
@@ -162,7 +162,15 @@ const nextSuggestions=computed(()=>suggestionsFor(latestAssistant.value?.content
 const composerPlaceholder=computed(()=>current.value?.tenderFileId?'告诉AI你想完成什么，或从上方建议中选择……':'告诉AI你想完成什么，也可以先上传招标文件……')
 let timer=0, runPollTimer=0
 
-onMounted(async()=>{await loadModels();await loadProjects(route.query.projectId)}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling()})
+onMounted(async()=>{
+  await loadModels()
+  await loadProjects(route.query.projectId)
+  const sourceNoticeId=String(route.query.noticeId||'').trim()
+  if(route.query.create==='notice'&&sourceNoticeId){
+    await openCreate(sourceNoticeId)
+    await router.replace({path:'/ai-bid'})
+  }
+}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling()})
 function debouncedLoad(){clearTimeout(timer);timer=setTimeout(loadProjects,300)}
 async function loadProjects(selectId){loadingProjects.value=true;try{const p=await pageBidProjects({pageNum:1,pageSize:100,keyword:keyword.value||undefined});projects.value=p?.records||[];const target=selectId?projects.value.find(x=>x.id===selectId):(!current.value&&projects.value[0]);if(target)await selectProject(target)}finally{loadingProjects.value=false}}
 async function selectProject(item){current.value=await getBidProject(item.id);referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||'';conversationId.value='';await checkCompanyMaterialCompleteness();await initChat()}
@@ -245,7 +253,29 @@ function providerName(provider){return({doubao:'豆包',bailian:'百炼',qwen:'�
 async function loadModels(){loadingModels.value=true;try{models.value=await listDocumentModels()||[];const preferred=models.value.find(x=>x.defaultFlag)||models.value[0];if(!createForm.modelConfigId&&preferred)createForm.modelConfigId=preferred.id}finally{loadingModels.value=false}}
 async function loadEnterprises(){loadingEnterprises.value=true;try{enterprises.value=await listEnterprises({limit:500})||[]}finally{loadingEnterprises.value=false}}
 async function onEnterpriseChange(){createForm.ownerUserId='';owners.value=[];if(!createForm.enterpriseId)return;loadingOwners.value=true;try{const p=await pageUsers({pageNum:1,pageSize:500,status:1,enterpriseId:createForm.enterpriseId});owners.value=p?.records||[]}finally{loadingOwners.value=false}}
-function openCreate(){const preferred=models.value.find(x=>x.defaultFlag)||models.value[0];Object.assign(createForm,{modelConfigId:preferred?.id||'',enterpriseId:'',ownerUserId:''});owners.value=[];createDialog.value=true;createTab.value='notice';loadNotices();if(isPlatformManager.value)loadEnterprises()}
+async function openCreate(noticeId=''){
+  const preferred=models.value.find(x=>x.defaultFlag)||models.value[0]
+  Object.assign(createForm,{noticeId:'',projectName:'',projectType:'',file:null,modelConfigId:preferred?.id||'',enterpriseId:'',ownerUserId:''})
+  owners.value=[]
+  noticeKeyword.value=''
+  createDialog.value=true
+  createTab.value='notice'
+  await loadNotices()
+  const selectedId=(typeof noticeId==='string'||typeof noticeId==='number')?String(noticeId).trim():''
+  if(selectedId){
+    let matched=notices.value.find(item=>String(item.id)===selectedId)
+    if(!matched){
+      try{
+        matched=await getTenderNotice(selectedId)
+        if(matched?.id)notices.value=[matched,...notices.value.filter(item=>String(item.id)!==selectedId)]
+      }catch(_){
+        ElMessage.warning('未能读取所选标讯，请在列表中重新选择')
+      }
+    }
+    if(matched?.id)createForm.noticeId=matched.id
+  }
+  if(isPlatformManager.value)await loadEnterprises()
+}
 async function loadNotices(){loadingNotices.value=true;try{const p=await pageTenderNotices({current:1,size:30,keyword:noticeKeyword.value||undefined});notices.value=p?.records||[]}finally{loadingNotices.value=false}}
 function onTenderFile(file){createForm.file=file.raw}
 async function createProject(){if(!createForm.modelConfigId)return ElMessage.warning('请选择生成模型');if(isPlatformManager.value&&!createForm.enterpriseId)return ElMessage.warning('请选择所属企业');if(isPlatformManager.value&&!createForm.ownerUserId)return ElMessage.warning('请选择项目负责人');creating.value=true;try{const scope={modelConfigId:createForm.modelConfigId,enterpriseId:createForm.enterpriseId||undefined,ownerUserId:createForm.ownerUserId||undefined};let id;if(createTab.value==='notice'){if(!createForm.noticeId)return ElMessage.warning('请选择标讯商机');id=await createBidProjectFromNotice(createForm.noticeId,scope)}else if(createTab.value==='upload'){if(!createForm.file)return ElMessage.warning('请选择招标文件');const fd=new FormData();fd.append('file',createForm.file);Object.entries(scope).forEach(([key,value])=>{if(value)fd.append(key,value)});const w=await uploadTenderProject(fd);id=w?.project?.id||w?.id}else{if(!createForm.projectName.trim())return ElMessage.warning('请输入项目名称');id=await createBidProject({projectName:createForm.projectName,projectType:createForm.projectType,...scope})}createDialog.value=false;const preferred=models.value.find(x=>x.defaultFlag)||models.value[0];Object.assign(createForm,{noticeId:'',projectName:'',projectType:'',file:null,modelConfigId:preferred?.id||'',enterpriseId:'',ownerUserId:''});await loadProjects(id);ElMessage.success('AI标书项目已创建')}finally{creating.value=false}}

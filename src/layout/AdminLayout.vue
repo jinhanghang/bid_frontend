@@ -166,13 +166,11 @@ import {
   Bell,
   DataAnalysis,
   Delete,
-  Document,
   Download,
   Expand,
   Files,
   Fold,
   House,
-  Operation,
   QuestionFilled,
   Refresh
 } from '@element-plus/icons-vue'
@@ -234,11 +232,9 @@ const productMenus = computed(() => {
   }
   return [
   { title: '首页', path: '/dashboard', icon: House },
-  { title: 'AI文档', path: '/ai/documents', icon: Document },
-  { title: 'AI任务中心', path: '/ai/tasks', icon: Operation },
+  { title: '标讯商机', path: '/tender/notice', icon: DataAnalysis },
   { title: 'AI标书', path: '/ai-bid', icon: Files },
   { title: '资料库', path: '/materials/company', activePrefixes: ['/materials/company', '/materials/images'], icon: DataAnalysis },
-  { title: '标讯商机', path: '/tender/notice', icon: DataAnalysis },
   { title: '下载中心', path: '/download-center', icon: Download },
   { title: '回收站', path: '/recycle-bin', icon: Delete }
   ]
@@ -373,7 +369,7 @@ function handleNotificationClick() {
 }
 
 function handleHelp() {
-  ElMessage.info('可从首页进入各业务模块，任务异常请在 AI任务中心查看详情')
+  ElMessage.info('可从首页进入标讯商机、AI标书和资料库等业务模块')
 }
 
 onMounted(() => {

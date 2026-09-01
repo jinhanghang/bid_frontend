@@ -134,7 +134,6 @@
           <el-select
               v-model="form.roleIds"
               multiple
-              :multiple-limit="1"
               clearable
               filterable
               placeholder="请选择角色"
@@ -200,11 +199,11 @@
 
       <el-form label-width="92px">
         <el-form-item label="角色">
-          <el-select v-model="roleDialog.roleIds" multiple :multiple-limit="1" clearable filterable style="width: 100%">
+          <el-select v-model="roleDialog.roleIds" multiple clearable filterable style="width: 100%">
             <el-option
                 v-for="role in assignableRoles"
                 :key="role.id"
-                :label="`${role.roleName}（${role.roleCode}）`"
+                :label="role.roleName"
                 :value="role.id"
             />
           </el-select>
