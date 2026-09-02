@@ -186,9 +186,16 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const SIDEBAR_COLLAPSED_KEY = 'ai-bid:sidebar-collapsed'
+const AI_BID_FOCUS_EVENT = 'ai-bid-focus-mode'
 const viewportWidth = ref(typeof window === 'undefined' ? 1440 : window.innerWidth)
 const sidebarCollapsed = ref(readSidebarCollapsed())
-const sidebarCompact = computed(() => sidebarCollapsed.value || viewportWidth.value <= 720)
+const aiBidFocusActive = ref(false)
+const aiBidSidebarExpanded = ref(false)
+const sidebarCompact = computed(() => {
+  if (viewportWidth.value <= 720) return true
+  if (aiBidFocusActive.value) return !aiBidSidebarExpanded.value
+  return sidebarCollapsed.value
+})
 
 const ROLE_SUPER_ADMIN = 'SUPERADMIN'
 const ROLE_PLATFORM_ADMIN = 'PLATFORMADMIN'
@@ -262,8 +269,17 @@ function toggleSidebar() {
     ElMessage.info('当前窗口较窄，左侧菜单已自动折叠')
     return
   }
+  if (aiBidFocusActive.value) {
+    aiBidSidebarExpanded.value = !aiBidSidebarExpanded.value
+    return
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value
   saveSidebarCollapsed(sidebarCollapsed.value)
+}
+
+function handleAiBidFocusMode(event) {
+  aiBidFocusActive.value = Boolean(event?.detail?.active)
+  if (aiBidFocusActive.value) aiBidSidebarExpanded.value = false
 }
 
 function handleViewportResize() {
@@ -375,6 +391,7 @@ function handleHelp() {
 
 onMounted(() => {
   window.addEventListener('resize', handleViewportResize, { passive: true })
+  window.addEventListener(AI_BID_FOCUS_EVENT, handleAiBidFocusMode)
   handleViewportResize()
   loadQuota()
   loadApprovalPendingCount()
@@ -382,9 +399,14 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleViewportResize)
+  window.removeEventListener(AI_BID_FOCUS_EVENT, handleAiBidFocusMode)
 })
 
 watch(() => route.fullPath, () => {
+  if (route.path !== '/ai-bid') {
+    aiBidFocusActive.value = false
+    aiBidSidebarExpanded.value = false
+  }
   loadQuota()
   loadApprovalPendingCount()
 })

@@ -7,7 +7,6 @@ const Login = () => import('@/views/login/index.vue')
 const Dashboard = () => import('@/views/dashboard/index.vue')
 const GenericCrudView = () => import('@/views/common/GenericCrudView.vue')
 const BidProject = () => import('@/views/bid/project/chat.vue')
-const BidDocumentEditor = () => import('@/views/bid/project/editor.vue')
 const BidProjectLegacy = () => import('@/views/bid/project/index.vue')
 const TemplateVariableManage = () => import('@/views/bid/templateVariables/index.vue')
 const CompanyMaterialManage = () => import('@/views/bid/companyMaterials/index.vue')
@@ -39,7 +38,7 @@ const routes = [
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '首页' } },
       { path: 'ai-bid', component: BidProject, meta: { title: 'AI标书', requiresBusiness: true } },
-      { path: 'ai-bid/editor', component: BidDocumentEditor, meta: { title: '标书在线编辑', requiresBusiness: true } },
+      { path: 'ai-bid/editor', redirect: '/ai-bid' },
       { path: 'ai-bid/workbench', component: BidProjectLegacy, meta: { title: 'AI标书专业工作台', requiresBusiness: true } },
       {
         path: 'materials',

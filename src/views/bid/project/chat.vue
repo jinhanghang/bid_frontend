@@ -1,6 +1,6 @@
 <template>
-  <div class="bid-chat-page">
-    <aside class="project-list">
+  <div class="bid-chat-page" :class="{ 'project-list-collapsed': projectListCollapsed && current }">
+    <aside v-show="!projectListCollapsed || !current" class="project-list">
       <div class="side-head"><div><h2>AI标书</h2><p>对话编制 · 资料驱动</p></div><el-button type="primary" :icon="Plus" circle @click="openCreate" /></div>
       <el-input v-model="keyword" clearable :prefix-icon="Search" placeholder="搜索标书项目" @input="debouncedLoad" />
       <div class="projects" v-loading="loadingProjects">
@@ -14,7 +14,14 @@
 
     <main v-if="current" class="conversation-panel">
       <header class="conversation-head">
-        <div class="title"><h2>{{ current.projectName }}</h2><p>{{ current.projectCode }} · {{ current.tenderNoticeTitle || '未关联标讯' }}</p></div>
+        <div class="conversation-title-wrap">
+          <el-tooltip :content="projectListCollapsed ? '展开AI标书栏' : '收起AI标书栏'" placement="bottom">
+            <button type="button" class="project-list-toggle" :aria-label="projectListCollapsed ? '展开AI标书栏' : '收起AI标书栏'" @click="projectListCollapsed=!projectListCollapsed">
+              <el-icon><Expand v-if="projectListCollapsed"/><Fold v-else/></el-icon>
+            </button>
+          </el-tooltip>
+          <div class="title"><h2>{{ current.projectName }}</h2><p>{{ current.tenderNoticeTitle || '未关联标讯' }}</p></div>
+        </div>
         <div class="head-actions">
           <el-tag class="model-tag" type="success" effect="light" :title="currentModelDisplayName">{{ currentModelDisplayName }}</el-tag>
           <el-tag class="context-tag" effect="plain" @click="openReferences">已关联 {{ contextCount }} 项资料</el-tag>
@@ -25,6 +32,8 @@
         </div>
       </header>
 
+      <div class="conversation-workspace">
+        <div class="chat-column">
       <section ref="messageBox" class="messages">
         <div v-if="materialGuideItems.length" class="material-guide-card">
           <div class="material-guide-title">
@@ -46,11 +55,10 @@
           <div class="avatar">{{ m.role==='user'?'我':'AI' }}</div><div class="bubble-wrap">
             <div v-if="attachments[m.id]?.length" class="chips"><span v-for="f in attachments[m.id]" :key="f.id">{{ f.fileName }}</span></div>
             <div class="bubble"><div v-if="m.status==='GENERATING'&&!m.content" class="stream-status"><span>正在生成中</span></div>
-              <MarkdownContent v-if="m.role==='assistant'" :content="m.content"/><template v-else>{{ m.content }}</template><i v-if="m.status==='GENERATING'" />
+              <MarkdownContent v-if="m.role==='assistant'" :content="displayAiContent(m.content)"/><template v-else>{{ m.content }}</template><i v-if="m.status==='GENERATING'" />
             </div>
             <div v-if="m.role==='assistant'&&m.status!=='GENERATING'" class="message-actions">
               <el-button link @click="continueFrom(m)">继续追问</el-button>
-              <el-button link type="primary" @click="openEditor(m)">在线编辑</el-button>
               <el-dropdown @command="format=>saveArtifact(m,format)"><el-button link :loading="savingMessageId===m.id">导出</el-button>
                 <template #dropdown><el-dropdown-menu><el-dropdown-item command="word">导出 Word</el-dropdown-item><el-dropdown-item command="pdf">导出 PDF</el-dropdown-item></el-dropdown-menu></template>
               </el-dropdown>
@@ -71,9 +79,36 @@
           <el-button v-if="generating" type="danger" :icon="VideoPause" circle @click="stop"/><el-button v-else type="primary" :icon="Promotion" circle :disabled="!canSend" @click="send"/>
         </div>
       </footer>
+        </div>
+
+        <aside class="latest-preview-panel" :class="{ 'is-fullscreen': previewFullscreen }">
+          <div class="preview-floating-actions">
+            <template v-if="previewEditing">
+              <el-button size="small" @click="cancelPreviewEdit">取消</el-button>
+              <el-button size="small" type="primary" :loading="savingPreview" @click="savePreviewEdit">保存修改</el-button>
+            </template>
+            <el-button v-else size="small" :disabled="!latestAssistant?.content || latestAssistant?.status==='GENERATING'" @click="startPreviewEdit">编辑</el-button>
+            <el-button size="small" @click="previewFullscreen=!previewFullscreen">{{ previewFullscreen ? '退出全屏' : '全屏' }}</el-button>
+          </div>
+          <div class="latest-preview-body" :class="{ 'is-editing': previewEditing }">
+            <el-input v-if="previewEditing" v-model="previewContent" class="preview-editor" type="textarea" resize="none" />
+            <template v-else-if="latestAssistant?.content">
+              <MarkdownContent :content="displayAiContent(latestAssistant.content)"/>
+              <div v-if="latestAssistant.status==='GENERATING'" class="preview-generating-line"><i></i><span>正在生成中</span></div>
+            </template>
+            <div v-else-if="latestAssistant?.status==='GENERATING'" class="latest-preview-empty preview-generating"><div class="ai-mark">AI</div><strong>正在生成中</strong><span>AI正在整理内容，请稍候……</span><i></i></div>
+            <div v-else class="latest-preview-empty"><div class="ai-mark">AI</div><strong>暂无回复内容</strong><span>在左侧发送需求后，最新一条 AI 回复会展示在这里。</span></div>
+          </div>
+        </aside>
+      </div>
     </main>
 
-    <main v-else class="empty"><div class="ai-mark">AI</div><h1>创建第一份对话式标书</h1><p>可从标讯商机、招标文件或空白项目开始。</p><el-button type="primary" size="large" @click="openCreate">新建AI标书</el-button></main>
+    <main v-else class="empty">
+      <div class="ai-mark">AI</div>
+      <h1>{{ projects.length ? '请选择一份AI标书' : '创建第一份对话式标书' }}</h1>
+      <p>{{ projects.length ? '从左侧项目栏选择需要沟通的标书，进入后将自动切换为专注模式。' : '可从标讯商机、招标文件或空白项目开始。' }}</p>
+      <el-button v-if="!projects.length" type="primary" size="large" @click="openCreate">新建AI标书</el-button>
+    </main>
 
     <el-dialog v-model="createDialog" title="新建AI标书" width="760px" destroy-on-close>
       <el-form label-position="top" class="create-model-form"><el-form-item label="生成模型" required>
@@ -117,13 +152,13 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ArrowDown, Paperclip, Plus, Promotion, Search, UploadFilled, VideoPause } from '@element-plus/icons-vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { ArrowDown, Expand, Fold, Paperclip, Plus, Promotion, Search, UploadFilled, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { getToken } from '@/utils/storage'
 import { useAuthStore } from '@/stores/auth'
 import { useRoute, useRouter } from 'vue-router'
-import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
+import { bindBidProjectCompanyMaterial, createBidProject, createBidProjectFromNotice, getBidProject, listBidProjectCompanyMaterialOptions, pageBidProjects, saveBidDocumentEditor, startReadTenderProject, unbindBidProjectCompanyMaterial, updateBidProject, uploadTenderProject } from '@/api/bidProject'
 import { listKnowledgeBases } from '@/api/knowledge'
 import { getCompanyMaterial } from '@/api/companyMaterial'
 import { listDocumentModels } from '@/api/aiDocument'
@@ -144,6 +179,9 @@ const referenceDrawer=ref(false), knowledgeBases=ref([]), companyMaterials=ref([
 const referenceForm=reactive({knowledgeIds:[],companyMaterialId:''})
 const artifactDrawer=ref(false), artifactLoading=ref(false), artifacts=ref([]), savingMessageId=ref(''), artifactBusyId=ref('')
 const conversationDrawer=ref(false)
+const projectListCollapsed=ref(false)
+const AI_BID_FOCUS_EVENT='ai-bid-focus-mode'
+const previewEditing=ref(false), previewFullscreen=ref(false), previewContent=ref(''), savingPreview=ref(false)
 const materialGuideItems=ref([])
 const guideTasks=[
   {title:'分析招标文件',description:'提取资格条件、废标项和重要时间',prompt:'请分析当前项目的招标文件，提取资格条件、废标项、重要时间节点和需要重点关注的风险。'},
@@ -162,7 +200,34 @@ const nextSuggestions=computed(()=>suggestionsFor(latestAssistant.value?.content
 const composerPlaceholder=computed(()=>current.value?.tenderFileId?'告诉AI你想完成什么，或从上方建议中选择……':'告诉AI你想完成什么，也可以先上传招标文件……')
 let timer=0, runPollTimer=0
 
+watch(latestAssistantMessageId,()=>{previewEditing.value=false;previewContent.value=''})
+
+function displayAiContent(content=''){
+  return String(content)
+    .replace(/[（(]\s*BID-[A-Za-z0-9_-]+\s*[）)]/gi,'')
+    .replace(/BID-[A-Za-z0-9_-]+/gi,'')
+}
+
+function startPreviewEdit(){
+  if(!latestAssistant.value?.content)return
+  previewContent.value=displayAiContent(latestAssistant.value.content)
+  previewEditing.value=true
+}
+function cancelPreviewEdit(){previewEditing.value=false;previewContent.value=''}
+async function savePreviewEdit(){
+  if(!current.value?.id||!latestAssistant.value?.id||savingPreview.value)return
+  savingPreview.value=true
+  try{
+    const data=await saveBidDocumentEditor(current.value.id,latestAssistant.value.id,{content:previewContent.value,createVersion:true,sourceType:'MANUAL'})
+    latestAssistant.value.content=data?.content??previewContent.value
+    previewEditing.value=false
+    ElMessage.success('修改已保存')
+  }finally{savingPreview.value=false}
+}
+function handlePreviewKeydown(event){if(event.key==='Escape'&&previewFullscreen.value)previewFullscreen.value=false}
+
 onMounted(async()=>{
+  window.addEventListener('keydown',handlePreviewKeydown)
   await loadModels()
   await loadProjects(route.query.projectId)
   const sourceNoticeId=String(route.query.noticeId||'').trim()
@@ -170,10 +235,11 @@ onMounted(async()=>{
     await openCreate(sourceNoticeId)
     await router.replace({path:'/ai-bid'})
   }
-}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling()})
+}); onBeforeUnmount(()=>{clearTimeout(timer);stopPolling();setAiBidFocus(false);window.removeEventListener('keydown',handlePreviewKeydown)})
+function setAiBidFocus(active){window.dispatchEvent(new CustomEvent(AI_BID_FOCUS_EVENT,{detail:{active}}))}
 function debouncedLoad(){clearTimeout(timer);timer=setTimeout(loadProjects,300)}
-async function loadProjects(selectId){loadingProjects.value=true;try{const p=await pageBidProjects({pageNum:1,pageSize:100,keyword:keyword.value||undefined});projects.value=p?.records||[];const target=selectId?projects.value.find(x=>x.id===selectId):(!current.value&&projects.value[0]);if(target)await selectProject(target)}finally{loadingProjects.value=false}}
-async function selectProject(item){current.value=await getBidProject(item.id);referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||'';conversationId.value='';await checkCompanyMaterialCompleteness();await initChat()}
+async function loadProjects(selectId){loadingProjects.value=true;try{const p=await pageBidProjects({pageNum:1,pageSize:100,keyword:keyword.value||undefined});projects.value=p?.records||[];const target=selectId?projects.value.find(x=>x.id===selectId):null;if(target)await selectProject(target)}finally{loadingProjects.value=false}}
+async function selectProject(item){current.value=await getBidProject(item.id);projectListCollapsed.value=true;setAiBidFocus(true);referenceForm.knowledgeIds=current.value.knowledgeIdList||[];referenceForm.companyMaterialId=current.value.companyMaterialId||'';conversationId.value='';await checkCompanyMaterialCompleteness();await initChat()}
 async function initChat(){const p=await listConversations({current:1,size:50,bizType:'AI_BID',bizId:current.value.id});conversations.value=p?.records||[];conversationId.value=conversations.value[0]?.id||(await newConversation()).id;await loadMessages()}
 async function newConversation(){const c=await createConversation({title:'新对话',bizType:'AI_BID',bizId:current.value.id,aiLevel:'FLAGSHIP'});conversations.value.unshift(c);conversationId.value=c.id;messages.value=[];attachments.value={};return c}
 async function switchConversation(id){if(id==='__new__')await newConversation();else{conversationId.value=id;await loadMessages()}}
@@ -199,7 +265,6 @@ async function downloadArtifact(item){const response=await fetch(documentArtifac
 async function previewArtifact(item){const response=await fetch(documentArtifactDownloadUrl(item.id),{headers:{Authorization:`Bearer ${getToken()}`}});if(!response.ok)return ElMessage.error('预览失败');const url=URL.createObjectURL(await response.blob());window.open(url,'_blank','noopener');setTimeout(()=>URL.revokeObjectURL(url),60000)}
 function sizeText(bytes){const n=Number(bytes||0);return n<1024*1024?`${Math.max(1,Math.round(n/1024))}KB`:`${(n/1024/1024).toFixed(1)}MB`}
 async function copyText(t){await navigator.clipboard.writeText(t||'');ElMessage.success('已复制')} function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}} async function scrollBottom(){await nextTick();if(messageBox.value)messageBox.value.scrollTop=messageBox.value.scrollHeight}
-function openEditor(message){router.push({path:'/ai-bid/editor',query:{projectId:current.value.id,messageId:message.id}})}
 function chooseGuide(task){draft.value=task.prompt;nextTick(()=>scrollBottom())}
 function chooseSuggestion(text){draft.value=suggestionPrompt(text);nextTick(()=>scrollBottom())}
 function continueFrom(message){draft.value=`请基于上一条回复继续完善，重点补充：`;nextTick(()=>scrollBottom())}
@@ -286,6 +351,9 @@ function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'
 </script>
 
 <style scoped>
+.conversation-workspace{flex:1;min-height:0;display:grid;grid-template-columns:minmax(340px,.56fr) minmax(560px,1fr);overflow:hidden}.chat-column{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}.latest-preview-panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;border-left:1px solid #dfe5ef;background:#fff}.latest-preview-panel.is-fullscreen{position:fixed;z-index:3000;inset:0;width:100vw;height:100vh;border:0}.preview-floating-actions{position:absolute;z-index:5;top:12px;right:18px;display:flex;gap:8px;padding:5px;border:1px solid rgba(220,226,237,.9);border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 7px 20px rgba(40,54,82,.1);backdrop-filter:blur(8px)}.latest-preview-body{flex:1;min-height:0;overflow:auto;padding:24px 28px;line-height:1.8}.latest-preview-body:not(.is-editing){padding-top:58px}.latest-preview-body.is-editing{overflow:hidden;padding:58px 18px 18px}.preview-editor{height:100%}.preview-editor :deep(.el-textarea__inner){height:100%;padding:18px;border:0;box-shadow:none!important;background:#fbfcff;color:#28364d;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:14px;line-height:1.75}.latest-preview-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#8490a3}.latest-preview-empty .ai-mark{margin:0 0 14px}.latest-preview-empty strong{color:#46536a}.latest-preview-empty span{max-width:280px;margin-top:8px;font-size:12px;line-height:1.6}
+.preview-generating>i,.preview-generating-line i{width:7px;height:7px;border-radius:50%;background:#6c63ee;box-shadow:0 0 0 0 rgba(108,99,238,.35);animation:previewPulse 1.25s infinite}.preview-generating>i{margin-top:18px}.preview-generating-line{display:flex;align-items:center;gap:8px;margin:20px 0 4px;color:#6f7b8e;font-size:12px}.preview-generating-line i{flex:0 0 7px}@keyframes previewPulse{70%{box-shadow:0 0 0 9px rgba(108,99,238,0)}100%{box-shadow:0 0 0 0 rgba(108,99,238,0)}}
+.conversation-title-wrap{display:flex;align-items:center;min-width:0;gap:12px}.project-list-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 34px;padding:0;border:1px solid #dfe5ef;border-radius:10px;background:#fff;color:#68758c;cursor:pointer;transition:.18s}.project-list-toggle:hover{border-color:#7567e9;background:#f5f3ff;color:#6657df}.project-list-collapsed .conversation-panel{width:100%}
 .bid-chat-page{height:100%;min-height:0;display:flex;overflow:hidden;background:#f4f6fb;color:#1f2b3d}.project-list{width:292px;flex:0 0 292px;padding:20px 16px;border-right:1px solid #e3e8f0;background:#fff;display:flex;flex-direction:column;gap:15px}.side-head,.conversation-head,.head-actions,.composer-tools,.composer-tools>div{display:flex;align-items:center;justify-content:space-between}.side-head h2,.conversation-head h2{margin:0;font-size:20px}.side-head p,.conversation-head p{margin:5px 0 0;color:#8a96a8;font-size:12px}.projects{flex:1;min-height:0;overflow:auto}.projects button{width:100%;margin-bottom:9px;padding:13px;text-align:left;border:1px solid transparent;border-radius:13px;background:#f7f9fc;cursor:pointer}.projects button.active,.projects button:hover{border-color:#8174ed;background:#f2f0ff}.projects strong,.projects span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projects span{margin-top:7px;color:#8793a7;font-size:12px}.projects i{display:inline-block;margin-top:8px;padding:2px 7px;border-radius:8px;background:#e8f7ef;color:#35a36e;font-size:11px;font-style:normal}.conversation-panel{min-width:0;flex:1;display:flex;flex-direction:column}.conversation-head{min-height:76px;padding:12px 24px;border-bottom:1px solid #e3e8f0;background:#fff;gap:18px}.title{min-width:0}.title h2,.title p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.head-actions{gap:8px;white-space:nowrap}.messages{flex:1;min-height:0;overflow:auto;padding:25px max(30px,calc((100% - 920px)/2))}.welcome{max-width:720px;margin:8vh auto 0;text-align:center}.ai-mark{width:58px;height:58px;margin:0 auto 18px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,#5268e8,#8055dc);color:white;font-weight:800}.welcome p,.empty p{color:#7d899b}.suggestions{display:grid;gap:10px;margin-top:24px}.suggestions button{padding:13px 16px;text-align:left;border:1px solid #dfe4ee;border-radius:12px;background:white;cursor:pointer}.message{display:flex;gap:11px;max-width:920px;margin:0 auto 23px}.message.user{flex-direction:row-reverse}.avatar{width:34px;height:34px;flex:0 0 34px;border-radius:10px;display:grid;place-items:center;background:#eceaff;color:#6558df;font-size:12px;font-weight:700}.user .avatar{background:#e4f4eb;color:#329568}.bubble-wrap{min-width:0;max-width:85%}.bubble{padding:13px 16px;border-radius:5px 16px 16px;background:#fff;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;box-shadow:0 5px 18px rgba(35,50,80,.06)}.user .bubble{border-radius:16px 5px 16px 16px;background:#6276e8;color:white}.bubble i{display:inline-block;width:2px;height:16px;margin-left:4px;background:#607cf2;animation:blink 1s infinite}.message-actions{margin-top:6px;opacity:0}.message:hover .message-actions{opacity:1}.stream-status{display:flex;justify-content:space-between;color:#747f92;font-size:12px}.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px}.chips span{padding:6px 9px;border-radius:8px;background:#e9edf5;color:#526076;font-size:12px}.chips button{border:0;background:transparent;cursor:pointer}.composer{width:min(920px,calc(100% - 60px));margin:0 auto 20px;padding:11px 14px;border:1px solid #dce3ed;border-radius:16px;background:#fff;box-shadow:0 12px 32px rgba(36,53,86,.1)}.composer :deep(.el-textarea__inner){box-shadow:none}.context-state{font-size:12px;color:#6c788c}.context-state i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#32ac72}.empty{flex:1;display:grid;align-content:center;justify-items:center;text-align:center}.notice-options{max-height:360px;margin-top:12px;overflow:auto}.notice-options label{display:flex;gap:10px;padding:12px;margin-bottom:8px;border:1px solid #e1e6ef;border-radius:11px;cursor:pointer}.notice-options label.selected{border-color:#7465e8;background:#f5f3ff}.notice-options strong,.notice-options span{display:block}.notice-options span{margin-top:5px;color:#8793a7;font-size:12px}.context-summary,.draft-preview{padding:14px;border:1px solid #e1e6ef;border-radius:12px;background:#f8f9fc}.context-summary p{margin:7px 0;color:#647086}.drawer-actions{display:flex;gap:10px;margin-top:20px}.draft-preview{max-height:360px;overflow:auto;white-space:pre-wrap;line-height:1.7;color:#566176}@keyframes blink{50%{opacity:0}}@media(max-width:1100px){.project-list{width:240px;flex-basis:240px}.conversation-head{align-items:flex-start;flex-direction:column}.head-actions{max-width:100%;overflow:auto}}
 .create-model-form{margin-bottom:4px}.model-lock-tip{margin-top:6px;color:#8a96a8;font-size:12px}.model-tag{max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .artifact-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;color:#7b8798;font-size:12px}.artifact-card{display:flex;gap:12px;padding:14px;margin-bottom:10px;border:1px solid #e2e7ef;border-radius:12px}.artifact-icon{width:44px;height:44px;display:grid;place-items:center;border-radius:10px;background:#eef2ff;color:#536fe5;font-weight:800}.artifact-main{min-width:0;flex:1}.artifact-main strong,.artifact-main span{display:block}.artifact-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.artifact-main span{margin:5px 0;color:#8a96a8;font-size:12px}
@@ -293,4 +361,5 @@ function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'
 .context-tag{cursor:pointer}.welcome{max-width:820px;margin:5vh auto 0}.welcome h1{margin:0 0 10px;font-size:27px}.guide-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:26px;text-align:left}.guide-grid button{display:flex;align-items:flex-start;gap:12px;min-height:82px;padding:16px;border:1px solid #e0e5ee;border-radius:14px;background:#fff;color:#24324a;cursor:pointer;transition:.2s}.guide-grid button:last-child{grid-column:1/-1}.guide-grid button:hover{border-color:#7567e9;box-shadow:0 8px 22px rgba(89,75,210,.1);transform:translateY(-1px)}.guide-grid i{width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:grid;place-items:center;background:#f0edff;color:#6657df;font-size:12px;font-style:normal;font-weight:700}.guide-grid strong,.guide-grid small{display:block}.guide-grid strong{margin-bottom:7px;font-size:15px}.guide-grid small{color:#8490a3;font-size:12px;line-height:1.5}.message-actions{display:flex;align-items:center;margin-top:7px;opacity:1}.next-guide{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;padding:10px 12px;border-radius:12px;background:#f7f8fc}.next-guide span{color:#7c8799;font-size:12px}.next-guide button{padding:5px 10px;border:1px solid #dce2ec;border-radius:999px;background:#fff;color:#52627b;font-size:12px;cursor:pointer}.next-guide button:hover{border-color:#7567e9;color:#6657df}.composer{padding:13px 16px}.composer-tools{margin-top:4px}.conversation-list{display:flex;flex-direction:column;gap:9px}.conversation-list .new-conversation{width:100%;margin-bottom:5px}.conversation-list>button:not(.el-button){padding:13px 14px;text-align:left;border:1px solid #e3e7ef;border-radius:12px;background:#fafbfc;cursor:pointer}.conversation-list>button.active{border-color:#7567e9;background:#f3f1ff}.conversation-list strong,.conversation-list span{display:block}.conversation-list span{margin-top:5px;color:#8b96a8;font-size:12px}@media(max-width:850px){.guide-grid{grid-template-columns:1fr}.guide-grid button:last-child{grid-column:auto}}
 .start-steps{display:flex;align-items:center;justify-content:center;gap:10px;margin:20px auto 0;color:#748096;font-size:12px}.start-steps span{display:flex;align-items:center;gap:6px}.start-steps b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#ece9ff;color:#6657df}.start-steps>i{width:32px;height:1px;background:#dce1ea}
 .material-guide-card{max-width:920px;margin:0 auto 20px;padding:16px;border:1px solid #f1d49a;border-radius:15px;background:#fffaf0;box-shadow:0 8px 22px rgba(120,83,20,.06)}.material-guide-title{display:flex;align-items:center;justify-content:space-between;gap:12px}.material-guide-title strong,.material-guide-title span{display:block}.material-guide-title span{margin-top:4px;color:#8a7350;font-size:12px}.material-guide-items{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}.material-guide-items button{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 12px;text-align:left;border:1px solid #f0dfbd;border-radius:11px;background:#fff;cursor:pointer}.material-guide-items button:hover{border-color:#e7b34d;background:#fffdf7}.material-guide-items b,.material-guide-items small{display:block}.material-guide-items b{color:#4b3a1e;font-size:13px}.material-guide-items small{margin-top:4px;color:#8c7a5f;font-size:11px}.material-guide-items i{flex:0 0 auto;color:#b47708;font-size:12px;font-style:normal}@media(max-width:850px){.material-guide-items{grid-template-columns:1fr}}
+@media(max-width:1200px){.conversation-workspace{grid-template-columns:minmax(280px,.58fr) minmax(0,1fr)}.latest-preview-body{padding-right:18px;padding-left:18px}.messages{padding-right:16px;padding-left:16px}.composer{width:calc(100% - 28px)}}
 </style>
