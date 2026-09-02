@@ -142,7 +142,8 @@
         class="product-content"
         :class="{
           'task-center-content': route.path === '/ai/tasks',
-          'ai-document-content': route.path === '/ai/documents'
+          'ai-document-content': route.path === '/ai/documents',
+          'enterprise-apply-content': route.path === '/system/enterprise-apply'
         }"
       >
         <router-view />
@@ -994,6 +995,10 @@ async function logout() {
 }
 
 .product-content.ai-document-content {
+  overflow: hidden;
+}
+
+.product-content.enterprise-apply-content {
   overflow: hidden;
 }
 
