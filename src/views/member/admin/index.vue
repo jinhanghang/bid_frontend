@@ -2,6 +2,37 @@
   <div class="member-admin-page">
 
     <el-tabs v-model="activeTab" class="admin-tabs">
+      <el-tab-pane label="企业管理" name="enterprises">
+        <div class="toolbar enterprise-toolbar">
+          <el-input v-model="enterpriseQuery.keyword" placeholder="搜索企业名称 / 信用代码 / 联系人 / 电话" clearable @keyup.enter="searchEnterprises" />
+          <el-select v-model="enterpriseQuery.status" placeholder="企业状态" clearable>
+            <el-option label="启用" :value="1" />
+            <el-option label="停用" :value="0" />
+          </el-select>
+          <el-button type="primary" @click="searchEnterprises">搜索</el-button>
+          <el-button @click="resetEnterpriseSearch">重置</el-button>
+        </div>
+        <el-table v-loading="enterpriseLoading" :data="enterprises" class="ui-table" height="520">
+          <el-table-column prop="enterpriseName" label="企业名称" min-width="190" show-overflow-tooltip />
+          <el-table-column prop="creditCode" label="统一社会信用代码" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="administratorNames" label="企业管理员" min-width="130" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.administratorNames || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="contactName" label="联系人" min-width="110"><template #default="{ row }">{{ row.contactName || '-' }}</template></el-table-column>
+          <el-table-column prop="contactPhone" label="联系电话" min-width="130"><template #default="{ row }">{{ row.contactPhone || '-' }}</template></el-table-column>
+          <el-table-column prop="memberCount" label="成员数" width="90"><template #default="{ row }">{{ Number(row.memberCount || 0) }}</template></el-table-column>
+          <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
+          <el-table-column prop="createTime" label="注册时间" min-width="165" />
+          <el-table-column label="操作" width="90" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openEnterpriseDetail(row)">详情</el-button></template></el-table-column>
+        </el-table>
+        <PageFooterPager
+          :total="enterprisePager.total"
+          v-model:page="enterprisePager.current"
+          v-model:size="enterprisePager.size"
+          @change="loadEnterprises"
+        />
+      </el-tab-pane>
+
       <el-tab-pane label="套餐管理" name="plans">
         <div class="toolbar">
           <el-button type="primary" @click="openPlanDialog()">新增套餐</el-button>
@@ -299,6 +330,24 @@
 
     </el-tabs>
 
+    <el-dialog v-model="enterpriseDetail.visible" title="企业详情" width="760px">
+      <el-descriptions v-if="enterpriseDetail.row" :column="2" border>
+        <el-descriptions-item label="企业名称" :span="2">{{ enterpriseDetail.row.enterpriseName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="统一信用代码">{{ enterpriseDetail.row.creditCode || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="企业状态">{{ enterpriseDetail.row.status === 1 ? '启用' : '停用' }}</el-descriptions-item>
+        <el-descriptions-item label="法定代表人">{{ enterpriseDetail.row.legalPerson || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="企业管理员">{{ enterpriseDetail.row.administratorNames || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="联系人">{{ enterpriseDetail.row.contactName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="联系电话">{{ enterpriseDetail.row.contactPhone || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="邮箱">{{ enterpriseDetail.row.email || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="成员数量">{{ Number(enterpriseDetail.row.memberCount || 0) }}</el-descriptions-item>
+        <el-descriptions-item label="企业地址" :span="2">{{ enterpriseDetail.row.address || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="注册时间">{{ enterpriseDetail.row.createTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ enterpriseDetail.row.updateTime || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">{{ enterpriseDetail.row.remark || '-' }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
+
     <el-dialog v-model="planDialog.visible" :title="planDialog.form.id ? '编辑套餐' : '新增套餐'" width="680px" destroy-on-close>
       <el-form :model="planDialog.form" label-width="100px">
         <el-form-item label="套餐编码"><el-input v-model="planDialog.form.planCode" placeholder="如 MONTHLY" /></el-form-item>
@@ -499,6 +548,7 @@ import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import PageFooterPager from '@/components/PageFooterPager.vue'
+import { pageEnterprises } from '@/api/enterprise'
 import {
   adjustMemberQuota,
   auditQuotaUsageLogs,
@@ -529,9 +579,10 @@ import {
 
 const route = useRoute()
 const auth = useAuthStore()
-const activeTab = ref(route.query?.tab === 'models' ? 'models' : 'plans')
+const activeTab = ref(route.query?.tab === 'models' ? 'models' : 'enterprises')
 const modelManageTab = ref(route.query?.modelTab === 'routes' ? 'routes' : 'list')
 const plans = ref([])
+const enterprises = ref([])
 const orders = ref([])
 const accounts = ref([])
 const logs = ref([])
@@ -542,10 +593,12 @@ const usageStatsLoading = ref(false)
 const securityAuditLoading = ref(false)
 const modelLoading = ref(false)
 const routeLoading = ref(false)
+const enterpriseLoading = ref(false)
 const usageStats = ref({})
 const securityAudit = ref({ status: '', items: [] })
 
 const orderQuery = reactive({ keyword: '', status: '' })
+const enterpriseQuery = reactive({ keyword: '', status: '' })
 const accountQuery = reactive({ keyword: '' })
 const logQuery = reactive({ keyword: '' })
 const modelQuery = reactive({ keyword: '', modelType: '' })
@@ -553,12 +606,14 @@ const routeQuery = reactive({ routeType: '', enabled: '' })
 const usageStatsQuery = reactive({ dates: [], scene: '' })
 
 const orderPager = reactive({ current: 1, size: 10, total: 0 })
+const enterprisePager = reactive({ current: 1, size: 10, total: 0 })
 const accountPager = reactive({ current: 1, size: 10, total: 0 })
 const logPager = reactive({ current: 1, size: 10, total: 0 })
 const modelPager = reactive({ current: 1, size: 10, total: 0 })
 const routePager = reactive({ current: 1, size: 10, total: 0 })
 
 const planDialog = reactive({ visible: false, form: emptyPlan() })
+const enterpriseDetail = reactive({ visible: false, row: null })
 const adjustDialog = reactive({ visible: false, searching: false, userId: '', user: null, options: [], validity: 'permanent', form: { words: 100000, remark: '', expireTime: null } })
 const giftAfterWords = computed(() => Number(adjustDialog.user?.availableWords || 0) + Number(adjustDialog.form.words || 0))
 const auditDialog = reactive({ visible: false, loading: false, result: null })
@@ -597,6 +652,7 @@ watch(() => route.query?.tab, (tab) => {
 })
 
 watch(activeTab, (tab) => {
+  if (tab === 'enterprises') loadEnterprises()
   if (tab === 'plans') loadPlans()
   if (tab === 'orders') loadOrders()
   if (tab === 'accounts') loadAccounts()
@@ -614,9 +670,41 @@ watch(() => modelDialog.form.defaultFlag, (value) => {
 })
 
 async function refreshAll() {
-  const jobs = [loadPlans(), loadOrders(), loadAccounts(), loadLogs()]
+  const jobs = [loadEnterprises(), loadPlans(), loadOrders(), loadAccounts(), loadLogs()]
   if (canManageModels.value) jobs.push(loadModels(), loadRoutes(), loadRouteModelOptions())
   await Promise.all(jobs)
+}
+
+async function loadEnterprises() {
+  enterpriseLoading.value = true
+  try {
+    const res = await pageEnterprises({
+      current: enterprisePager.current,
+      size: enterprisePager.size,
+      keyword: enterpriseQuery.keyword || undefined,
+      status: enterpriseQuery.status === '' ? undefined : enterpriseQuery.status
+    })
+    enterprises.value = res?.records || []
+    enterprisePager.total = Number(res?.total || 0)
+  } finally {
+    enterpriseLoading.value = false
+  }
+}
+
+function searchEnterprises() {
+  enterprisePager.current = 1
+  loadEnterprises()
+}
+
+function resetEnterpriseSearch() {
+  enterpriseQuery.keyword = ''
+  enterpriseQuery.status = ''
+  searchEnterprises()
+}
+
+function openEnterpriseDetail(row) {
+  enterpriseDetail.row = row ? { ...row } : null
+  enterpriseDetail.visible = true
 }
 
 async function loadPlans() {

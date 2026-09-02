@@ -2,31 +2,6 @@
   <div class="page" :class="{ 'page--apply-user': !isAuditPage }">
     <div class="page-body">
       <template v-if="isAuditPage">
-        <div class="card audit-guide-card">
-          <div class="audit-guide-main">
-            <div>
-              <div class="audit-guide-title">公司审批怎么用</div>
-              <div class="audit-guide-desc">
-                这里主要处理用户提交的“加入已有企业”申请；注册新企业提交后会自动通过。没有数据通常表示当前没有待处理申请，或被上方筛选条件过滤。
-              </div>
-            </div>
-            <div class="audit-guide-actions">
-              <el-button plain @click="setAuditStatus(0)">只看待审核</el-button>
-              <el-button plain @click="resetAuditFilters">查看全部</el-button>
-              <el-button type="primary" plain :loading="auditLoading" @click="loadAuditList">刷新</el-button>
-            </div>
-          </div>
-          <div class="audit-guide-steps">
-            <span>用户申请加入已有企业</span>
-            <em>→</em>
-            <span>管理员在本页查看详情</span>
-            <em>→</em>
-            <span>通过后加入目标企业</span>
-            <em>→</em>
-            <span>驳回时填写原因</span>
-          </div>
-        </div>
-
         <div class="card card--table apply-card">
           <div class="list-head">
             <div class="list-head__left">
@@ -38,10 +13,6 @@
               />
             </div>
             <div class="list-head__right">
-              <el-select v-model="auditQuery.applyType" clearable placeholder="申请类型" style="width: 150px" @change="handleAuditFilterChange">
-                <el-option label="加入已有企业" value="JOIN" />
-                <el-option label="注册新企业" value="REGISTER" />
-              </el-select>
               <el-select v-model="auditQuery.status" clearable placeholder="审核状态" style="width: 130px" @change="handleAuditFilterChange">
                 <el-option label="待审核" :value="0" />
                 <el-option label="已通过" :value="1" />
@@ -59,7 +30,6 @@
             height="calc(100vh - 230px)"
           >
             <el-table-column prop="id" label="ID" width="80" />
-            <el-table-column prop="applyTypeName" label="申请类型" min-width="120" />
             <el-table-column prop="enterpriseName" label="企业名称" min-width="220" show-overflow-tooltip />
             <el-table-column prop="creditCode" label="统一社会信用代码" min-width="180" show-overflow-tooltip />
             <el-table-column prop="applicantName" label="申请人" min-width="120" />
@@ -179,7 +149,7 @@
                   </el-select>
                 </el-form-item>
                 <el-form-item label="申请人姓名"><el-input v-model="joinForm.applicantName" placeholder="默认使用当前用户名称" /></el-form-item>
-                <el-form-item label="联系电话"><el-input v-model="joinForm.contactPhone" placeholder="默认使用当前手机号" /></el-form-item>
+                <el-form-item label="申请人联系电话"><el-input v-model="joinForm.contactPhone" placeholder="默认使用当前手机号" /></el-form-item>
                 <el-form-item label="申请说明" class="form-span-2"><el-input v-model="joinForm.remark" type="textarea" :rows="3" placeholder="请输入加入企业的原因，方便管理员审核" /></el-form-item>
                 <div class="form-submit-row form-span-2"><el-button @click="backToChoice">取消</el-button><el-button type="primary" :loading="submitLoading" @click="submitJoin">提交加入申请</el-button></div>
               </el-form>
@@ -187,8 +157,7 @@
 
             <div v-if="selectedMode === 'join'" class="card card--table my-apply-card">
               <div class="section-title">我的申请记录</div>
-              <el-table v-loading="myLoading" class="ui-table" :data="myRows" border>
-                <el-table-column prop="applyTypeName" label="类型" min-width="110" />
+              <el-table v-loading="myLoading" class="ui-table" :data="myRows" border max-height="180">
                 <el-table-column prop="enterpriseName" label="企业名称" min-width="170" show-overflow-tooltip />
                 <el-table-column prop="statusName" label="状态" width="90"><template #default="{ row }"><el-tag :type="statusTagType(row.status)">{{ row.statusName }}</el-tag></template></el-table-column>
                 <el-table-column prop="createTime" label="提交时间" min-width="155" show-overflow-tooltip />
@@ -203,13 +172,12 @@
 
     <el-dialog v-model="detailVisible" title="企业申请详情" width="720px">
       <el-descriptions v-if="currentRow" :column="2" border>
-        <el-descriptions-item label="申请类型">{{ currentRow.applyTypeName }}</el-descriptions-item>
         <el-descriptions-item label="审核状态">{{ currentRow.statusName }}</el-descriptions-item>
         <el-descriptions-item label="企业名称">{{ currentRow.enterpriseName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="统一信用代码">{{ currentRow.creditCode || '-' }}</el-descriptions-item>
         <el-descriptions-item label="法定代表人">{{ currentRow.legalPerson || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="联系人">{{ currentRow.contactName || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ currentRow.contactPhone || currentRow.applicantPhone || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="企业联系人">{{ currentRow.contactName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="企业联系电话">{{ currentRow.contactPhone || '-' }}</el-descriptions-item>
         <el-descriptions-item label="邮箱">{{ currentRow.email || '-' }}</el-descriptions-item>
         <el-descriptions-item label="申请人">{{ currentRow.applicantName || currentRow.userFullName || '-' }}</el-descriptions-item>
         <el-descriptions-item label="申请手机号">{{ currentRow.applicantPhone || currentRow.userPhone || '-' }}</el-descriptions-item>
@@ -311,7 +279,6 @@ const myQuery = reactive({
 
 const auditQuery = reactive({
   keyword: '',
-  applyType: '',
   status: '',
   pageNum: 1,
   pageSize: 10
@@ -323,14 +290,14 @@ const auditForm = reactive({
 })
 
 const auditEmptyTitle = computed(() => {
-  if (auditQuery.keyword || auditQuery.applyType || auditQuery.status !== '') return '没有找到符合条件的企业申请'
+  if (auditQuery.keyword || auditQuery.status !== '') return '没有找到符合条件的企业申请'
   return '暂无企业申请记录'
 })
 
 const auditEmptyDesc = computed(() => {
   if (auditQuery.status === 0) return '当前没有待审核申请。可以点击“查看全部申请”查看已通过或已驳回记录。'
-  if (auditQuery.keyword || auditQuery.applyType || auditQuery.status !== '') return '请调整企业名称、申请类型或审核状态后重新查询。'
-  return '用户申请加入已有企业后，本页才会出现待审核记录；注册新企业会自动通过。'
+  if (auditQuery.keyword || auditQuery.status !== '') return '请调整企业名称或审核状态后重新查询。'
+  return '用户申请加入已有企业后，本页才会出现申请记录。'
 })
 
 const registerRules = {
@@ -420,7 +387,6 @@ function setAuditStatus(status) {
 
 function resetAuditFilters() {
   auditQuery.keyword = ''
-  auditQuery.applyType = ''
   auditQuery.status = ''
   auditQuery.pageNum = 1
   loadAuditList()
@@ -431,7 +397,6 @@ async function loadAuditList() {
   try {
     const params = {
       keyword: auditQuery.keyword,
-      applyType: auditQuery.applyType,
       status: auditQuery.status,
       pageNum: auditQuery.pageNum,
       pageSize: auditQuery.pageSize
@@ -507,10 +472,7 @@ async function submitAudit() {
   if (!auditTarget.value?.id) return
 
   if (auditForm.status === 1) {
-    const tip = auditTarget.value.applyType === 'REGISTER'
-      ? '审核通过后会创建企业，并将申请用户升级为该企业管理员。确定通过吗？'
-      : '审核通过后会把申请用户加入该企业。确定通过吗？'
-    await ElMessageBox.confirm(tip, '确认审核', { type: 'warning' })
+    await ElMessageBox.confirm('审核通过后会把申请用户加入该企业。确定通过吗？', '确认审核', { type: 'warning' })
   }
 
   auditSubmitting.value = true
@@ -625,7 +587,7 @@ function statusTagType(status) {
 
 .page--apply-user .enterprise-form-stage { height:100%; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
 .page--apply-user .form-stage-head { flex:0 0 auto; margin-bottom:clamp(10px,2vh,18px); }
-.page--apply-user .form-content-grid { flex:1; min-height:0; grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); overflow:hidden; }
+.page--apply-user .form-content-grid { flex:1; min-height:0; grid-template-columns:1fr; grid-template-rows:auto auto; align-content:start; overflow:hidden; }
 .page--apply-user .form-content-grid--register { width:min(960px,100%); margin:0 auto; display:block; }
 .page--apply-user .form-content-grid--register .mode-form-card { height:100%; }
 .page--apply-user .mode-form-card,.page--apply-user .my-apply-card { min-height:0; max-height:100%; overflow:hidden; box-sizing:border-box; }
@@ -634,9 +596,9 @@ function statusTagType(status) {
 .page--apply-user .mode-form-card :deep(.el-form-item) { margin-bottom:clamp(6px,1.2vh,12px); }
 .page--apply-user .mode-form-card :deep(.el-input__wrapper),.page--apply-user .mode-form-card :deep(.el-select__wrapper) { min-height:clamp(34px,4.6vh,42px); }
 .page--apply-user .mode-form-card :deep(.el-textarea__inner) { min-height:clamp(52px,7vh,72px)!important; }
-.page--apply-user .my-apply-card { display:flex; flex-direction:column; }
-.page--apply-user .my-apply-card .ui-table { flex:1; min-height:0; }
-.page--apply-user .my-apply-card :deep(.el-table__body-wrapper) { overflow:hidden; }
+.page--apply-user .my-apply-card { display:block; }
+.page--apply-user .my-apply-card .ui-table { width:100%; }
+.page--apply-user .my-apply-card :deep(.el-table__body-wrapper) { overflow-y:auto!important; }
 .page--apply-user .my-apply-card :deep(.page-footer-pager) { flex:0 0 auto; }
 
 @media (max-height:760px) {
@@ -676,22 +638,10 @@ function statusTagType(status) {
   .page--apply-user .mode-form-card :deep(.el-input__wrapper),.page--apply-user .mode-form-card :deep(.el-select__wrapper) { min-height:30px; }
 }
 
-.audit-guide-card { margin-bottom: 14px; padding: 16px 18px; border: 1px solid #dbeafe; background: linear-gradient(135deg, #f8fbff, #ffffff); }
-.audit-guide-main { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
-.audit-guide-title { color: #0f172a; font-size: 17px; font-weight: 800; }
-.audit-guide-desc { margin-top: 6px; color: #64748b; line-height: 1.7; }
-.audit-guide-actions { display: flex; gap: 8px; flex-shrink: 0; }
-.audit-guide-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; color: #334155; font-size: 13px; }
-.audit-guide-steps span { padding: 5px 9px; border-radius: 999px; background: #eef4ff; border: 1px solid #dbeafe; }
-.audit-guide-steps em { color: #94a3b8; font-style: normal; }
 .audit-empty { padding: 56px 0; color: #64748b; text-align: center; }
 .audit-empty-title { color: #334155; font-size: 15px; font-weight: 800; }
 .audit-empty-desc { margin-top: 8px; line-height: 1.8; }
 .audit-empty-actions { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
-@media (max-width: 900px) {
-  .audit-guide-main { flex-direction: column; }
-  .audit-guide-actions { width: 100%; flex-wrap: wrap; }
-}
 
 </style>
 

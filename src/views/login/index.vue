@@ -1375,18 +1375,12 @@ function backToLogin(keepPhone = true) {
 .reset-page-form :deep(.el-input__inner) { font-size: 14px; }
 
 .area-code {
-  width: 88px;
+  width: 72px;
   height: 52px;
-  flex-basis: 88px;
+  flex-basis: 72px;
   border-color: #d6dfed;
   border-radius: 7px 0 0 7px;
   background: #fff;
-}
-
-.area-code::after {
-  content: '⌄';
-  margin-left: 12px;
-  color: #63738c;
 }
 
 .phone-input-wrap :deep(.el-input__wrapper) { border-radius: 0 7px 7px 0; }
