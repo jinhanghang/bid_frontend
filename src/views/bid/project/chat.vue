@@ -90,10 +90,28 @@
               <el-button size="small" type="primary" :loading="savingPreview" @click="savePreviewEdit">保存修改</el-button>
             </template>
             <el-button v-else size="small" :disabled="!latestAssistant?.content || latestAssistant?.status==='GENERATING'" @click="startPreviewEdit">编辑</el-button>
+            <el-dropdown v-if="!previewEditing&&latestAssistant?.content" @command="format=>saveArtifact(latestAssistant,format)"><el-button size="small" :loading="savingMessageId===latestAssistant?.id">导出</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="word">导出 Word</el-dropdown-item><el-dropdown-item command="pdf">导出 PDF</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
             <el-button size="small" @click="previewFullscreen=!previewFullscreen">{{ previewFullscreen ? '退出全屏' : '全屏' }}</el-button>
           </div>
-          <div class="latest-preview-body" :class="{ 'is-editing': previewEditing }">
-            <el-input v-if="previewEditing" v-model="previewContent" class="preview-editor" type="textarea" resize="none" />
+          <div class="latest-preview-body" :class="[{ 'is-editing': previewEditing }, `style-${previewStyleCode.toLowerCase()}`]">
+            <div v-if="previewEditing" class="word-editor">
+              <div class="word-editor-toolbar">
+                <select v-model="previewStyleCode" title="文档样式" @change="savePreviewStyle"><option value="BID_OFFICIAL">标书正式版</option><option value="BUSINESS">商务版</option><option value="SIMPLE">简洁版</option><option value="REVIEW">评审阅读版</option></select>
+                <select v-model="editorBlockType" title="设置光标所在段落或选中段落的类型" @mousedown="rememberEditorSelection" @change="applyEditorBlock"><option value="body">正文</option><option value="h1">一级标题</option><option value="h2">二级标题</option><option value="h3">三级标题</option></select>
+                <span class="toolbar-divider"></span>
+                <button type="button" title="加粗" @mousedown.prevent @click="wrapEditorSelection('**','**')"><b>B</b></button>
+                <button type="button" title="无序列表" @mousedown.prevent @click="prefixEditorLines('- ')">列表</button>
+                <button type="button" title="编号列表" @mousedown.prevent @click="numberEditorLines">编号</button>
+                <button type="button" title="引用" @mousedown.prevent @click="prefixEditorLines('> ')">引用</button>
+                <button type="button" title="插入表格" @mousedown.prevent @click="insertEditorText('\n| 项目 | 内容 |\n| --- | --- |\n|  |  |\n')">表格</button>
+                <button type="button" title="插入分隔线" @mousedown.prevent @click="insertEditorText('\n---\n')">分隔线</button>
+                <button type="button" title="清除选中内容或光标所在段落的格式" @mousedown.prevent @click="clearEditorLineFormat">清除格式</button>
+              </div>
+              <div class="word-editor-workspace">
+                <div class="word-source-pane"><div class="word-pane-label">编辑内容</div><textarea ref="previewEditor" v-model="previewContent" spellcheck="false" placeholder="在这里编辑内容……" @click="syncEditorSelection" @keyup="syncEditorSelection" @select="syncEditorSelection" @input="syncEditorSelection"></textarea></div>
+                <div class="word-preview-pane" :class="`style-${previewStyleCode.toLowerCase()}`"><div class="word-pane-label">实时预览</div><div class="word-preview-paper"><MarkdownContent :content="displayAiContent(previewContent)"/></div></div>
+              </div>
+            </div>
             <template v-else-if="latestAssistant?.content">
               <MarkdownContent :content="displayAiContent(latestAssistant.content)"/>
               <div v-if="latestAssistant.status==='GENERATING'" class="preview-generating-line"><i></i><span>正在生成中</span></div>
@@ -186,6 +204,9 @@ const AI_BID_FOCUS_EVENT='ai-bid-focus-mode'
 const previewEditing=ref(false), previewFullscreen=ref(false), previewContent=ref(''), savingPreview=ref(false)
 const WORKSPACE_SPLIT_KEY='ai-bid:conversation-split'
 const conversationWorkspace=ref(null), workspaceSplit=ref(readWorkspaceSplit())
+const PREVIEW_STYLE_KEY='ai-bid:preview-style'
+const previewStyleCode=ref(readPreviewStyle()), editorBlockType=ref('body'), previewEditor=ref(null)
+const editorSelection=ref({start:0,end:0})
 const materialGuideItems=ref([])
 const guideTasks=[
   {title:'分析招标文件',description:'提取资格条件、废标项和重要时间',prompt:'请分析当前项目的招标文件，提取资格条件、废标项、重要时间节点和需要重点关注的风险。'},
@@ -234,6 +255,85 @@ function readWorkspaceSplit(){
   try{const value=Number(window.localStorage.getItem(WORKSPACE_SPLIT_KEY));return value>=20&&value<=70?value:36}catch(e){return 36}
 }
 function saveWorkspaceSplit(){try{window.localStorage.setItem(WORKSPACE_SPLIT_KEY,String(workspaceSplit.value))}catch(e){/* 仅保留当前会话比例 */}}
+function readPreviewStyle(){try{return ['BID_OFFICIAL','BUSINESS','SIMPLE','REVIEW'].includes(window.localStorage.getItem(PREVIEW_STYLE_KEY))?window.localStorage.getItem(PREVIEW_STYLE_KEY):'BUSINESS'}catch(e){return 'BUSINESS'}}
+function savePreviewStyle(){try{window.localStorage.setItem(PREVIEW_STYLE_KEY,previewStyleCode.value)}catch(e){/* 仅保留当前会话样式 */}}
+async function replaceEditorSelection(replacer){
+  const el=previewEditor.value
+  if(!el)return
+  const start=el.selectionStart,end=el.selectionEnd,selected=previewContent.value.slice(start,end)
+  const result=replacer(selected,start,end)
+  previewContent.value=previewContent.value.slice(0,start)+result.text+previewContent.value.slice(end)
+  await nextTick();el.focus({preventScroll:true});el.setSelectionRange(result.start??start,result.end??start+result.text.length)
+}
+function wrapEditorSelection(before,after){replaceEditorSelection(selected=>({text:before+selected+after,start:undefined,end:undefined}))}
+function prefixEditorLines(prefix){replaceEditorSelection(selected=>{const text=(selected||'').split('\n').map(line=>prefix+line.replace(/^\s*(?:[-+*]|>|\d+[.)])\s+/,'' )).join('\n');return{text}})}
+function numberEditorLines(){replaceEditorSelection(selected=>{const text=(selected||'').split('\n').map((line,index)=>`${index+1}. ${line.replace(/^\s*(?:[-+*]|>|\d+[.)])\s+/,'')}`).join('\n');return{text}})}
+function insertEditorText(text){replaceEditorSelection(selected=>({text:selected?text+selected:text}))}
+async function applyEditorBlock(){
+  const el=previewEditor.value
+  if(!el)return
+  const prefix={body:'',h1:'# ',h2:'## ',h3:'### '}[editorBlockType.value]||''
+  const originalStart=editorSelection.value.start,originalEnd=editorSelection.value.end
+  const lineStart=previewContent.value.lastIndexOf('\n',Math.max(0,originalStart-1))+1
+  const endAnchor=originalEnd>originalStart&&previewContent.value[originalEnd-1]==='\n'?originalEnd-1:originalEnd
+  const nextBreak=previewContent.value.indexOf('\n',endAnchor)
+  const lineEnd=nextBreak<0?previewContent.value.length:nextBreak
+  const source=previewContent.value.slice(lineStart,lineEnd)
+  const lines=source.split('\n')
+  const transformed=lines.map(line=>{
+    const cleaned=line.replace(/^\s*#{1,6}(?:\s+|$)/,'')
+    return prefix+(cleaned||'')
+  }).join('\n')
+  previewContent.value=previewContent.value.slice(0,lineStart)+transformed+previewContent.value.slice(lineEnd)
+  await nextTick()
+  el.focus({preventScroll:true})
+  if(originalStart===originalEnd){
+    const originalLine=source.split('\n')[0]||''
+    const oldPrefix=(originalLine.match(/^\s*#{1,6}(?:\s+|$)/)||[''])[0].length
+    const textOffset=Math.max(0,originalStart-lineStart-oldPrefix)
+    const cursor=Math.min(lineStart+transformed.length,lineStart+prefix.length+textOffset)
+    el.setSelectionRange(cursor,cursor)
+  }else{
+    el.setSelectionRange(lineStart,lineStart+transformed.length)
+  }
+  rememberEditorSelection()
+}
+function rememberEditorSelection(){
+  const el=previewEditor.value
+  if(el)editorSelection.value={start:el.selectionStart,end:el.selectionEnd}
+}
+function syncEditorBlockType(){
+  const el=previewEditor.value
+  if(!el)return
+  const start=previewContent.value.lastIndexOf('\n',Math.max(0,el.selectionStart-1))+1
+  const line=previewContent.value.slice(start,previewContent.value.indexOf('\n',start)<0?previewContent.value.length:previewContent.value.indexOf('\n',start))
+  const level=(line.match(/^\s*(#{1,3})(?:\s+|$)/)||[])[1]?.length||0
+  editorBlockType.value=level?`h${level}`:'body'
+}
+function syncEditorSelection(){rememberEditorSelection();syncEditorBlockType()}
+async function clearEditorLineFormat(){
+  const el=previewEditor.value
+  if(!el)return
+  let start=el.selectionStart,end=el.selectionEnd
+  if(start===end){
+    start=previewContent.value.lastIndexOf('\n',Math.max(0,start-1))+1
+    const nextLine=previewContent.value.indexOf('\n',end)
+    end=nextLine<0?previewContent.value.length:nextLine
+  }
+  const selected=previewContent.value.slice(start,end)
+  const cleaned=selected
+    .replace(/^\s*(?:#{1,6}\s+|[-+*]\s+|>\s*|\d+[.)]\s+)/gm,'')
+    .replace(/\[([^\]]+)]\((?:https?:\/\/)?[^)]+\)/g,'$1')
+    .replace(/\*\*([^*]+)\*\*/g,'$1')
+    .replace(/__([^_]+)__/g,'$1')
+    .replace(/~~([^~]+)~~/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g,'$1$2')
+  previewContent.value=previewContent.value.slice(0,start)+cleaned+previewContent.value.slice(end)
+  await nextTick()
+  el.focus({preventScroll:true})
+  el.setSelectionRange(start,start+cleaned.length)
+}
 function startWorkspaceResize(event){
   if(event.button!==0)return
   event.preventDefault()
@@ -289,7 +389,7 @@ async function stop(){if(!activeRunId.value)return;await stopConversationRun(act
 function fail(m,e){if(activeRunId.value||m.runId){startPolling(m);return}m.status='FAILED';finish();ElMessage.error(e?.message||'连接中断')}
 async function refreshConversations(){const p=await listConversations({current:1,size:50,bizType:'AI_BID',bizId:current.value.id});conversations.value=p?.records||[]}
 async function loadArtifacts(){if(!current.value?.id)return;artifactLoading.value=true;try{const p=await listDocumentArtifacts({documentId:current.value.id,bizType:'AI_BID',current:1,size:100});artifacts.value=p?.records||[]}finally{artifactLoading.value=false}}
-async function saveArtifact(m,format){savingMessageId.value=m.id;try{await saveBidArtifact(current.value.id,{messageId:m.id,format,artifactName:current.value.projectName,styleCode:'BUSINESS'});ElMessage.success(format==='pdf'?'PDF已生成并保存':'Word已生成并保存');await loadArtifacts();artifactDrawer.value=true}finally{savingMessageId.value=''}}
+async function saveArtifact(m,format){savingMessageId.value=m.id;try{await saveBidArtifact(current.value.id,{messageId:m.id,format,artifactName:current.value.projectName,styleCode:previewStyleCode.value});ElMessage.success(format==='pdf'?'PDF已按当前展示样式生成并保存':'Word已按当前展示样式生成并保存');await loadArtifacts();previewFullscreen.value=false;artifactDrawer.value=true}finally{savingMessageId.value=''}}
 async function rebuildArtifact(item){artifactBusyId.value=item.id;try{await regenerateDocumentArtifact(item.id);ElMessage.success('已生成新版本');await loadArtifacts()}finally{artifactBusyId.value=''}}
 async function renameArtifact(item){const{value}=await ElMessageBox.prompt('请输入新的成果名称','重命名',{inputValue:item.artifactName,inputPattern:/\S+/,inputErrorMessage:'名称不能为空'});await renameDocumentArtifact(item.id,value);ElMessage.success('重命名成功');await loadArtifacts()}
 async function removeArtifact(item){await ElMessageBox.confirm(`确定删除“${item.artifactName}”V${item.versionNo}及其文件吗？`,'删除成果',{type:'warning'});await deleteDocumentArtifact(item.id);ElMessage.success('已删除');await loadArtifacts()}
@@ -384,7 +484,9 @@ function statusText(x){return({DRAFT:'草稿',GENERATING:'生成中',GENERATED:'
 
 <style scoped>
 :global(body.workspace-resizing){cursor:col-resize!important;user-select:none!important}
-.conversation-workspace{flex:1;min-height:0;display:grid;overflow:hidden}.chat-column{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}.workspace-resizer{position:relative;z-index:6;height:100%;display:flex;align-items:center;justify-content:center;background:#f1f4f9;cursor:col-resize;touch-action:none;transition:background .16s}.workspace-resizer i{width:3px;height:42px;border-radius:999px;background:#c9d0dd;transition:.16s}.workspace-resizer:hover,.workspace-resizer:active{background:#ebe9ff}.workspace-resizer:hover i,.workspace-resizer:active i{height:62px;background:#7264e8}.latest-preview-panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;background:#fff}.latest-preview-panel.is-fullscreen{position:fixed;z-index:3000;inset:0;width:100vw;height:100vh;border:0}.preview-floating-actions{position:absolute;z-index:5;top:12px;right:18px;display:flex;gap:8px;padding:5px;border:1px solid rgba(220,226,237,.9);border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 7px 20px rgba(40,54,82,.1);backdrop-filter:blur(8px)}.latest-preview-body{flex:1;min-height:0;overflow:auto;padding:24px 28px;line-height:1.8}.latest-preview-body:not(.is-editing){padding-top:58px}.latest-preview-body.is-editing{overflow:hidden;padding:58px 18px 18px}.preview-editor{height:100%}.preview-editor :deep(.el-textarea__inner){height:100%;padding:18px;border:0;box-shadow:none!important;background:#fbfcff;color:#28364d;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:14px;line-height:1.75}.latest-preview-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#8490a3}.latest-preview-empty .ai-mark{margin:0 0 14px}.latest-preview-empty strong{color:#46536a}.latest-preview-empty span{max-width:280px;margin-top:8px;font-size:12px;line-height:1.6}
+.conversation-workspace{flex:1;min-height:0;display:grid;overflow:hidden}.chat-column{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}.workspace-resizer{position:relative;z-index:6;height:100%;display:flex;align-items:center;justify-content:center;background:#f1f4f9;cursor:col-resize;touch-action:none;transition:background .16s}.workspace-resizer i{width:3px;height:42px;border-radius:999px;background:#c9d0dd;transition:.16s}.workspace-resizer:hover,.workspace-resizer:active{background:#ebe9ff}.workspace-resizer:hover i,.workspace-resizer:active i{height:62px;background:#7264e8}.latest-preview-panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;background:#fff}.latest-preview-panel.is-fullscreen{position:fixed;z-index:3000;inset:0;width:100vw;height:100vh;border:0}.preview-floating-actions{position:absolute;z-index:5;top:12px;right:18px;display:flex;gap:8px;padding:5px;border:1px solid rgba(220,226,237,.9);border-radius:10px;background:rgba(255,255,255,.94);box-shadow:0 7px 20px rgba(40,54,82,.1);backdrop-filter:blur(8px)}.latest-preview-body{flex:1;min-height:0;overflow:auto;padding:24px 28px;line-height:1.8}.latest-preview-body:not(.is-editing){padding-top:58px}.latest-preview-body.is-editing{overflow:hidden;padding:58px 18px 18px}.latest-preview-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#8490a3}.latest-preview-empty .ai-mark{margin:0 0 14px}.latest-preview-empty strong{color:#46536a}.latest-preview-empty span{max-width:280px;margin-top:8px;font-size:12px;line-height:1.6}
+.word-editor{height:100%;min-height:0;display:flex;flex-direction:column;border:1px solid #dfe4ed;border-radius:10px;overflow:hidden;background:#f4f6fa}.word-editor-toolbar{min-height:48px;display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:7px 10px;border-bottom:1px solid #dfe4ed;background:#fff}.word-editor-toolbar select,.word-editor-toolbar button{height:32px;padding:0 10px;border:1px solid #dce2ec;border-radius:6px;background:#fff;color:#29364a;font:13px "Microsoft YaHei",sans-serif}.word-editor-toolbar select{min-width:112px}.word-editor-toolbar button{cursor:pointer}.word-editor-toolbar button:hover,.word-editor-toolbar select:hover{border-color:#7567e9;background:#f6f4ff;color:#6255dc}.toolbar-divider{width:1px;height:24px;margin:0 3px;background:#dfe4ec}.word-editor-workspace{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr);gap:10px;padding:10px}.word-source-pane,.word-preview-pane{min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid #dfe4ed;border-radius:8px;overflow:hidden;background:#fff}.word-pane-label{height:34px;flex:0 0 34px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #e6eaf1;background:#fafbfc;color:#68758b;font-size:12px}.word-source-pane textarea{flex:1;min-height:0;width:100%;padding:16px;border:0;outline:0;resize:none;color:#273650;font:14px/1.75 Consolas,"Microsoft YaHei",sans-serif;box-sizing:border-box}.word-preview-pane{background:#e9edf4}.word-preview-paper{flex:1;min-height:0;margin:10px;padding:24px 28px;overflow:auto;background:#fff;box-shadow:0 3px 12px rgba(38,52,80,.08)}
+.style-bid_official,.style-bid_official .word-preview-paper{font-family:宋体,SimSun,serif;color:#111827}.style-bid_official :deep(h1),.style-bid_official :deep(h2),.style-bid_official :deep(h3){font-family:黑体,SimHei,sans-serif;color:#111827}.style-bid_official :deep(h1){text-align:center;font-size:24px}.style-bid_official :deep(h2){font-size:18px}.style-bid_official :deep(h3){font-size:16px}.style-business,.style-business .word-preview-paper{font-family:"Microsoft YaHei",sans-serif;color:#111827}.style-business :deep(h1){font-size:24px;color:#0f172a}.style-business :deep(h2){font-size:17px;color:#1d4ed8}.style-business :deep(h3){font-size:15px;color:#1e40af}.style-simple,.style-simple .word-preview-paper{font-family:宋体,SimSun,serif;color:#111827}.style-simple :deep(h1){font-size:22px}.style-simple :deep(h2){font-size:16px}.style-simple :deep(h3){font-size:14px}.style-review,.style-review .word-preview-paper{font-family:"Microsoft YaHei",sans-serif;color:#111827;font-size:16px;line-height:1.9}.style-review :deep(h1){font-size:24px}.style-review :deep(h2){font-size:18px}.style-review :deep(h3){font-size:16px;color:#374151}
 .preview-generating>i,.preview-generating-line i{width:7px;height:7px;border-radius:50%;background:#6c63ee;box-shadow:0 0 0 0 rgba(108,99,238,.35);animation:previewPulse 1.25s infinite}.preview-generating>i{margin-top:18px}.preview-generating-line{display:flex;align-items:center;gap:8px;margin:20px 0 4px;color:#6f7b8e;font-size:12px}.preview-generating-line i{flex:0 0 7px}@keyframes previewPulse{70%{box-shadow:0 0 0 9px rgba(108,99,238,0)}100%{box-shadow:0 0 0 0 rgba(108,99,238,0)}}
 .conversation-title-wrap{display:flex;align-items:center;min-width:0;gap:12px}.project-list-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 34px;padding:0;border:1px solid #dfe5ef;border-radius:10px;background:#fff;color:#68758c;cursor:pointer;transition:.18s}.project-list-toggle:hover{border-color:#7567e9;background:#f5f3ff;color:#6657df}.project-list-collapsed .conversation-panel{width:100%}
 .bid-chat-page{height:100%;min-height:0;display:flex;overflow:hidden;background:#f4f6fb;color:#1f2b3d}.project-list{width:292px;flex:0 0 292px;padding:20px 16px;border-right:1px solid #e3e8f0;background:#fff;display:flex;flex-direction:column;gap:15px}.side-head,.conversation-head,.head-actions,.composer-tools,.composer-tools>div{display:flex;align-items:center;justify-content:space-between}.side-head h2,.conversation-head h2{margin:0;font-size:20px}.side-head p,.conversation-head p{margin:5px 0 0;color:#8a96a8;font-size:12px}.projects{flex:1;min-height:0;overflow:auto}.projects button{width:100%;margin-bottom:9px;padding:13px;text-align:left;border:1px solid transparent;border-radius:13px;background:#f7f9fc;cursor:pointer}.projects button.active,.projects button:hover{border-color:#8174ed;background:#f2f0ff}.projects strong,.projects span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projects span{margin-top:7px;color:#8793a7;font-size:12px}.projects i{display:inline-block;margin-top:8px;padding:2px 7px;border-radius:8px;background:#e8f7ef;color:#35a36e;font-size:11px;font-style:normal}.conversation-panel{min-width:0;flex:1;display:flex;flex-direction:column}.conversation-head{min-height:76px;padding:12px 24px;border-bottom:1px solid #e3e8f0;background:#fff;gap:18px}.title{min-width:0}.title h2,.title p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.head-actions{gap:8px;white-space:nowrap}.messages{flex:1;min-height:0;overflow:auto;padding:25px max(30px,calc((100% - 920px)/2))}.welcome{max-width:720px;margin:8vh auto 0;text-align:center}.ai-mark{width:58px;height:58px;margin:0 auto 18px;border-radius:18px;display:grid;place-items:center;background:linear-gradient(135deg,#5268e8,#8055dc);color:white;font-weight:800}.welcome p,.empty p{color:#7d899b}.suggestions{display:grid;gap:10px;margin-top:24px}.suggestions button{padding:13px 16px;text-align:left;border:1px solid #dfe4ee;border-radius:12px;background:white;cursor:pointer}.message{display:flex;gap:11px;max-width:920px;margin:0 auto 23px}.message.user{flex-direction:row-reverse}.avatar{width:34px;height:34px;flex:0 0 34px;border-radius:10px;display:grid;place-items:center;background:#eceaff;color:#6558df;font-size:12px;font-weight:700}.user .avatar{background:#e4f4eb;color:#329568}.bubble-wrap{min-width:0;max-width:85%}.bubble{padding:13px 16px;border-radius:5px 16px 16px;background:#fff;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;box-shadow:0 5px 18px rgba(35,50,80,.06)}.user .bubble{border-radius:16px 5px 16px 16px;background:#6276e8;color:white}.bubble i{display:inline-block;width:2px;height:16px;margin-left:4px;background:#607cf2;animation:blink 1s infinite}.message-actions{margin-top:6px;opacity:0}.message:hover .message-actions{opacity:1}.stream-status{display:flex;justify-content:space-between;color:#747f92;font-size:12px}.chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:8px}.chips span{padding:6px 9px;border-radius:8px;background:#e9edf5;color:#526076;font-size:12px}.chips button{border:0;background:transparent;cursor:pointer}.composer{width:min(920px,calc(100% - 60px));margin:0 auto 20px;padding:11px 14px;border:1px solid #dce3ed;border-radius:16px;background:#fff;box-shadow:0 12px 32px rgba(36,53,86,.1)}.composer :deep(.el-textarea__inner){box-shadow:none}.context-state{font-size:12px;color:#6c788c}.context-state i{display:inline-block;width:7px;height:7px;margin-right:5px;border-radius:50%;background:#32ac72}.empty{flex:1;display:grid;align-content:center;justify-items:center;text-align:center}.notice-options{max-height:360px;margin-top:12px;overflow:auto}.notice-options label{display:flex;gap:10px;padding:12px;margin-bottom:8px;border:1px solid #e1e6ef;border-radius:11px;cursor:pointer}.notice-options label.selected{border-color:#7465e8;background:#f5f3ff}.notice-options strong,.notice-options span{display:block}.notice-options span{margin-top:5px;color:#8793a7;font-size:12px}.context-summary,.draft-preview{padding:14px;border:1px solid #e1e6ef;border-radius:12px;background:#f8f9fc}.context-summary p{margin:7px 0;color:#647086}.drawer-actions{display:flex;gap:10px;margin-top:20px}.draft-preview{max-height:360px;overflow:auto;white-space:pre-wrap;line-height:1.7;color:#566176}@keyframes blink{50%{opacity:0}}@media(max-width:1100px){.project-list{width:240px;flex-basis:240px}.conversation-head{align-items:flex-start;flex-direction:column}.head-actions{max-width:100%;overflow:auto}}
