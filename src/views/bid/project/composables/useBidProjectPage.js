@@ -1,5 +1,5 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from '@/plugins/element-plus-api'
 import { notifyRequestError } from '@/utils/errorNotify'
@@ -92,6 +92,7 @@ import {
 
 export function useBidProjectPage() {
 const router = useRouter()
+const route = useRoute()
 
 const auth = useAuthStore()
 
@@ -1391,7 +1392,7 @@ onMounted(async () => {
   }, 1000)
   await loadGlobalAiRunningTask()
   await loadAiModels()
-  await loadProjects()
+  await loadProjects(route.query.projectId)
   startPolling()
   startGlobalAiTaskPolling()
   restoreTechnicalOutlinePending()
@@ -1783,6 +1784,10 @@ async function runProjectTenderAnalysis() {
 
 async function openCreateProject() {
   resetUploadFile()
+  if (!aiModels.value.length) {
+    await loadAiModels()
+  }
+  technicalForm.modelConfigId = (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id || ''
   createDialog.enterpriseId = null
   createDialog.ownerUserId = null
   createDialog.visible = true
@@ -1870,10 +1875,20 @@ async function uploadTenderOnly() {
     ElMessage.warning('请先选择招标文件')
     return
   }
+  if (!aiModels.value.length) {
+    await loadAiModels()
+  }
+  const modelConfigId = technicalForm.modelConfigId
+    || (aiModels.value.find(item => item.defaultFlag) || aiModels.value[0])?.id
+  if (!modelConfigId) {
+    ElMessage.warning('当前没有可用的生成模型，请先联系管理员配置模型')
+    return
+  }
   createDialog.loading = true
   try {
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('modelConfigId', modelConfigId)
     if (isPlatformUser.value) {
       if (!createDialog.enterpriseId) {
         ElMessage.warning('请选择所属企业')

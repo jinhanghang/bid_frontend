@@ -14,13 +14,6 @@
   background: #fff;
 }
 
-.pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .project-pane {
   display: flex;
   flex-direction: column;
@@ -28,10 +21,106 @@
 }
 
 .pane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   font-size: 16px;
   font-weight: 800;
   color: #1f2937;
   margin-bottom: 14px;
+}
+
+.pane-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:global(.workbench-guide-mask) {
+  position: fixed;
+  z-index: 2998;
+  inset: 0;
+  background: rgba(15, 23, 42, .62);
+}
+
+:global(.workbench-guide-target) {
+  position: relative !important;
+  z-index: 2999 !important;
+  border-radius: 14px;
+  box-shadow: 0 0 0 4px #fff, 0 0 0 7px #5577f5, 0 18px 48px rgba(15, 23, 42, .28) !important;
+}
+
+:global(.workbench-guide-dialog) {
+  position: fixed;
+  z-index: 3001;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 40px));
+  padding: 24px 26px 20px;
+  transform: translate(-50%, -50%);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .3);
+  color: #17233a;
+}
+
+:global(.workbench-guide-dialog .guide-close) {
+  position: absolute;
+  top: 13px;
+  right: 15px;
+  border: 0;
+  background: transparent;
+  color: #8994a6;
+  font-size: 25px;
+  cursor: pointer;
+}
+
+:global(.workbench-guide-dialog .guide-progress) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 32px 20px 0;
+  color: #7a879b;
+  font-size: 12px;
+}
+
+:global(.workbench-guide-dialog .guide-progress i) {
+  height: 4px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8ecf4;
+}
+
+:global(.workbench-guide-dialog .guide-progress b) {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #4076f4, #7257e8);
+  transition: width .2s ease;
+}
+
+:global(.workbench-guide-dialog > strong) {
+  display: block;
+  font-size: 20px;
+}
+
+:global(.workbench-guide-dialog > p) {
+  margin: 12px 0 22px;
+  color: #5f6d82;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+:global(.workbench-guide-dialog .guide-actions) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+:global(.workbench-guide-dialog .guide-actions > span) {
+  flex: 1;
 }
 
 .project-search {
@@ -609,22 +698,6 @@
   width: 100%;
 }
 
-.create-model-field {
-  margin-bottom: 16px;
-}
-
-.create-model-field > label {
-  display: block;
-  margin-bottom: 8px;
-  color: #334155;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.create-model-field > label span {
-  color: #ef4444;
-}
-
 .create-space-tip {
   grid-column: 1 / -1;
   color: #64748b;
@@ -777,14 +850,6 @@
   height: 54px;
   padding: 0 12px;
   border-bottom: 1px solid #e5e7eb;
-}
-
-.tech-header-model {
-  flex: 0 0 auto;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .bid-tech-workflow-alert {

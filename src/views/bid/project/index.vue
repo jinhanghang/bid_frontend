@@ -1,7 +1,13 @@
 <template>
   <div class="ai-bid-page">
     <aside class="project-pane">
-      <div class="pane-title">我的项目</div>
+      <div class="pane-title">
+        <span>我的项目</span>
+        <div class="pane-title-actions">
+          <el-button size="small" text @click="startWorkbenchGuide">使用引导</el-button>
+          <el-button size="small" type="primary" plain @click="returnToConversation">对话模式</el-button>
+        </div>
+      </div>
       <el-input
         v-model="keyword"
         class="project-search"
@@ -189,16 +195,19 @@
               <p>结合招标文件解析结果和企业资料档案，自动生成资格、商务响应及基础表单初稿。</p>
             </div>
             <div class="bid-doc-actions">
+              <el-button plain class="bid-doc-guide-btn" @click="startBidDocumentGuide">操作引导</el-button>
               <el-button :icon="Refresh" @click="refreshBidDocument">刷新</el-button>
-              <el-button plain @click="openTenderAnalysisDialog">招标文件分析</el-button>
-              <el-button plain @click="openCompanyMaterialSelector">选择资料档案</el-button>
+              <el-button plain class="bid-doc-analysis-btn" @click="openTenderAnalysisDialog">招标文件分析</el-button>
+              <el-button plain class="bid-doc-material-btn" @click="openCompanyMaterialSelector">选择资料档案</el-button>
               <el-button
+                class="bid-doc-fill-btn"
                 type="primary"
                 :loading="bidDocumentFilling"
                 :disabled="!canFillBidDocument"
                 @click="smartFillBidDocument"
               >智能填空</el-button>
               <el-button
+                class="bid-doc-export-btn"
                 plain
                 :loading="bidDocumentExporting"
                 :disabled="!bidDocumentDraft.trim()"
@@ -214,7 +223,7 @@
           </div>
 
           <div class="bid-doc-status-grid">
-            <div class="bid-doc-status-card" :class="{ success: isParseSuccess }">
+            <div class="bid-doc-status-card bid-doc-parse-module" :class="{ success: isParseSuccess }">
               <strong>招标解析</strong>
               <span>{{ parseStatusLabel }}</span>
               <p>{{ isParseSuccess ? '已完成读标，可用于商务标填空。' : '请先在解析报告中完成读标。' }}</p>
@@ -236,7 +245,7 @@
             </div>
           </div>
 
-          <div class="company-material-ref-card">
+          <div class="company-material-ref-card bid-doc-material-module">
             <div>
               <strong>企业资料引用</strong>
               <p v-if="hasCompanyMaterial">
@@ -287,7 +296,7 @@
             </div>
           </div>
 
-          <div class="bid-doc-review-card">
+          <div class="bid-doc-review-card bid-doc-review-module">
             <div class="review-card-head">
               <div>
                 <strong>客户确认 / 修改意见</strong>
@@ -311,7 +320,7 @@
             </el-form>
           </div>
 
-          <div class="bid-doc-editor-card">
+          <div class="bid-doc-editor-card bid-doc-result-editor">
             <div class="bid-doc-editor-head">
               <div>
                 <strong>投标文件智能填空结果</strong>
@@ -341,6 +350,7 @@
         <div class="bid-tech-panel">
           <div class="bid-tech-header">
             <el-button plain @click="activeDoc = ''">退出技术方案</el-button>
+            <el-button plain class="tech-guide-btn" @click="startTechnicalGuide">操作引导</el-button>
             <div class="bid-tech-steps">
               <span v-for="step in techSteps" :key="step.value" class="bid-tech-step" :class="{ active: technicalActiveStep >= step.value, current: technicalActiveStep === step.value }">
                 <b>{{ step.value }}</b>{{ step.label }}
@@ -361,7 +371,7 @@
           <div class="bid-tech-body" :class="{ generated: technicalGeneratedView }">
             <div class="bid-tech-left">
               <template v-if="!technicalGeneratedView">
-                <div class="tech-form-section">
+                <div class="tech-form-section tech-type-section">
                   <div class="tech-label required">方案类型：</div>
                   <div class="tech-type-row">
                     <el-select v-model="technicalForm.solutionType" placeholder="服务" class="tech-select">
@@ -379,7 +389,7 @@
                   </div>
                 </div>
 
-                <div class="tech-form-section">
+                <div class="tech-form-section tech-strategy-section">
                   <div class="tech-label required">生成策略：</div>
                   <div class="tech-ai-levels">
                     <div
@@ -471,7 +481,7 @@
                   <div class="tech-field-tip">填写后，目录生成会提前拆成 800~1500 字/节的末级章节，便于后续并行生成 5万~20万字初稿。</div>
                 </div>
 
-                <div class="tech-form-section">
+                <div class="tech-form-section tech-requirement-section">
                   <div class="tech-inline-title">
                     <span class="required">采购需求：</span>
                     <el-button size="small" :disabled="!isParseSuccess" @click="extractTechnicalRequirement">从解析报告重新提取</el-button>
@@ -825,7 +835,7 @@
                   <el-empty description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                 </el-scrollbar>
                 <div class="tech-preview-actions">
-                  <el-button type="primary" :loading="isCurrentTechnicalOutlineGenerating" :disabled="isCurrentTechnicalOutlineGenerating" @click="generateTechnicalOutline">
+                  <el-button class="tech-generate-outline-btn" type="primary" :loading="isCurrentTechnicalOutlineGenerating" :disabled="isCurrentTechnicalOutlineGenerating" @click="generateTechnicalOutline">
                     {{ isCurrentTechnicalOutlineGenerating ? '目录生成中' : (isParseSuccess ? '生成目录' : '先解析再生成目录') }}
                   </el-button>
                 </div>
@@ -1732,11 +1742,29 @@
       @insert="insertTechnicalImage"
     />
 
+    <teleport to="body">
+      <template v-if="workbenchGuideVisible">
+        <div class="workbench-guide-mask" @click.self="closeWorkbenchGuide" />
+        <section class="workbench-guide-dialog" role="dialog" aria-modal="true" aria-label="专业工作台使用引导">
+          <button type="button" class="guide-close" aria-label="关闭引导" @click="closeWorkbenchGuide">×</button>
+          <div class="guide-progress"><span>{{ workbenchGuideIndex + 1 }}/{{ activeGuideSteps.length }}</span><i><b :style="{width:workbenchGuideProgress+'%'}" /></i></div>
+          <strong>{{ currentWorkbenchGuide.title }}</strong>
+          <p>{{ currentWorkbenchGuide.description }}</p>
+          <div class="guide-actions">
+            <el-button text @click="disableWorkbenchGuide">不再提醒</el-button>
+            <span />
+            <el-button v-if="workbenchGuideIndex>0" @click="previousWorkbenchGuide">上一步</el-button>
+            <el-button type="primary" @click="nextWorkbenchGuide">{{ workbenchGuideIndex===activeGuideSteps.length-1?'完成':'下一步' }}</el-button>
+          </div>
+        </section>
+      </template>
+    </teleport>
+
   </div>
 </template>
 
 <script setup>
-import { defineComponent, h } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElInput, ElOption, ElSelect, ElTag } from '@/plugins/element-plus-api'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
 import SectionContentPreview from '@/components/SectionContentPreview.vue'
@@ -1807,6 +1835,136 @@ const {
   selectLatestTechnicalPreviewLeaf, findTechnicalOutlineNodeById, openTechnicalSectionDialog, generateTechnicalSection, startPolling, isOutlineGenerated, isOutlineFailed, isTechnicalLeafRetryable,
   outlineActualWordCount, outlineTargetWordCount, technicalWordHealthClass, technicalWordHealthLabel, technicalWordHealthType
 } = useBidProjectPage()
+
+function returnToConversation() {
+  router.push({
+    path: '/ai-bid',
+    query: selectedProject.value?.id ? { projectId: selectedProject.value.id } : undefined
+  })
+}
+
+const WORKBENCH_GUIDE_KEY = 'ai-bid:workbench-guide-disabled'
+const TECHNICAL_GUIDE_KEY = 'ai-bid:technical-guide-disabled'
+const BID_DOCUMENT_GUIDE_KEY = 'ai-bid:bid-document-guide-disabled'
+const workbenchGuideVisible = ref(false)
+const workbenchGuideIndex = ref(0)
+const workbenchGuideMode = ref('workbench')
+const workbenchGuideSteps = [
+  { target: '.project-pane', title: '先选择一份标书项目', description: '左侧集中显示您可以操作的标书。点击项目后，会展开解析报告、投标文件和技术方案三个工作模块。' },
+  { target: '.project-scroll', title: '按任务进入对应模块', description: '解析报告用于查看招标要求；投标文件用于商务标智能填空；技术方案用于生成目录、章节正文并导出成果。' },
+  { target: '.new-project-btn', title: '没有项目时先新建', description: '可以从招标文件创建新项目。创建完成后，系统会把该项目加入左侧列表并自动选中。' },
+  { target: '.pane-title-actions', title: '可随时切换工作方式', description: '需要快速问答时返回对话模式；需要按解析、商务标、技术标步骤制作时使用专业工作台。点击“使用引导”可以再次查看本说明。' }
+]
+const technicalGuideSteps = [
+  { target: '.tech-read-card', title: '第一步：先智能读取招标文件', description: '先点击“开始解析”，让系统提取采购需求、评分标准和关键条款。解析完成后，再继续设置和生成技术方案。' },
+  { target: '.tech-strategy-section', title: '选择生成策略', description: '根据项目复杂程度选择快速生成、标准生成或深度生成。系统会按所选策略执行后续目录和正文生成。' },
+  { target: '.tech-requirement-section', title: '核对采购需求', description: '智能读取完成后，请核对自动提取的采购需求；内容不完整时可以直接补充或修改。' },
+  { target: '.tech-generate-outline-btn', title: '生成技术方案目录', description: '确认方案名称、采购需求和评分标准后生成目录，再按目录继续生成章节正文。' }
+]
+const bidDocumentGuideSteps = [
+  { target: '.bid-doc-parse-module', title: '第一步：确认招标文件解析', description: '先确认招标文件已完成解析；需要查看采购要求、评分项和风险条款时，点击上方“招标文件分析”。' },
+  { target: '.bid-doc-material-module', title: '第二步：选择企业资料档案', description: '在“企业资料引用”模块选择当前项目所属企业的资料档案，系统将引用企业资质、人员、业绩和财务等真实信息。' },
+  { target: '.bid-doc-result-editor', title: '第三步：执行智能填空并核对结果', description: '准备完成后点击上方“智能填空”。生成内容会显示在此模块，可直接核对、修改并保存。' },
+  { target: '.bid-doc-review-module', title: '第四步：记录客户确认结果', description: '在此模块保存客户确认状态和修改意见，作为后续修改与定稿依据。' },
+  { target: '.bid-doc-export-btn', title: '第五步：导出投标文件', description: '内容确认完成后导出 Word；如需保留原始结构，也可以导出 Markdown。' }
+]
+const activeGuideSteps = computed(() => {
+  if (workbenchGuideMode.value === 'technical') return technicalGuideSteps
+  if (workbenchGuideMode.value === 'bidDocument') return bidDocumentGuideSteps
+  return workbenchGuideSteps
+})
+const currentWorkbenchGuide = computed(() => activeGuideSteps.value[workbenchGuideIndex.value] || activeGuideSteps.value[0])
+const workbenchGuideProgress = computed(() => ((workbenchGuideIndex.value + 1) / activeGuideSteps.value.length) * 100)
+let workbenchGuideTarget = null
+
+function clearWorkbenchGuideTarget() {
+  workbenchGuideTarget?.classList.remove('workbench-guide-target')
+  workbenchGuideTarget = null
+}
+async function focusWorkbenchGuideTarget() {
+  clearWorkbenchGuideTarget()
+  await nextTick()
+  workbenchGuideTarget = document.querySelector(currentWorkbenchGuide.value.target)
+  if (!workbenchGuideTarget) return
+  workbenchGuideTarget.classList.add('workbench-guide-target')
+  workbenchGuideTarget.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+}
+function startWorkbenchGuide() {
+  workbenchGuideMode.value = 'workbench'
+  workbenchGuideIndex.value = 0
+  workbenchGuideVisible.value = true
+  focusWorkbenchGuideTarget()
+}
+function startTechnicalGuide() {
+  workbenchGuideMode.value = 'technical'
+  workbenchGuideIndex.value = 0
+  workbenchGuideVisible.value = true
+  focusWorkbenchGuideTarget()
+}
+function startBidDocumentGuide() {
+  workbenchGuideMode.value = 'bidDocument'
+  workbenchGuideIndex.value = 0
+  workbenchGuideVisible.value = true
+  focusWorkbenchGuideTarget()
+}
+function closeWorkbenchGuide() {
+  workbenchGuideVisible.value = false
+  clearWorkbenchGuideTarget()
+}
+function disableWorkbenchGuide() {
+  const key = workbenchGuideMode.value === 'technical'
+    ? TECHNICAL_GUIDE_KEY
+    : (workbenchGuideMode.value === 'bidDocument' ? BID_DOCUMENT_GUIDE_KEY : WORKBENCH_GUIDE_KEY)
+  try { window.localStorage.setItem(key, '1') } catch (_) { /* 忽略本地存储限制 */ }
+  closeWorkbenchGuide()
+}
+function previousWorkbenchGuide() {
+  if (workbenchGuideIndex.value <= 0) return
+  workbenchGuideIndex.value -= 1
+  focusWorkbenchGuideTarget()
+}
+function nextWorkbenchGuide() {
+  if (workbenchGuideIndex.value >= activeGuideSteps.value.length - 1) {
+    const key = workbenchGuideMode.value === 'technical'
+      ? TECHNICAL_GUIDE_KEY
+      : (workbenchGuideMode.value === 'bidDocument' ? BID_DOCUMENT_GUIDE_KEY : WORKBENCH_GUIDE_KEY)
+    try { window.localStorage.setItem(key, '1') } catch (_) { /* 忽略本地存储限制 */ }
+    closeWorkbenchGuide()
+    return
+  }
+  workbenchGuideIndex.value += 1
+  focusWorkbenchGuideTarget()
+}
+watch(activeDoc, (value, oldValue) => {
+  if (value === 'TECHNICAL_SOLUTION' && oldValue !== 'TECHNICAL_SOLUTION') {
+    let disabled = false
+    try { disabled = window.localStorage.getItem(TECHNICAL_GUIDE_KEY) === '1' } catch (_) { /* 忽略本地存储限制 */ }
+    if (!disabled) window.setTimeout(startTechnicalGuide, 300)
+    return
+  }
+  if (value !== 'BID_DOCUMENT' || oldValue === 'BID_DOCUMENT') return
+  let disabled = false
+  try { disabled = window.localStorage.getItem(BID_DOCUMENT_GUIDE_KEY) === '1' } catch (_) { /* 忽略本地存储限制 */ }
+  if (!disabled) window.setTimeout(startBidDocumentGuide, 300)
+}, { flush: 'post' })
+function handleWorkbenchGuideKeydown(event) {
+  if (!workbenchGuideVisible.value) return
+  if (event.key === 'Escape') closeWorkbenchGuide()
+  if (event.key === 'ArrowRight' || event.key === 'Enter') nextWorkbenchGuide()
+  if (event.key === 'ArrowLeft') previousWorkbenchGuide()
+}
+onMounted(() => {
+  window.addEventListener('keydown', handleWorkbenchGuideKeydown)
+  let disabled = false
+  try { disabled = window.localStorage.getItem(WORKBENCH_GUIDE_KEY) === '1' } catch (_) { /* 忽略本地存储限制 */ }
+  if (!disabled) window.setTimeout(() => {
+    if (!activeDoc.value) startWorkbenchGuide()
+  }, 450)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleWorkbenchGuideKeydown)
+  clearWorkbenchGuideTarget()
+})
 
 const OutlineTree = defineComponent({
   name: 'OutlineTree',
