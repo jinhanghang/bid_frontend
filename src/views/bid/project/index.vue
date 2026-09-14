@@ -560,9 +560,9 @@
                         </div>
                       </div>
                       <div v-if="showTechnicalStats" class="tech-detail-stats">
-                        <span>目标字数：<b class="red">{{ technicalTargetWordCount }}</b> 字</span>
+                        <span>目标字数：<b class="red">{{ technicalHasFlexibleWordCount ? '灵活生成' : `${technicalTargetWordCount} 字` }}</b></span>
                         <span>生成字数：<b class="green">{{ technicalActualWordCount }}</b> 字</span>
-                        <span>预计页数：<b class="red">{{ technicalTargetPageCount }}</b> 页</span>
+                        <span>预计页数：<b class="red">{{ technicalHasFlexibleWordCount ? '生成后统计' : `${technicalTargetPageCount} 页` }}</b></span>
                         <span>预估页数：<b class="green">{{ technicalActualPageCount }}</b> 页</span>
                       </div>
                       <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
@@ -579,6 +579,21 @@
                     </div>
                     <el-scrollbar class="edit-scroll">
                       <section v-if="technicalEditTab === 'word'" class="edit-section">
+                        <div class="all-word-batch-bar">
+                          <div class="all-word-batch-info">
+                            <div class="all-word-batch-title">整份方案统一设置</div>
+                            <div class="all-word-batch-tip">一次设置全部末级章节；选择“不指定字数”时，由 AI 根据章节内容灵活生成。</div>
+                          </div>
+                          <div class="all-word-batch-actions">
+                            <el-select v-model="technicalAllWordCount" class="all-word-select" placeholder="请选择生成字数" :disabled="technicalAllWordUpdating">
+                              <el-option label="不指定字数（AI灵活生成）" value="AUTO" />
+                              <el-option v-for="n in wordOptions" :key="n" :label="`${n}字`" :value="n" />
+                            </el-select>
+                            <el-button type="primary" :loading="technicalAllWordUpdating" :disabled="technicalAllWordCount === ''" @click="onTechnicalAllBatchWord">
+                              应用到全部目录
+                            </el-button>
+                          </div>
+                        </div>
                         <OutlineTree :nodes="technicalOutlines" mode="word" @word-change="onTechnicalNodeWordChange" @batch-word="onTechnicalBatchWord" />
                       </section>
 
@@ -1784,7 +1799,7 @@ const {
   wordPresetSelectionValid, selectedTechnicalLeaf, technicalAutoPreviewFollow, technicalManualSelectedLeafId, technicalEditMode, technicalEditTab, technicalDeleteIds, technicalAddNodeVisible,
   technicalAddBaseNode, technicalAddNodeForm, technicalOverallWritingRequirement, technicalStreamingOutlineId, technicalSectionContentEditMode, technicalSectionContentDraft, technicalSectionContentSaving, technicalSectionEditorRef,
   imagePickerVisible, sectionNode, sectionDialogVisible, sectionGenerating, sectionOptimizing, sectionOptimizingNodeId, sectionStreamingText, technicalShortenDialogVisible,
-  technicalShortenTargetMode, technicalShortenCustomWordCount, technicalShortenPresetOptions, wordOptions, sectionForm, DEFAULT_BLIND_BID_REQUIREMENT, fullGenerateForm, fullGenerateSettingVisible,
+  technicalShortenTargetMode, technicalShortenCustomWordCount, technicalShortenPresetOptions, wordOptions, technicalAllWordCount, technicalAllWordUpdating, technicalEditableLeafCount, sectionForm, DEFAULT_BLIND_BID_REQUIREMENT, fullGenerateForm, fullGenerateSettingVisible,
   fullGenerateAction, knowledgeSelectorVisible, knowledgeLoading, knowledgeKeyword, knowledgeBaseList, tempSelectedKnowledgeIds, knowledgeSelectorTarget, selectedKnowledgeBaseCache,
   selectedKnowledgeBases, selectedSectionKnowledgeBases, selectedTenderAnalysisKnowledgeBases, technicalVersionDialogVisible, technicalVersionLoading, technicalVersionRestoring, technicalVersionList, selectedTechnicalVersion,
   selectedTechnicalVersionSnapshot, technicalRequirementExtractVisible, technicalRequirementExtractLoading, technicalRequirementExtractRebuilding, technicalRequirementOutlineSyncing, technicalRequirementExtract, technicalExtractSummaryDialogVisible, technicalExtractSummarySaving,
@@ -1795,7 +1810,7 @@ const {
   technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
   parseProgress, hasTenderFile, tenderFileDisplayName, isParseRunning, isParseSuccess, parseStatusLabel, isPlatformUser, hasCompanyMaterial,
   bidDocumentContent, bidDocAnalysis, bidDocumentStatusLabel, canFillBidDocument, technicalOutlineLeafCount, technicalLeafNodes, technicalFinishedLeafCount, technicalRetryableLeafNodes,
-  technicalRetryableLeafCount, canRetryTechnicalFailedSections, technicalGeneratePercent, technicalTargetWordCount, technicalActualWordCount, estimatePageCount, technicalTargetPageCount, technicalActualPageCount,
+  technicalRetryableLeafCount, canRetryTechnicalFailedSections, technicalGeneratePercent, technicalTargetWordCount, technicalHasFlexibleWordCount, technicalActualWordCount, estimatePageCount, technicalTargetPageCount, technicalActualPageCount,
   showTechnicalStats, technicalWorkflowState, technicalActiveStep, technicalWorkflowStatusText, technicalWorkflowAlertData, technicalGeneratedView, selectedTechnicalLeafContent, technicalSectionContentDirty,
   technicalSectionEditorWordCount, selectedTechnicalLeafDisplayContent, canEditTechnicalOutline, canCopyTechnicalSection, canEditTechnicalSectionContent, canInsertTechnicalImage, canOptimizeTechnicalSection, canGenerateTechnicalContent,
   canRewriteTechnicalAll, canExportTechnicalWord, isGlobalAiTaskRunning, isGlobalAiTaskForCurrentTechnicalSolution, technicalRunningTask, technicalRunningTaskStatus, isTechnicalTaskWaiting, isTechnicalTaskRunning,
@@ -1825,7 +1840,7 @@ const {
   syncTechnicalGenerationTimingFromTask, finishTechnicalGenerationTiming, finishTechnicalGenerationTimingFromTask, syncTechnicalGenerationStateFromSolution, markTechnicalOutlinePending, clearTechnicalOutlinePending, restoreTechnicalOutlinePending, startTechnicalOutlinePolling, isTechnicalOutlineGeneratingStatus, technicalOutlineFailureMessage,
   technicalOutlinesNeedWordPreset, checkTechnicalOutlineReady, getTechnicalOutlinesFromSolution, flattenTechnicalLeaves, isTechnicalNodeOptimizing, isTechnicalLeafDone, technicalNodeStatusLabel, technicalNodeStatusType,
   getTechnicalLeafContent, contentSignature, setTechnicalLeafContentLocal, markTechnicalManualSelection, clearTechnicalManualSelection, selectTechnicalLeaf, syncSelectedTechnicalLeaf, syncTechnicalOverallRequirement,
-  toggleTechnicalEditMode, reloadTechnicalAfterOutlineEdit, onTechnicalNodeWordChange, onTechnicalBatchWord, onSaveTechnicalOverallRequirement, streamTechnicalOverallDirection, onTechnicalAiWriteDirection, onTechnicalSaveWritingConfig,
+  toggleTechnicalEditMode, reloadTechnicalAfterOutlineEdit, onTechnicalNodeWordChange, onTechnicalBatchWord, onTechnicalAllBatchWord, onSaveTechnicalOverallRequirement, streamTechnicalOverallDirection, onTechnicalAiWriteDirection, onTechnicalSaveWritingConfig,
   openTechnicalAddNodeDialog, onTechnicalAddNode, onTechnicalDeleteNodes, onTechnicalMoveNode, normalizeSectionContent, startEditTechnicalSectionContent, confirmDiscardTechnicalSectionContentChanges, cancelEditTechnicalSectionContent,
   copyTechnicalSectionContent, fallbackCopyText, SECTION_OPTIMIZE_REQUIREMENT_MARKER, sectionStoredWritingRequirement, sectionOptimizeInstruction, sectionOptimizeWritingRequirement, sectionOptimizeTargetWordCount, optimizeActionLabel,
   maxAcceptableFrontendWords, openTechnicalShortenDialog, confirmTechnicalShortenSection, optimizeTechnicalSection, countTextWords, formatDateTime, parseVersionSnapshot, currentTechnicalSectionWordCount,
@@ -1995,9 +2010,9 @@ const OutlineTree = defineComponent({
       const controls = []
       if (props.mode === 'word') {
         if (hasChildren) {
-          controls.push(h(ElSelect, { modelValue: null, size: 'small', class: 'word-select', placeholder: '批量修改', onChange: (v) => emit('batch-word', { node, value: v }) }, () => wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))))
+          controls.push(h(ElSelect, { modelValue: null, size: 'small', class: 'word-select', placeholder: '批量修改', onChange: (v) => emit('batch-word', { node, value: v }) }, () => [h(ElOption, { key: 'AUTO', label: '不指定字数', value: 'AUTO' }), ...wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))]))
         } else {
-          controls.push(h(ElSelect, { modelValue: Number(node.targetWordCount || node.wordCount || 0) > 0 ? Number(node.targetWordCount || node.wordCount || 0) : null, size: 'small', class: 'word-select', placeholder: '请选择', onChange: (v) => emit('word-change', { node, value: v }) }, () => wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))))
+          controls.push(h(ElSelect, { modelValue: Number(node.targetWordCount || node.wordCount || 0) > 0 ? Number(node.targetWordCount || node.wordCount || 0) : 'AUTO', size: 'small', class: 'word-select', placeholder: '请选择', onChange: (v) => emit('word-change', { node, value: v }) }, () => [h(ElOption, { key: 'AUTO', label: '不指定字数', value: 'AUTO' }), ...wordOptions.map((n) => h(ElOption, { key: n, label: `${n}字`, value: n }))]))
         }
       }
       if (props.mode === 'add') controls.push(h(ElButton, { link: true, icon: Plus, onClick: () => emit('add-node', node) }))
