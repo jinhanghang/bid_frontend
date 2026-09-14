@@ -14,8 +14,8 @@ export function getTenderIndustryPreference() {
   return request.get(`${BASE_URL}/industry-preference`)
 }
 
-export function updateTenderIndustryPreference(industryCategory) {
-  return request.put(`${BASE_URL}/industry-preference`, { industryCategory })
+export function updateTenderIndustryPreference(industryCategories) {
+  return request.put(`${BASE_URL}/industry-preference`, { industryCategories })
 }
 
 export function listTenderIndustryOptions() {
