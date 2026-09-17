@@ -341,7 +341,7 @@ const fullGenerateForm = reactive({
   blindBidRequirement: '',
   generationProfile: 'STANDARD',
   writingStyle: 'GENERAL',
-  contentDepth: 'STANDARD'
+  contentDepth: 'STANDARD',
 })
 
 const fullGenerateSettingVisible = ref(false)
@@ -563,6 +563,7 @@ const technicalForm = reactive({
   knowledgeIds: [],
   outlineMode: 'SCORE_ITEM',
   outlineRequirement: '',
+  targetPageCount: null,
   targetTotalWordCount: null,
   longOutlinePreset: 0
 })
@@ -577,8 +578,22 @@ watch(() => technicalForm.solutionType, () => {
 })
 
 watch(() => technicalForm.longOutlinePreset, (value) => {
-  technicalForm.targetTotalWordCount = Number(value || 0) > 0 ? Number(value) : null
+  const words = Number(value || 0)
+  if (words > 0) {
+    technicalForm.targetTotalWordCount = words
+    technicalForm.targetPageCount = Math.ceil(words / 650)
+  } else if (words === 0) {
+    technicalForm.targetTotalWordCount = null
+    technicalForm.targetPageCount = null
+  }
 })
+
+function applyTechnicalTargetPages(value) {
+  const pages = Number(value || 0)
+  technicalForm.longOutlinePreset = -1
+  technicalForm.targetPageCount = pages > 0 ? pages : null
+  technicalForm.targetTotalWordCount = pages > 0 ? Math.min(400000, Math.round(pages * 650)) : null
+}
 
 function resetTechnicalWorkspace() {
   // 切换项目 / 新建项目后必须清空技术方案临时态，避免上一个项目的采购需求、评分标准、目录继续残留。
@@ -607,6 +622,7 @@ function resetTechnicalWorkspace() {
     knowledgeIds: [],
     outlineMode: 'SCORE_ITEM',
     outlineRequirement: '',
+    targetPageCount: null,
     targetTotalWordCount: null,
     longOutlinePreset: 0
   })
@@ -3136,7 +3152,7 @@ async function startTechnicalFullGenerate(rewrite = false, skipConfirm = false, 
       useKnowledge: selectedKnowledgeIds.length > 0,
       knowledgeIds: stringifyKnowledgeIds(selectedKnowledgeIds),
       anonymous: !!fullGenerateForm.blindBidEnabled,
-      anonymousRequirement: fullGenerateForm.blindBidRequirement || ''
+      anonymousRequirement: fullGenerateForm.blindBidRequirement || '',
     }
     const task = options?.retryFailedOnly
       ? await retryBidProjectTechnicalFailedSections(selectedProject.value.id, payload)
@@ -5005,7 +5021,7 @@ function technicalWordHealthType(node) {
     technicalRequirementItemForm, technicalQualityCheckVisible, technicalQualityCheckLoading, technicalQualityCheckData, technicalWordCountVisible, technicalWordCountLoading, technicalWordCountStats, technicalDuplicateCheckData,
     technicalDuplicateCompressing, technicalReviewVisible, technicalReviewLoading, technicalConsistencyPackage, technicalReviewResult, technicalRequirementExtractTimer, requirementTypeOptions, riskLevelOptions,
     createDialog, enterpriseBindDialog, techSteps, aiLevels, aiModels, aiModelsLoading, providerName, aiModelLabel, technicalSubTypeMap, technicalStep, technicalMode, technicalGeneratingOutline, technicalSolution,
-    technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
+    technicalOutlines, isCurrentTechnicalOutlineGenerating, technicalForm, technicalSubTypes, applyTechnicalTargetPages, resetTechnicalWorkspace, resetBidDocumentWorkspace, workflowDocuments, parseReportText,
     parseProgress, hasTenderFile, tenderFileDisplayName, isParseRunning, isParseSuccess, parseStatusLabel, isPlatformUser, hasCompanyMaterial,
     bidDocumentContent, bidDocAnalysis, bidDocumentStatusLabel, canFillBidDocument, technicalOutlineLeafCount, technicalLeafNodes, technicalFinishedLeafCount, technicalRetryableLeafNodes,
     technicalRetryableLeafCount, canRetryTechnicalFailedSections, technicalGeneratePercent, technicalTargetWordCount, technicalHasFlexibleWordCount, technicalActualWordCount, estimatePageCount, technicalTargetPageCount, technicalActualPageCount,

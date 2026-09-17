@@ -459,26 +459,31 @@
 
                 <div class="tech-form-section">
                   <div class="tech-inline-title">
-                    <span>目标总字数 / 长文档拆分：</span>
+                    <span>技术标篇幅 / 长文档拆分：</span>
                     <el-tag size="small" type="info">可选</el-tag>
                   </div>
                   <div class="tech-target-row">
                     <el-input-number
-                      v-model="technicalForm.targetTotalWordCount"
-                      :min="0"
-                      :max="200000"
-                      :step="10000"
+                      v-model="technicalForm.targetPageCount"
+                      :min="50"
+                      :max="600"
+                      :step="10"
                       controls-position="right"
-                      placeholder="不填则按普通目录生成"
+                      placeholder="自定义目标页数"
+                      @change="applyTechnicalTargetPages"
                     />
                     <el-select v-model="technicalForm.longOutlinePreset" placeholder="快速选择" class="tech-target-select">
                       <el-option label="不启用" :value="0" />
-                      <el-option label="5万字初稿" :value="50000" />
-                      <el-option label="10万字初稿" :value="100000" />
-                      <el-option label="20万字初稿" :value="200000" />
+                      <el-option label="自定义页数" :value="-1" />
+                      <el-option label="标准版（100~200页）" :value="97500" />
+                      <el-option label="竞争版（200~350页）" :value="178750" />
+                      <el-option label="深度版（350~600页）" :value="308750" />
                     </el-select>
                   </div>
-                  <div class="tech-field-tip">填写后，目录生成会提前拆成 800~1500 字/节的末级章节，便于后续并行生成 5万~20万字初稿。</div>
+                  <div class="tech-field-tip">
+                    按约650字/页折算，当前目标约 {{ technicalForm.targetPageCount || 0 }} 页 / {{ technicalForm.targetTotalWordCount || 0 }} 字。
+                    系统会按评分分值分配章节篇幅，并自动安排进度表、质量检查表、风险矩阵和流程类图表。
+                  </div>
                 </div>
 
                 <div class="tech-form-section tech-requirement-section">
