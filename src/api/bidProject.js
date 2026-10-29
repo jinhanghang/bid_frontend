@@ -560,6 +560,15 @@ export function reviewBidDocument(id, data = {}) {
 }
 
 /**
+ * AI标书：投标文件导出前合规检查。
+ */
+export function validateBidDocument(id) {
+  return request.post(`/bid-project/${id}/bid-document/validate`, null, {
+    timeout: NO_TIMEOUT
+  })
+}
+
+/**
  * AI标书：导出投标文件 Word。
  */
 export function exportBidDocumentWord(id, data = {}) {

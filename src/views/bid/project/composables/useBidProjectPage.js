@@ -20,6 +20,7 @@ import {
   listBidProjectCompanyMaterialOptions,
   saveBidDocument,
   reviewBidDocument,
+  validateBidDocument,
   exportBidDocumentWord,
   exportBidDocumentMarkdown,
   unbindBidProjectCompanyMaterial,
@@ -138,6 +139,14 @@ const bidDocumentSaving = ref(false)
 const bidDocumentReviewSaving = ref(false)
 
 const bidDocumentExporting = ref(false)
+
+const bidDocumentValidationVisible = ref(false)
+
+const bidDocumentValidationResult = ref(null)
+
+const bidDocumentValidationBlockers = computed(() => (bidDocumentValidationResult.value?.issues || []).filter((item) => item?.level === 'BLOCKER'))
+
+const bidDocumentValidationWarnings = computed(() => (bidDocumentValidationResult.value?.issues || []).filter((item) => item?.level === 'WARNING'))
 
 const bidDocumentDraft = ref('')
 
@@ -632,6 +641,8 @@ function resetTechnicalWorkspace() {
 function resetBidDocumentWorkspace() {
   bidDocumentDetail.value = null
   bidDocumentDraft.value = ''
+  bidDocumentValidationVisible.value = false
+  bidDocumentValidationResult.value = null
   companyMaterialOptions.value = []
   Object.assign(companyMaterialDialog, { visible: false, loading: false, saving: false, selectedId: null })
 }
@@ -2367,10 +2378,38 @@ async function downloadGeneratedBidDocument(file, fallbackName) {
   return true
 }
 
+async function performBidDocumentWordExport() {
+  if (!selectedProject.value?.id) return
+  const file = await exportBidDocumentWord(selectedProject.value.id, {
+    styleCode: 'BID_OFFICIAL'
+  })
+
+  await refreshWorkflow()
+  const downloaded = await downloadGeneratedBidDocument(
+    file,
+    `${selectedProject.value.projectName || '投标文件'}-投标文件.docx`
+  )
+
+  if (downloaded) {
+    ElMessage.success('完整投标文件 Word 导出成功，已开始下载')
+  }
+}
+
+async function continueBidDocumentWordExport() {
+  if (bidDocumentValidationBlockers.value.length) return
+  bidDocumentValidationVisible.value = false
+  bidDocumentExporting.value = true
+  try {
+    await performBidDocumentWordExport()
+  } finally {
+    bidDocumentExporting.value = false
+  }
+}
+
 async function exportBidDocumentWordFile() {
   if (!selectedProject.value?.id) return
   if (!bidDocumentDraft.value.trim()) {
-    ElMessage.warning('请先生成或填写投标文件内容')
+    ElMessage.warning('请先执行智能填空，确认当前招标文件的投标结构')
     return
   }
 
@@ -2380,19 +2419,19 @@ async function exportBidDocumentWordFile() {
       content: bidDocumentDraft.value
     })
 
-    const file = await exportBidDocumentWord(selectedProject.value.id, {
-      styleCode: 'BID_OFFICIAL'
-    })
+    const validation = await validateBidDocument(selectedProject.value.id)
+    bidDocumentValidationResult.value = validation || { passed: false, blockerCount: 1, warningCount: 0, issues: [] }
 
-    await refreshWorkflow()
-    const downloaded = await downloadGeneratedBidDocument(
-      file,
-      `${selectedProject.value.projectName || '投标文件'}-投标文件.docx`
-    )
-
-    if (downloaded) {
-      ElMessage.success('Word 导出成功，已开始下载')
+    if (Number(validation?.blockerCount || 0) > 0) {
+      bidDocumentValidationVisible.value = true
+      return
     }
+    if (Number(validation?.warningCount || 0) > 0) {
+      bidDocumentValidationVisible.value = true
+      return
+    }
+
+    await performBidDocumentWordExport()
   } finally {
     bidDocumentExporting.value = false
   }
@@ -5004,6 +5043,7 @@ function technicalWordHealthType(node) {
     router, auth, keyword, projectLoading, projectAppendLoading, projects, selectedProject, projectListScrollbar,
     projectPager, expandedProjectId, workflow, activeDoc, uploadFiles, uploadRef, technicalTenderInputRef, technicalTenderUploading,
     readTenderLoading, autoFillLoading, bidDocumentLoading, bidDocumentFilling, bidDocumentSaving, bidDocumentReviewSaving, bidDocumentExporting, bidDocumentDraft,
+    bidDocumentValidationVisible, bidDocumentValidationResult, bidDocumentValidationBlockers, bidDocumentValidationWarnings, continueBidDocumentWordExport,
     bidDocumentReviewForm, bidDocumentDetail, companyMaterialOptions, companyMaterialDialog, tenderAnalysisDialog, tenderAnalysis, tenderAnalysisKnowledgeIds, enterpriseOptions,
     ownerUserOptions, enterpriseLoading, enterpriseKeywordTimer, timer, poller, technicalOutlinePoller, technicalOutlinePendingProjectId, technicalTaskPoller,
     technicalTaskPending, technicalTaskPollingBusy, technicalTaskPollErrorCount, technicalTaskPollTick, technicalTaskLastFinishedNodes, technicalTaskLastDetailRefreshAt, technicalTaskCanceling, technicalTaskTerminalNotifiedIds,

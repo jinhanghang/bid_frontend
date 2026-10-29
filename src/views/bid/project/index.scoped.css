@@ -3787,3 +3787,39 @@
   .all-word-batch-actions, .all-word-select { width: 100%; }
   .all-word-batch-actions .el-button { flex: 1; }
 }
+
+.bid-validation-summary {
+  margin-bottom: 16px;
+}
+
+.bid-validation-group {
+  margin-top: 14px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.bid-validation-group.blocker {
+  border-color: var(--el-color-danger-light-5);
+}
+
+.bid-validation-group.warning {
+  border-color: var(--el-color-warning-light-5);
+}
+
+.bid-validation-group-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.bid-validation-item + .bid-validation-item {
+  border-top: 1px solid var(--el-border-color-extra-light);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.bid-validation-item p {
+  margin: 4px 0 0;
+  color: var(--el-text-color-secondary);
+  line-height: 1.6;
+}

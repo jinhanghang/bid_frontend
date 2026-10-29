@@ -122,7 +122,7 @@
           </div>
           <div class="feature-card feature-cyan" @click="openDocumentByType('BID_DOCUMENT')">
             <h3>商务标智能填写</h3>
-            <p>智能抽取招标文件中的模板文件，结合资料库中的供应商信息，实现商务标文件智能填空。</p>
+            <p>动态识别当前招标文件的投标格式、条件章节与填报要求，结合资料库中的企业信息生成可核对的编标工作稿。</p>
             <div class="feature-img">AI</div>
           </div>
         </div>
@@ -192,7 +192,7 @@
           <div class="doc-head bid-doc-head">
             <div>
               <h2>投标文件</h2>
-              <p>结合招标文件解析结果和企业资料档案，自动生成资格、商务响应及基础表单初稿。</p>
+              <p>按当前招标文件动态识别投标格式、条件章节、评分项和暗标规则，结合企业资料生成并校验正式投标文件。</p>
             </div>
             <div class="bid-doc-actions">
               <el-button plain class="bid-doc-guide-btn" @click="startBidDocumentGuide">操作引导</el-button>
@@ -212,7 +212,7 @@
                 :loading="bidDocumentExporting"
                 :disabled="!bidDocumentDraft.trim()"
                 @click="exportBidDocumentWordFile"
-              >导出Word</el-button>
+              >导出投标文件</el-button>
               <el-button
                 plain
                 :loading="bidDocumentExporting"
@@ -252,7 +252,7 @@
                 已关联：{{ selectedProject?.companyMaterialName }}
                 <span v-if="selectedProject?.companyMaterialEnterpriseName">（{{ selectedProject.companyMaterialEnterpriseName }}）</span>
               </p>
-              <p v-else>当前项目尚未关联企业资料档案，商务标智能填空会缺少企业资质、业绩、人员、财务等信息。</p>
+              <p v-else>当前项目尚未关联企业资料档案，编标工作稿会缺少企业资质、业绩、人员、财务等事实依据；系统不会自动编造这些内容。</p>
             </div>
             <div class="company-material-actions">
               <el-button type="primary" plain @click="openCompanyMaterialSelector">{{ hasCompanyMaterial ? '更换资料' : '选择资料' }}</el-button>
@@ -323,7 +323,7 @@
           <div class="bid-doc-editor-card bid-doc-result-editor">
             <div class="bid-doc-editor-head">
               <div>
-                <strong>投标文件智能填空结果</strong>
+                <strong>编标填空工作稿</strong>
                 <p>第一版以 Markdown 形式保存商务标基础内容，后续可接 Word 导出和在线编辑。</p>
               </div>
               <el-button
@@ -340,7 +340,7 @@
               :rows="18"
               maxlength="200000"
               show-word-limit
-              placeholder="点击“智能填空”后，系统会根据解析报告和企业资料生成投标文件基础内容。"
+              placeholder="点击“智能填空”后，系统会根据当前招标文件结构和企业资料生成编标工作稿；正式 Word 以招标文件实际格式为准。"
             />
           </div>
         </div>
@@ -1710,6 +1710,64 @@
       <el-empty v-else description="选择知识库后点击开始分析。分析结果为初稿，正式投标前必须人工核对招标文件原文。" />
     </el-dialog>
 
+    <el-dialog
+      v-model="bidDocumentValidationVisible"
+      title="投标文件成品检查"
+      width="720px"
+      append-to-body
+      destroy-on-close
+    >
+      <div class="bid-validation-summary">
+        <el-alert
+          v-if="bidDocumentValidationBlockers.length"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="`发现 ${bidDocumentValidationBlockers.length} 个阻断项，完整投标文件 Word 暂不能导出`"
+        />
+        <el-alert
+          v-else-if="bidDocumentValidationWarnings.length"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="`发现 ${bidDocumentValidationWarnings.length} 个待确认项，可先导出 Word 继续编辑，提交前请处理`"
+        />
+        <el-alert
+          v-else
+          type="success"
+          :closable="false"
+          show-icon
+          title="检查通过"
+        />
+      </div>
+
+      <div v-if="bidDocumentValidationBlockers.length" class="bid-validation-group blocker">
+        <div class="bid-validation-group-title">必须处理</div>
+        <div v-for="item in bidDocumentValidationBlockers" :key="`${item.code}-${item.section || ''}`" class="bid-validation-item">
+          <strong>{{ item.title || '阻断项' }}</strong>
+          <p>{{ item.message }}</p>
+        </div>
+      </div>
+
+      <div v-if="bidDocumentValidationWarnings.length" class="bid-validation-group warning">
+        <div class="bid-validation-group-title">导出提示</div>
+        <div v-for="item in bidDocumentValidationWarnings" :key="`${item.code}-${item.section || ''}-${item.message}`" class="bid-validation-item">
+          <strong>{{ item.title || '警告' }}</strong>
+          <p>{{ item.message }}</p>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="bidDocumentValidationVisible = false">关闭</el-button>
+        <el-button
+          v-if="!bidDocumentValidationBlockers.length && bidDocumentValidationWarnings.length"
+          type="primary"
+          :loading="bidDocumentExporting"
+          @click="continueBidDocumentWordExport"
+        >导出Word继续编辑</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="knowledgeSelectorVisible" title="选择知识库" width="680px" append-to-body>
       <div class="knowledge-selector">
         <div class="knowledge-search-row">
@@ -1795,6 +1853,7 @@ const {
   router, auth, keyword, projectLoading, projectAppendLoading, projects, selectedProject, projectListScrollbar,
   projectPager, expandedProjectId, workflow, activeDoc, uploadFiles, uploadRef, technicalTenderInputRef, technicalTenderUploading,
   readTenderLoading, autoFillLoading, bidDocumentLoading, bidDocumentFilling, bidDocumentSaving, bidDocumentReviewSaving, bidDocumentExporting, bidDocumentDraft,
+  bidDocumentValidationVisible, bidDocumentValidationResult, bidDocumentValidationBlockers, bidDocumentValidationWarnings, continueBidDocumentWordExport,
   bidDocumentReviewForm, bidDocumentDetail, companyMaterialOptions, companyMaterialDialog, tenderAnalysisDialog, tenderAnalysis, tenderAnalysisKnowledgeIds, enterpriseOptions,
   ownerUserOptions, enterpriseLoading, enterpriseKeywordTimer, timer, poller, technicalOutlinePoller, technicalOutlinePendingProjectId, technicalTaskPoller,
   technicalTaskPending, technicalTaskPollingBusy, technicalTaskPollErrorCount, technicalTaskPollTick, technicalTaskLastFinishedNodes, technicalTaskLastDetailRefreshAt, technicalTaskCanceling, technicalTaskTerminalNotifiedIds,
@@ -1871,7 +1930,7 @@ const workbenchGuideIndex = ref(0)
 const workbenchGuideMode = ref('workbench')
 const workbenchGuideSteps = [
   { target: '.project-pane', title: '先选择一份标书项目', description: '左侧集中显示您可以操作的标书。点击项目后，会展开解析报告、投标文件和技术方案三个工作模块。' },
-  { target: '.project-scroll', title: '按任务进入对应模块', description: '解析报告用于查看招标要求；投标文件用于商务标智能填空；技术方案用于生成目录、章节正文并导出成果。' },
+  { target: '.project-scroll', title: '按任务进入对应模块', description: '解析报告用于查看招标要求；投标文件会按当前招标文件动态识别格式并填充；技术方案用于生成目录、章节正文并按暗标规则导出成果。' },
   { target: '.new-project-btn', title: '没有项目时先新建', description: '可以从招标文件创建新项目。创建完成后，系统会把该项目加入左侧列表并自动选中。' },
   { target: '.pane-title-actions', title: '可随时切换工作方式', description: '需要快速问答时返回对话模式；需要按解析、商务标、技术标步骤制作时使用专业工作台。点击“使用引导”可以再次查看本说明。' }
 ]
@@ -1884,9 +1943,9 @@ const technicalGuideSteps = [
 const bidDocumentGuideSteps = [
   { target: '.bid-doc-parse-module', title: '第一步：确认招标文件解析', description: '先确认招标文件已完成解析；需要查看采购要求、评分项和风险条款时，点击上方“招标文件分析”。' },
   { target: '.bid-doc-material-module', title: '第二步：选择企业资料档案', description: '在“企业资料引用”模块选择当前项目所属企业的资料档案，系统将引用企业资质、人员、业绩和财务等真实信息。' },
-  { target: '.bid-doc-result-editor', title: '第三步：执行智能填空并核对结果', description: '准备完成后点击上方“智能填空”。生成内容会显示在此模块，可直接核对、修改并保存。' },
+  { target: '.bid-doc-result-editor', title: '第三步：执行智能填空并核对工作稿', description: '准备完成后点击上方“智能填空”。系统会按当前招标文件动态识别章节和条件，生成仅用于核对的数据工作稿。' },
   { target: '.bid-doc-review-module', title: '第四步：记录客户确认结果', description: '在此模块保存客户确认状态和修改意见，作为后续修改与定稿依据。' },
-  { target: '.bid-doc-export-btn', title: '第五步：导出投标文件', description: '内容确认完成后导出 Word；如需保留原始结构，也可以导出 Markdown。' }
+  { target: '.bid-doc-export-btn', title: '第五步：校验并导出投标文件', description: '导出 Word 前会再次校验必填资料、条件章节、暗标规则和技术结构；存在阻断项时不允许生成正式文件。' }
 ]
 const activeGuideSteps = computed(() => {
   if (workbenchGuideMode.value === 'technical') return technicalGuideSteps
