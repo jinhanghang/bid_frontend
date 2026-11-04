@@ -463,7 +463,7 @@ async function streamFetch(url, options = {}, handlers = {}) {
     headers,
     signal: handlers.signal || options.signal
   })
-  if (!response.ok || !response.body) {
+  if (!response.ok || !response.body || !String(response.headers.get('Content-Type') || '').toLowerCase().includes('text/event-stream')) {
     throw await buildStreamRequestError(response)
   }
 
@@ -478,7 +478,7 @@ async function streamFetch(url, options = {}, handlers = {}) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const chunks = buffer.split('\n\n')
+      const chunks = buffer.split(/\r?\n\r?\n/)
       buffer = chunks.pop() || ''
       chunks.forEach((chunk) => {
         const eventName = handleSseChunk(chunk, handlers)
@@ -489,15 +489,19 @@ async function streamFetch(url, options = {}, handlers = {}) {
         break
       }
     }
-    if (buffer && !finishedByDoneEvent) handleSseChunk(buffer, handlers)
+    if (buffer && !finishedByDoneEvent) {
+      finishedByDoneEvent = handleSseChunk(buffer, handlers) === 'done'
+    }
+    if (!finishedByDoneEvent) throw new Error('生成连接已中断，结果尚未确认，请刷新章节状态后再操作')
     handlers.onDone?.()
   } finally {
+    await reader.cancel().catch(() => {})
     if (handlers.signal) handlers.signal.removeEventListener('abort', abortHandler)
   }
 }
 
 function handleSseChunk(chunk, handlers) {
-  const lines = chunk.split('\n')
+  const lines = chunk.split(/\r?\n/)
   let eventName = 'message'
   const dataLines = []
   lines.forEach((line) => {
@@ -506,8 +510,11 @@ function handleSseChunk(chunk, handlers) {
   })
   const data = dataLines.join('\n')
   if (!data) return eventName
-  if (eventName === 'error') handlers.onError?.(normalizeStreamErrorMessage(data))
-  else if (eventName === 'done') handlers.onDoneEvent?.(data)
+  if (eventName === 'error') {
+    const message = normalizeStreamErrorMessage(data)
+    handlers.onError?.(message)
+    throw new Error(message)
+  } else if (eventName === 'done') handlers.onDoneEvent?.(data)
   else handlers.onMessage?.(data)
   return eventName
 }

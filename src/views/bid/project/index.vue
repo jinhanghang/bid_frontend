@@ -248,6 +248,7 @@
           <div class="company-material-ref-card bid-doc-material-module">
             <div>
               <strong>企业资料引用</strong>
+              <p>项目所属企业：<b>{{ selectedProject?.enterpriseId ? (selectedProject.enterpriseName || '企业名称暂未获取') : '未设置' }}</b></p>
               <p v-if="hasCompanyMaterial">
                 已关联：{{ selectedProject?.companyMaterialName }}
                 <span v-if="selectedProject?.companyMaterialEnterpriseName">（{{ selectedProject.companyMaterialEnterpriseName }}）</span>
@@ -421,7 +422,7 @@
                         ref="technicalTenderInputRef"
                         class="hidden-file-input"
                         type="file"
-                        accept=".doc,.docx,.pdf,.DOC,.DOCX,.PDF"
+                        accept=".doc,.docx,.DOC,.DOCX"
                         @change="onTechnicalTenderFileChange"
                       />
                       <el-button
@@ -663,7 +664,7 @@
                             <el-tag size="small" :type="hasOtherAiTaskRunning ? 'warning' : ((isTechnicalTaskWaiting || !isTechnicalRunningByBackend) ? 'info' : 'primary')">{{ hasOtherAiTaskRunning ? '任务占用' : ((isTechnicalTaskWaiting || !isTechnicalRunningByBackend) ? '排队中' : '执行中') }}</el-tag>
                             <div>
                               <strong>{{ hasOtherAiTaskRunning ? '已有其他 AI 长任务正在执行' : (isTechnicalRunningByBackend ? technicalRunningTaskTypeLabel : technicalGenerationTimingLabel) }}</strong>
-                              <p>{{ hasOtherAiTaskRunning ? '请等待当前用户其他 AI 任务完成后再发起新的技术方案生成。' : (isTechnicalRunningByBackend ? technicalRunningTaskMessage : '任务正在提交，系统会自动更新生成状态和用时。') }}</p>
+                              <p>{{ hasOtherAiTaskRunning ? '当前项目未在生成。请等待其他 AI 任务完成后再发起生成；可继续查看当前项目已有内容。' : (isTechnicalRunningByBackend ? technicalRunningTaskMessage : '任务正在提交，系统会自动更新生成状态和用时。') }}</p>
                               <small>{{ isTechnicalRunningByBackend ? technicalRunningTaskTip : '关闭或切换页面不会中断后台任务。' }}</small>
                             </div>
                           </div>
@@ -696,28 +697,18 @@
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalQualityCheckDrawer">质量检查</el-button>
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalWordCountDrawer">字数检查</el-button>
                       <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalReviewDrawer">AI审稿</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend" @click="openTechnicalVersionDialog">历史版本</el-button>
-                      <el-button v-if="technicalRetryableLeafCount > 0" class="detail-action-btn" size="large" type="warning" plain :disabled="!canRetryTechnicalFailedSections" @click="openTechnicalFullGenerateDialog('RETRY_FAILED')" :loading="fullGenerating || isTechnicalRunningByBackend">重试失败章节({{ technicalRetryableLeafCount }})</el-button>
-                      <el-button class="detail-action-btn" size="large" type="primary" plain :disabled="!canRewriteTechnicalAll" @click="openTechnicalFullGenerateDialog('REWRITE')" :loading="fullGenerating || isTechnicalRunningByBackend">{{ isTechnicalRewriteRunning ? '重编中...' : '重编全文' }}</el-button>
-                      <el-button
-                        v-if="isTechnicalRunningByBackend"
-                        class="detail-action-btn"
-                        size="large"
-                        type="danger"
-                        :loading="technicalTaskCanceling"
-                        :disabled="technicalTaskCanceling"
-                        @click="cancelCurrentTechnicalTask"
-                      >{{ technicalTaskCanceling ? '正在终止...' : '终止生成' }}</el-button>
-                      <el-button
-                        v-else
-                        class="detail-action-btn"
-                        size="large"
-                        type="primary"
-                        :disabled="!canGenerateTechnicalContent"
-                        @click="openTechnicalFullGenerateDialog('GENERATE')"
-                        :loading="fullGenerating"
-                      >{{ technicalGenerateButtonText }}</el-button>
-                      <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">导出</el-button>
+                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalVersionDialog">历史版本</el-button>
+                      <el-button v-if="canRetryTechnicalFailedSections && !isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="large" type="warning" plain @click="openTechnicalFullGenerateDialog('RETRY_FAILED')">重试失败章节({{ technicalRetryableLeafCount }})</el-button>
+                      <el-button v-if="canGenerateTechnicalContent || fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent || isCurrentTechnicalContentTimingActive" :loading="fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalFullGenerateDialog('GENERATE')">{{ technicalGenerateButtonText }}</el-button>
+                      <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">{{ technicalFinishedLeafCount > 0 && technicalFinishedLeafCount < technicalLeafNodes.length ? '导出已有内容' : '导出' }}</el-button>
+                      <el-dropdown v-if="canRewriteTechnicalAll && !isCurrentTechnicalContentTimingActive" trigger="click" @command="openTechnicalFullGenerateDialog">
+                        <el-button class="detail-action-btn" size="large" plain>更多操作<el-icon><ArrowDown /></el-icon></el-button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item command="REWRITE">重编全文</el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
                     </div>
                   </template>
                 </div>
@@ -920,12 +911,12 @@
         :on-change="onTenderFileChange"
         :on-exceed="onTenderFileExceed"
         :on-remove="onTenderFileRemove"
-        accept=".doc,.docx,.pdf,.DOC,.DOCX,.PDF"
+        accept=".doc,.docx,.DOC,.DOCX"
       >
         <el-icon class="upload-icon"><UploadFilled /></el-icon>
         <div class="el-upload__text">拖拽文件至此或<em>点击选择招标文件</em></div>
         <template #tip>
-          <div class="upload-tip">单次上传文件数量不超过1，仅允许 .doc、.docx、.pdf 格式，单文件大小不超过50MB</div>
+          <div class="upload-tip">单次上传文件数量不超过1，仅允许 .doc、.docx 格式（不支持 PDF），单文件大小不超过50MB</div>
         </template>
       </el-upload>
 
@@ -1094,6 +1085,8 @@
     </el-dialog>
 
     <el-dialog v-model="fullGenerateSettingVisible" title="方案设置" width="640px" append-to-body>
+      <el-alert v-if="fullGenerateAction === 'REWRITE'" type="warning" show-icon :closable="false" title="将重新生成已有正文，并按实际生成字数消耗额度。系统会先保存历史版本，新内容生成成功后覆盖对应章节。" style="margin-bottom: 16px" />
+      <el-alert v-else-if="fullGenerateAction === 'RETRY_FAILED'" type="info" show-icon :closable="false" title="失败数量仅统计明确失败的章节。本次操作会补齐失败及其他未完成章节，已通过完整性校验的正文将保留。" style="margin-bottom: 16px" />
       <el-form label-width="90px" class="full-generate-form">
         <el-form-item label="知识库：">
           <div class="knowledge-setting">
@@ -1563,6 +1556,14 @@
 
     <el-dialog v-model="companyMaterialDialog.visible" title="选择企业资料档案" width="760px" append-to-body>
       <div class="company-material-selector" v-loading="companyMaterialDialog.loading">
+        <el-alert
+          v-if="selectedProject?.enterpriseId"
+          :title="`当前项目所属企业：${selectedProject.enterpriseName || '企业名称暂未获取'}`"
+          type="info"
+          show-icon
+          :closable="false"
+          style="margin-bottom: 16px"
+        />
         <el-alert
           v-if="!selectedProject?.enterpriseId"
           title="当前项目未设置所属企业，请先设置后再关联企业资料。"

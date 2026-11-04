@@ -37,8 +37,14 @@ export function normalizeStreamErrorMessage(payload, fallback = AI_STREAM_FALLBA
 
 export async function buildStreamRequestError(response, fallback = AI_STREAM_FALLBACK) {
   const text = await response.text().catch(() => '')
-  const message = normalizeStreamErrorMessage(text || `请求失败：${response.status}`, fallback)
+  const status = Number(response.status)
+  const message = status === 401
+    ? '生成请求身份校验失败，请刷新页面；若仍失败，请重新登录'
+    : status === 403
+      ? '当前账号无权执行此生成操作'
+      : normalizeStreamErrorMessage(text || `请求失败：${response.status}`, fallback)
   const error = new Error(message)
   error.safeMessage = message
+  error.status = status
   return error
 }

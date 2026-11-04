@@ -10,10 +10,13 @@ const LOGIN_REQUIRED_CODE = 200001
 const ENTERPRISE_REQUIRED_CODE = 300002
 const AI_GENERIC_ERROR_MESSAGE = 'AI服务调用异常，请稍后重试'
 
-function createRequestError(message, alreadyNotified = false) {
+function createRequestError(message, alreadyNotified = false, details = {}) {
   const error = new Error(message || '接口请求失败')
   error.safeMessage = message || '接口请求失败'
   error.__alreadyNotified = alreadyNotified
+  error.code = details.code
+  error.response = details.response
+  error.config = details.config
   return error
 }
 
@@ -130,13 +133,14 @@ service.interceptors.response.use(
     // 后端统一返回：{ code: 0, message: 'success', data: ... }
     // 文件流或特殊返回保持原样；普通业务接口统一解包 data。
     const body = response.data
+    const errorDetails = { code: body?.code, response, config: response.config }
     if (body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'code')) {
       if (body.code === 0) return body.data
 
       const message = withTraceId(safeResponseMessage(response.config, body.message, '接口请求失败'), body.traceId)
       if (isLoginRequiredCode(body.code)) {
         handleLoginExpired(message || '登录已过期，请重新登录')
-        return Promise.reject(createRequestError(message, true))
+        return Promise.reject(createRequestError(message, true, errorDetails))
       }
       if (Number(body.code) === ENTERPRISE_REQUIRED_CODE) {
         const alreadyOnEnterpriseApply = router.currentRoute.value?.path === '/system/enterprise-apply'
@@ -145,22 +149,23 @@ service.interceptors.response.use(
         }
         const alreadyNotified = alreadyOnEnterpriseApply || Boolean(response.config?.silentError)
         if (!alreadyNotified) ElMessage.warning(message)
-        return Promise.reject(createRequestError(message, alreadyNotified))
+        return Promise.reject(createRequestError(message, alreadyNotified, errorDetails))
       }
 
       const alreadyNotified = !response.config?.silentError
       if (alreadyNotified) ElMessage.error(message)
-      return Promise.reject(createRequestError(message, alreadyNotified))
+      return Promise.reject(createRequestError(message, alreadyNotified, errorDetails))
     }
     return body
   },
   (error) => {
     const status = error?.response?.status
+    const errorDetails = { code: error?.response?.data?.code, response: error?.response, config: error?.config }
     const message = withTraceId(safeResponseMessage(error?.config, error?.response?.data?.message || error?.message, '网络异常，请检查后端服务是否启动'), error?.response?.data?.traceId)
 
     if (status === 401) {
       handleLoginExpired(message || '登录已过期，请重新登录')
-      return Promise.reject(createRequestError(message || '登录已过期，请重新登录', true))
+      return Promise.reject(createRequestError(message || '登录已过期，请重新登录', true, errorDetails))
     }
 
     if (status === 403) {
@@ -171,17 +176,17 @@ service.interceptors.response.use(
         }
         const alreadyNotified = alreadyOnEnterpriseApply || Boolean(error?.config?.silentError)
         if (!alreadyNotified) ElMessage.warning(message)
-        return Promise.reject(createRequestError(message, alreadyNotified))
+        return Promise.reject(createRequestError(message, alreadyNotified, errorDetails))
       }
       const finalMessage = isAiModuleRequest(error?.config) ? message : withTraceId('没有权限访问该功能', error?.response?.data?.traceId)
       const alreadyNotified = !error?.config?.silentError
       if (alreadyNotified) ElMessage.error(finalMessage)
-      return Promise.reject(createRequestError(finalMessage, alreadyNotified))
+      return Promise.reject(createRequestError(finalMessage, alreadyNotified, errorDetails))
     }
 
     const alreadyNotified = !error?.config?.silentError
     if (alreadyNotified) ElMessage.error(message)
-    return Promise.reject(createRequestError(message, alreadyNotified))
+    return Promise.reject(createRequestError(message, alreadyNotified, errorDetails))
   }
 )
 
