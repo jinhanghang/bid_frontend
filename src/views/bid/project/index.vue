@@ -1923,6 +1923,8 @@ function returnToConversation() {
   })
 }
 
+// 首页已明确选择文件，本次进入不叠加首次使用引导，避免挡住创建弹窗。
+const openedFromHomepage = router.currentRoute.value.query.from === 'home'
 const WORKBENCH_GUIDE_KEY = 'ai-bid:workbench-guide-disabled'
 const TECHNICAL_GUIDE_KEY = 'ai-bid:technical-guide-disabled'
 const BID_DOCUMENT_GUIDE_KEY = 'ai-bid:bid-document-guide-disabled'
@@ -2038,7 +2040,7 @@ onMounted(() => {
   let disabled = false
   try { disabled = window.localStorage.getItem(WORKBENCH_GUIDE_KEY) === '1' } catch (_) { /* 忽略本地存储限制 */ }
   if (!disabled) window.setTimeout(() => {
-    if (!activeDoc.value) startWorkbenchGuide()
+    if (!openedFromHomepage && !activeDoc.value) startWorkbenchGuide()
   }, 450)
 })
 onBeforeUnmount(() => {

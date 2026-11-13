@@ -143,7 +143,8 @@
         :class="{
           'task-center-content': route.path === '/ai/tasks',
           'ai-document-content': route.path === '/ai/documents',
-          'enterprise-apply-content': route.path === '/system/enterprise-apply'
+          'enterprise-apply-content': route.path === '/system/enterprise-apply',
+          'home-parse-content': route.path === '/dashboard' && route.query.step === 'parse'
         }"
       >
         <router-view />
@@ -403,7 +404,7 @@ onBeforeUnmount(() => {
 })
 
 watch(() => route.fullPath, () => {
-  if (route.path !== '/ai-bid') {
+  if (route.path !== '/ai-bid' && !(route.path === '/dashboard' && route.query.step === 'parse')) {
     aiBidFocusActive.value = false
     aiBidSidebarExpanded.value = false
   }
@@ -1011,6 +1012,12 @@ async function logout() {
   overflow: auto;
 }
 
+.product-content.home-parse-content {
+  display: flex;
+  padding: 10px 24px 0;
+  overflow: hidden;
+}
+
 .product-content.task-center-content {
   padding-bottom: 18px;
   overflow: hidden;
@@ -1046,6 +1053,9 @@ async function logout() {
 
   .product-content {
     padding: 0 14px 16px;
+  }
+  .product-content.home-parse-content {
+    padding: 10px 12px 0;
   }
 
   .quota-pill span,

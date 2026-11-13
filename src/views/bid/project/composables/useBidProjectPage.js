@@ -1,6 +1,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { consumeBidHomeDraft } from '@/utils/bidHomeDraft'
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElMessageBox, ElNotification, ElOption, ElSelect, ElTag, genFileId } from '@/plugins/element-plus-api'
 import { notifyRequestError } from '@/utils/errorNotify'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
@@ -1457,6 +1458,25 @@ onMounted(async () => {
   startGlobalAiTaskPolling()
   restoreTechnicalOutlinePending()
   restoreTechnicalTaskPending()
+  // 首页只交接招标文件；沿用现有创建弹窗及企业/负责人权限校验。
+  // 页数、清单、表格等首页配置保留在内存草稿，后续按完整需求接入生成规则。
+  if (route.query.from === 'home') {
+    const homeDraft = consumeBidHomeDraft(auth.user?.id)
+    if (homeDraft?.file) {
+      await openCreateProject()
+      await nextTick()
+      uploadFiles.value = [{
+        name: homeDraft.file.name,
+        size: homeDraft.file.size,
+        uid: genFileId(),
+        status: 'ready',
+        raw: homeDraft.file
+      }]
+    }
+    const query = { ...route.query }
+    delete query.from
+    await router.replace({ path: route.path, query })
+  }
 })
 
 onBeforeUnmount(() => {
