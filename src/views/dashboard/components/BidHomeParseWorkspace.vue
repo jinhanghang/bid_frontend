@@ -71,6 +71,8 @@
       <span>{{ parserLabel }}</span>
       <el-button v-if="!outlineMode && view.status === 'SUCCESS'" class="outline-action" type="primary" :loading="outlineBusy"
         :disabled="editing || outlineSaving || starting" @click="generateOutline">生成目录</el-button>
+      <el-button v-else-if="outlineMode && outlineChapters.length" class="outline-action" type="primary"
+        :disabled="outlineBusy || outlineSaving" @click="writeBody">编写正文</el-button>
       <div>
         <el-button v-if="!outlineMode && view.status === 'SUCCESS' && categories.length" :loading="starting" @click="retryParse">重新解析</el-button>
         <el-button :disabled="outlineSaving" @click="outlineMode ? leaveOutline() : requestBack()">上一步</el-button>
@@ -83,7 +85,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from '@/plugins/element-plus-api'
 import { ArrowLeft, CircleCheck, Delete, Document, Download, EditPen, Loading, Reading, Warning } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import BidHomeStructuredResult from './BidHomeStructuredResult.vue'
 import BidTenderOriginalPreview from './BidTenderOriginalPreview.vue'
 import { getHomeTenderParse, startHomeTenderParse, saveHomeTenderCategory } from '@/api/homeTenderParse'
@@ -94,6 +96,7 @@ import { homeParseRunning, visibleHomeCategories } from '@/utils/bidHomeParse'
 const props = defineProps({ projectId: { type: String, required: true }, autoStart: { type: Boolean, default: false }, options: { type: Object, default: () => ({}) } })
 const emit = defineEmits(['back'])
 const router = useRouter()
+const route = useRoute()
 const view = reactive({ status: '', reviewState: '', projectName: '', fileId: '', fileName: '', taskId: '', revision: 0, progress: 0, categories: [] })
 const outlineMode = ref(false)
 const outline = ref(null)
@@ -160,6 +163,16 @@ function pollOutline() {
   outlinePoller.start({ immediate: true })
 }
 
+function openBodyWorkbench() {
+  return router.replace({ path: '/ai-bid/workbench', query: { projectId: props.projectId, doc: 'TECHNICAL_SOLUTION' } })
+}
+
+async function writeBody() {
+  if (outlineBusy.value || outlineSaving.value || !outlineChapters.value.length) return
+  if (outlineDirty.value && !(await saveOutline())) return
+  if (!disposed && outlineChapters.value.length) await openBodyWorkbench()
+}
+
 async function resumeProjectStage() {
   const data = await getBidProjectTechnicalSolution(props.projectId)
   if (disposed || !data) return
@@ -168,8 +181,8 @@ async function resumeProjectStage() {
     outlineMode.value = true
     outlineBusy.value = true
     pollOutline()
-  } else if (data.outlines?.length && (data.runningTask || ['CONTENT_GENERATING', 'CONTENT_READY', 'CONTENT_PARTIAL'].includes(data.status))) {
-    await router.replace({ path: '/ai-bid/workbench', query: { projectId: props.projectId, doc: 'TECHNICAL_SOLUTION' } })
+  } else if (route.query.view !== 'outline' && data.outlines?.length && (data.runningTask || ['CONTENT_GENERATING', 'CONTENT_READY', 'CONTENT_PARTIAL'].includes(data.status))) {
+    await openBodyWorkbench()
   } else if (data.outlines?.length) {
     applyOutline(data)
     outlineMode.value = true
@@ -309,6 +322,7 @@ async function saveOutline() {
       outlineDraft[row.id] = title
     }
     ElMessage.success('目录已保存')
+    return true
   } catch (_) {
     ElMessage.warning('部分目录改动可能尚未保存，请重试保存目录')
   } finally {

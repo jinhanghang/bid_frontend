@@ -95,6 +95,10 @@ import {
 export function useBidProjectPage() {
 const router = useRouter()
 const route = useRoute()
+const bodyEntryProjectId = route.query.doc === 'TECHNICAL_SOLUTION' && typeof route.query.projectId === 'string'
+  ? route.query.projectId
+  : ''
+const bodyEntryState = ref(bodyEntryProjectId ? 'loading' : '')
 
 const auth = useAuthStore()
 
@@ -1450,17 +1454,30 @@ onMounted(async () => {
   technicalGenerationClockTimer = window.setInterval(() => {
     technicalGenerationClock.value = Date.now()
   }, 1000)
-  await loadGlobalAiRunningTask()
-  await loadAiModels()
-  await loadProjects(route.query.projectId)
-  if (route.query.doc === 'TECHNICAL_SOLUTION' && String(selectedProject.value?.id || '') === String(route.query.projectId || '')) {
-    await openDocumentByType('TECHNICAL_SOLUTION').catch(() => {})
+  if (bodyEntryProjectId) {
+    await loadBodyEntry()
+    void Promise.allSettled([loadGlobalAiRunningTask(), loadAiModels()])
+  } else {
+    await loadGlobalAiRunningTask()
+    await loadAiModels()
+    await loadProjects(route.query.projectId)
   }
   startPolling()
   startGlobalAiTaskPolling()
   restoreTechnicalOutlinePending()
   restoreTechnicalTaskPending()
 })
+
+async function loadBodyEntry() {
+  bodyEntryState.value = 'loading'
+  try {
+    await selectProject(bodyEntryProjectId, false)
+    await openDocumentByType('TECHNICAL_SOLUTION')
+    bodyEntryState.value = activeDoc.value === 'TECHNICAL_SOLUTION' && technicalGeneratedView.value ? 'ready' : 'error'
+  } catch (_) {
+    bodyEntryState.value = 'error'
+  }
+}
 
 onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleBidProjectVisibilityChange)
@@ -5115,6 +5132,7 @@ function technicalWordHealthType(node) {
 }
 
   return {
+    bodyEntryProjectId, bodyEntryState, loadBodyEntry,
     router, auth, keyword, projectLoading, projectAppendLoading, projects, selectedProject, projectListScrollbar,
     projectPager, expandedProjectId, workflow, activeDoc, uploadFiles, uploadRef, technicalTenderInputRef, technicalTenderUploading,
     readTenderLoading, autoFillLoading, bidDocumentLoading, bidDocumentFilling, bidDocumentSaving, bidDocumentReviewSaving, bidDocumentExporting, bidDocumentDraft,

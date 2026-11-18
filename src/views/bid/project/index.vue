@@ -1,6 +1,6 @@
 <template>
-  <div class="ai-bid-page">
-    <aside class="project-pane">
+  <div class="ai-bid-page" :class="{ 'body-workspace-open': bodyWorkspace || bodyEntryBlocked }">
+    <aside v-if="!bodyEntryProjectId" v-show="!bodyWorkspace" class="project-pane">
       <div class="pane-title">
         <span>我的项目</span>
         <div class="pane-title-actions">
@@ -86,9 +86,20 @@
       <el-button class="new-project-btn" type="primary" @click="openCreateProject">新建项目</el-button>
     </aside>
 
-    <section class="workspace">
+    <section v-if="bodyEntryBlocked" class="workspace body-entry-status" aria-live="polite">
+      <p v-if="bodyEntryState === 'loading'"><el-icon class="is-loading"><Loading /></el-icon> 正在打开正文</p>
+      <template v-else>
+        <p>无法打开正文，请重试或返回目录。</p>
+        <div>
+          <el-button @click="leaveBodyWorkspace">返回目录</el-button>
+          <el-button type="primary" @click="loadBodyEntry">重试</el-button>
+        </div>
+      </template>
+    </section>
+
+    <section v-else class="workspace">
       <el-alert
-        v-if="selectedProject?.id && !selectedProject?.enterpriseId"
+        v-if="!bodyWorkspace && selectedProject?.id && !selectedProject?.enterpriseId"
         class="project-enterprise-alert"
         type="warning"
         show-icon
@@ -350,18 +361,39 @@
       <template v-else-if="activeDoc === 'TECHNICAL_SOLUTION'">
         <div class="bid-tech-panel">
           <div class="bid-tech-header">
-            <el-button plain @click="activeDoc = ''">退出技术方案</el-button>
-            <el-button plain class="tech-guide-btn" @click="startTechnicalGuide">操作引导</el-button>
-            <div class="bid-tech-steps">
+            <el-button plain @click="leaveBodyWorkspace">{{ bodyEntryProjectId ? '返回目录' : '退出技术方案' }}</el-button>
+            <strong v-if="bodyWorkspace" class="body-project-name">{{ selectedProject?.projectName || '技术方案' }}</strong>
+            <el-button plain v-if="!bodyWorkspace" class="tech-guide-btn" @click="startTechnicalGuide">操作引导</el-button>
+            <div v-if="!bodyWorkspace" class="bid-tech-steps">
               <span v-for="step in techSteps" :key="step.value" class="bid-tech-step" :class="{ active: technicalActiveStep >= step.value, current: technicalActiveStep === step.value }">
                 <b>{{ step.value }}</b>{{ step.label }}
               </span>
             </div>
+            <div v-if="bodyWorkspace" class="body-top-actions">
+              <el-button v-if="isTechnicalRunningByBackend" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">终止生成</el-button>
+              <el-button v-if="canRewriteTechnicalAll && !canGenerateTechnicalContent && !isCurrentTechnicalContentTimingActive" type="primary" @click="openTechnicalFullGenerateDialog('REWRITE')">重新编写全文</el-button>
+              <el-button v-else-if="canGenerateTechnicalContent || fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="default" type="primary" :disabled="!canGenerateTechnicalContent || isCurrentTechnicalContentTimingActive" :loading="fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalFullGenerateDialog('GENERATE')">{{ technicalGenerateButtonText === '开始生成' ? '一键编写全文' : technicalGenerateButtonText }}</el-button>
+              <el-button class="detail-action-btn" size="default" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">{{ technicalFinishedLeafCount > 0 && technicalFinishedLeafCount < technicalLeafNodes.length ? '导出已有内容' : '导出标书' }}</el-button>
+            </div>
           </div>
 
 
+          <div v-if="bodyWorkspace" class="body-workspace-bar">
+            <nav class="body-info-tabs" aria-label="正文参考信息">
+              <button v-for="tab in bodyTabs" :key="tab.id" type="button"
+                :class="{ active: bodyTab === tab.id }" :aria-pressed="bodyTab === tab.id"
+                @click="bodyTab = tab.id">{{ tab.title }}</button>
+            </nav>
+            <div v-if="showTechnicalStats" class="body-progress-summary">
+              <span>总计章节 {{ technicalLeafNodes.length }}</span>
+              <span>预计页数 {{ technicalHasFlexibleWordCount ? '—' : technicalTargetPageCount }}</span>
+              <span>已完成 {{ technicalFinishedLeafCount }}</span>
+              <span>已生成 {{ technicalActualWordCount }} 字</span>
+              <el-progress :percentage="technicalGeneratePercent" color="#6955ef" />
+            </div>
+          </div>
           <el-alert
-            v-if="technicalWorkflowAlertData"
+            v-if="technicalWorkflowAlertData && (!bodyWorkspace || technicalWorkflowAlertData.type === 'error' || technicalWorkflowAlertData.type === 'warning')"
             class="bid-tech-workflow-alert"
             :type="technicalWorkflowAlertData.type"
             :title="technicalWorkflowAlertData.title"
@@ -369,8 +401,12 @@
             :closable="false"
           />
 
-          <div class="bid-tech-body" :class="{ generated: technicalGeneratedView }">
-            <div class="bid-tech-left">
+          <div class="bid-tech-body" :class="{ generated: technicalGeneratedView, 'body-split': bodyWorkspace, 'body-panel-narrow': bodyPanelNarrow }">
+            <button v-if="bodyWorkspace" type="button" class="body-panel-toggle"
+              :aria-expanded="!bodyPanelNarrow" aria-controls="body-information"
+              :title="bodyPanelNarrow ? '展开目录面板' : '收窄目录面板'"
+              @click="bodyPanelNarrow = !bodyPanelNarrow">{{ bodyPanelNarrow ? '›' : '‹' }}</button>
+            <div id="body-information" class="bid-tech-left">
               <template v-if="!technicalGeneratedView">
                 <div class="tech-form-section tech-type-section">
                   <div class="tech-label required">方案类型：</div>
@@ -545,37 +581,10 @@
 
               <template v-else>
                 <div class="tech-detail-panel ai-solution-like-detail">
-                  <div class="tech-detail-top">
-                    <div class="tech-detail-top-main">
-                      <div class="tech-detail-title-row">
-                        <h2>{{ technicalForm.solutionName || selectedProject?.projectName || '技术方案' }}</h2>
-                        <div class="tech-detail-title-tools">
-                          <div v-if="technicalGenerationTimingVisible && !technicalGenerationTimingActive" class="tech-generation-timing-summary tech-generation-timing-summary--compact">
-                            <span>{{ technicalGenerationTimingLabel }}</span>
-                            <b>{{ technicalGenerationElapsedText }}</b>
-                            <small>{{ technicalGenerationTimingStatusText }}</small>
-                          </div>
-                          <el-button
-                            class="tech-detail-edit-btn"
-                            :icon="technicalEditMode ? Close : EditPen"
-                            :disabled="!canEditTechnicalOutline"
-                            @click="toggleTechnicalEditMode"
-                          >
-                            {{ technicalEditMode ? '退出编辑' : '编辑' }}
-                          </el-button>
-                        </div>
-                      </div>
-                      <div v-if="showTechnicalStats" class="tech-detail-stats">
-                        <span>目标字数：<b class="red">{{ technicalHasFlexibleWordCount ? '灵活生成' : `${technicalTargetWordCount} 字` }}</b></span>
-                        <span>生成字数：<b class="green">{{ technicalActualWordCount }}</b> 字</span>
-                        <span>预计页数：<b class="red">{{ technicalHasFlexibleWordCount ? '生成后统计' : `${technicalTargetPageCount} 页` }}</b></span>
-                        <span>预估页数：<b class="green">{{ technicalActualPageCount }}</b> 页</span>
-                      </div>
-                      <div v-if="showTechnicalStats" class="tech-stat-note">注：页数仅供参考，实际请以导出结果为准</div>
-                    </div>
-                  </div>
-
                   <template v-if="technicalEditMode">
+                    <div class="body-outline-tools">
+                      <el-button size="small" @click="toggleTechnicalEditMode">退出目录编辑</el-button>
+                    </div>
                     <div class="edit-tabs">
                       <button :class="{ active: technicalEditTab === 'word' }" @click="technicalEditTab = 'word'">修改字数</button>
                       <button :class="{ active: technicalEditTab === 'direction' }" @click="technicalEditTab = 'direction'">编写方向</button>
@@ -647,7 +656,26 @@
                   </template>
 
                   <template v-else>
-                    <el-scrollbar class="tech-detail-outline-scroll">
+                    <div v-if="bodyTab === 'outline'" class="body-outline-tools">
+                      <el-button size="small" @click="outlineClosed = new Set()">全部展开</el-button>
+                      <el-button size="small" @click="collapseBodyOutline">全部收起</el-button>
+                      <el-button size="small" :disabled="!canEditTechnicalOutline" @click="toggleTechnicalEditMode">编辑目录</el-button>
+                    </div>
+                    <div v-if="bodyTab !== 'outline'" class="body-reference">
+                      <BidTenderOriginalPreview v-if="bodyTab === 'source' && selectedProject?.tenderFileId"
+                        :key="selectedProject.id" :project-id="String(selectedProject.id)"
+                        :file-id="selectedProject.tenderFileId" :file-name="selectedProject.tenderFileName || ''" />
+                      <template v-else-if="bodyTab === 'project'">
+                        <dl class="body-project-info">
+                          <dt>项目名称</dt><dd>{{ selectedProject?.projectName || '—' }}</dd>
+                          <dt>项目编号</dt><dd>{{ selectedProject?.projectCode || '—' }}</dd>
+                          <dt>招标文件</dt><dd>{{ selectedProject?.tenderFileName || '—' }}</dd>
+                        </dl>
+                      </template>
+                      <BidHomeStructuredResult v-else-if="bodyCategory" :category="bodyCategory" />
+                      <el-empty v-else :image-size="64" :description="bodyTab === 'source' ? '暂无招标文件' : '暂无可展示的解析内容'" />
+                    </div>
+                    <el-scrollbar v-show="bodyTab === 'outline'" class="tech-detail-outline-scroll">
                       <div v-if="isCurrentTechnicalOutlineGenerating" class="tech-outline-loading compact">
                         <el-icon class="is-loading"><Loading /></el-icon>
                         <strong>正在生成技术方案目录</strong>
@@ -659,57 +687,18 @@
                       </div>
                       <el-empty v-else-if="!technicalOutlines.length" description="暂无目录，请在左侧完善采购需求，点击下方生成按钮" />
                       <template v-else>
-                        <div v-if="isTechnicalRunningByBackend || hasOtherAiTaskRunning || isCurrentTechnicalContentTimingActive" class="tech-task-status-card" :class="{ waiting: isTechnicalTaskWaiting || (isCurrentTechnicalContentTimingActive && !isTechnicalRunningByBackend), running: isTechnicalTaskRunning, conflict: hasOtherAiTaskRunning }">
-                          <div class="tech-task-status-main">
-                            <el-tag size="small" :type="hasOtherAiTaskRunning ? 'warning' : ((isTechnicalTaskWaiting || !isTechnicalRunningByBackend) ? 'info' : 'primary')">{{ hasOtherAiTaskRunning ? '任务占用' : ((isTechnicalTaskWaiting || !isTechnicalRunningByBackend) ? '排队中' : '执行中') }}</el-tag>
-                            <div>
-                              <strong>{{ hasOtherAiTaskRunning ? '已有其他 AI 长任务正在执行' : (isTechnicalRunningByBackend ? technicalRunningTaskTypeLabel : technicalGenerationTimingLabel) }}</strong>
-                              <p>{{ hasOtherAiTaskRunning ? '当前项目未在生成。请等待其他 AI 任务完成后再发起生成；可继续查看当前项目已有内容。' : (isTechnicalRunningByBackend ? technicalRunningTaskMessage : '任务正在提交，系统会自动更新生成状态和用时。') }}</p>
-                              <small>{{ isTechnicalRunningByBackend ? technicalRunningTaskTip : '关闭或切换页面不会中断后台任务。' }}</small>
-                            </div>
-                          </div>
-                          <div v-if="!hasOtherAiTaskRunning" class="tech-task-status-side">
-                            <div class="tech-task-status-metrics">
-                              <span v-if="isTechnicalRunningByBackend">{{ technicalRunningTaskProgress }}%</span>
-                              <small v-if="technicalGenerationTimingVisible">用时 {{ technicalGenerationElapsedText }}</small>
-                            </div>
-                            <el-button v-if="isTechnicalRunningByBackend" size="small" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">{{ technicalTaskCanceling ? '正在终止...' : '终止生成' }}</el-button>
-                          </div>
-                        </div>
-                        <el-progress
-                          :percentage="technicalGeneratePercent"
-                          :show-text="false"
-                          color="#ff4d4f"
-                          class="solution-like-progress"
-                        />
                         <OutlineTree
                           :nodes="technicalOutlines"
                           mode="generate"
                           :selected-id="selectedTechnicalLeaf?.id"
+                          :closed-ids="outlineClosed"
+                          @toggle-branch="toggleOutlineBranch"
                           @preview="selectTechnicalLeaf"
                           @section-generate="openTechnicalSectionDialog"
                         />
                       </template>
                     </el-scrollbar>
 
-                    <div class="tech-preview-actions detail-actions-like-solution">
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalRequirementExtractDrawer">评分项/需求解析</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalQualityCheckDrawer">质量检查</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalWordCountDrawer">字数检查</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id" @click="openTechnicalReviewDrawer">AI审稿</el-button>
-                      <el-button class="detail-action-btn" size="large" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalVersionDialog">历史版本</el-button>
-                      <el-button v-if="canRetryTechnicalFailedSections && !isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="large" type="warning" plain @click="openTechnicalFullGenerateDialog('RETRY_FAILED')">重试失败章节({{ technicalRetryableLeafCount }})</el-button>
-                      <el-button v-if="canGenerateTechnicalContent || fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="large" type="primary" :disabled="!canGenerateTechnicalContent || isCurrentTechnicalContentTimingActive" :loading="fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalFullGenerateDialog('GENERATE')">{{ technicalGenerateButtonText }}</el-button>
-                      <el-button class="detail-action-btn" size="large" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">{{ technicalFinishedLeafCount > 0 && technicalFinishedLeafCount < technicalLeafNodes.length ? '导出已有内容' : '导出' }}</el-button>
-                      <el-dropdown v-if="canRewriteTechnicalAll && !isCurrentTechnicalContentTimingActive" trigger="click" @command="openTechnicalFullGenerateDialog">
-                        <el-button class="detail-action-btn" size="large" plain>更多操作<el-icon><ArrowDown /></el-icon></el-button>
-                        <template #dropdown>
-                          <el-dropdown-menu>
-                            <el-dropdown-item command="REWRITE">重编全文</el-dropdown-item>
-                          </el-dropdown-menu>
-                        </template>
-                      </el-dropdown>
-                    </div>
                   </template>
                 </div>
               </template>
@@ -722,10 +711,8 @@
                     <div class="section-preview-title">
                       <h3>{{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}</h3>
                       <div v-if="selectedTechnicalLeaf" class="section-preview-meta">
-                        <span :class="['word-health-text', technicalWordHealthClass(selectedTechnicalLeaf)]">{{ technicalSectionContentEditMode ? technicalSectionEditorWordCount : outlineActualWordCount(selectedTechnicalLeaf) }} / {{ outlineTargetWordCount(selectedTechnicalLeaf) || '-' }} 字</span>
-                        <el-tag v-if="!technicalSectionContentEditMode && technicalWordHealthLabel(selectedTechnicalLeaf)" size="small" :type="technicalWordHealthType(selectedTechnicalLeaf)" effect="light">{{ technicalWordHealthLabel(selectedTechnicalLeaf) }}</el-tag>
+                        <span>{{ technicalSectionContentEditMode ? technicalSectionEditorWordCount : outlineActualWordCount(selectedTechnicalLeaf) }} 字</span>
                         <el-tag v-if="technicalSectionContentEditMode" size="small" :type="technicalSectionContentDirty ? 'warning' : 'info'" effect="light">{{ technicalSectionContentDirty ? '有未保存修改' : '编辑中' }}</el-tag>
-                        <el-tag v-else size="small" :type="technicalNodeStatusType(selectedTechnicalLeaf)">{{ technicalNodeStatusLabel(selectedTechnicalLeaf) }}</el-tag>
                       </div>
                     </div>
                     <div class="section-preview-actions">
@@ -735,49 +722,7 @@
                         <el-button size="small" type="primary" :loading="technicalSectionContentSaving" :disabled="!technicalSectionContentDirty" @click="saveTechnicalSectionContent">保存</el-button>
                       </template>
                       <template v-else>
-                        <el-button
-                          size="small"
-                          plain
-                          :disabled="!canCopyTechnicalSection"
-                          @click="copyTechnicalSectionContent"
-                        >
-                          复制正文
-                        </el-button>
-                        <el-button
-                          size="small"
-                          plain
-                          :disabled="!canInsertTechnicalImage"
-                          @click="openTechnicalImagePicker"
-                        >
-                          插入配图
-                        </el-button>
-                        <el-button
-                          size="small"
-                          plain
-                          :loading="sectionOptimizing === 'POLISH'"
-                          :disabled="!canOptimizeTechnicalSection"
-                          @click="optimizeTechnicalSection('POLISH')"
-                        >
-                          润色本章
-                        </el-button>
-                        <el-button
-                          size="small"
-                          plain
-                          :loading="sectionOptimizing === 'EXPAND'"
-                          :disabled="!canOptimizeTechnicalSection"
-                          @click="optimizeTechnicalSection('EXPAND')"
-                        >
-                          扩写本章
-                        </el-button>
-                        <el-button
-                          size="small"
-                          plain
-                          :loading="sectionOptimizing === 'SHRINK'"
-                          :disabled="!canOptimizeTechnicalSection"
-                          @click="openTechnicalShortenDialog"
-                        >
-                          缩写本章
-                        </el-button>
+                        <el-button size="small" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalVersionDialog">历史版本</el-button>
                         <el-button
                           size="small"
                           plain
@@ -822,8 +767,9 @@
                     @keydown.meta.s.prevent="saveTechnicalSectionContent"
                   />
                   <div v-if="technicalSectionContentEditMode" class="section-editor-tip">已启用手动编辑，按 Ctrl + S 可快速保存；切换章节或取消时会提醒是否放弃未保存修改。</div>
+                  <div v-else ref="bodyPreviewViewport" class="body-preview-viewport">
+                    <div class="body-preview-paper" :style="{ width: bodyPaperWidth + 'px', zoom: bodyZoom / 100 }">
                   <SectionContentPreview
-                    v-else
                     class="section-content-preview"
                     :content="selectedTechnicalLeafDisplayContent"
                     :editable="canEditTechnicalSectionContent && !isTechnicalRunningByBackend"
@@ -832,9 +778,18 @@
                     @edit-caption="editTechnicalImageCaption"
                     @delete-reference="deleteTechnicalImageReference"
                   />
+                    </div>
+                  </div>
+                  <div v-if="!technicalSectionContentEditMode" class="body-zoom-bar" aria-label="正文显示比例">
+                    <el-button text size="small" aria-label="缩小正文" :disabled="bodyZoom <= 50" @click="bodyZoom = Math.max(50, bodyZoom - 10)">−</el-button>
+                    <input v-model.number="bodyZoom" type="range" min="50" max="160" step="5" aria-label="正文缩放比例" />
+                    <el-button text size="small" aria-label="放大正文" :disabled="bodyZoom >= 160" @click="bodyZoom = Math.min(160, bodyZoom + 10)">+</el-button>
+                    <el-button text size="small" @click="bodyZoom = 100">适合宽度</el-button>
+                    <output>{{ bodyZoom }}%</output>
+                  </div>
                 </div>
                 <div v-else class="result-main-empty">
-                  <el-empty :description="selectedTechnicalLeaf ? '当前章节尚未生成正文，可点击目录行右侧生成本段' : '右侧用于预览章节正文。生成完成后会自动选中第一个已生成章节。'" :image-size="120" />
+                  <el-empty :description="selectedTechnicalLeaf ? '本节尚未编写' : '请选择章节'" :image-size="64" />
                 </div>
               </template>
 
@@ -1844,13 +1799,18 @@
 
 <script setup>
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElButton, ElCheckbox, ElInput, ElOption, ElSelect, ElTag } from '@/plugins/element-plus-api'
+import { ElButton, ElCheckbox, ElInput, ElMessage, ElOption, ElSelect, ElTag } from '@/plugins/element-plus-api'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
 import SectionContentPreview from '@/components/SectionContentPreview.vue'
+import BidTenderOriginalPreview from '@/views/dashboard/components/BidTenderOriginalPreview.vue'
+import BidHomeStructuredResult from '@/views/dashboard/components/BidHomeStructuredResult.vue'
+import { getHomeTenderParse } from '@/api/homeTenderParse'
+import { visibleHomeCategories } from '@/utils/bidHomeParse'
 import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import { useBidProjectPage } from './composables/useBidProjectPage'
 
 const {
+  bodyEntryProjectId, bodyEntryState, loadBodyEntry,
   router, auth, keyword, projectLoading, projectAppendLoading, projects, selectedProject, projectListScrollbar,
   projectPager, expandedProjectId, workflow, activeDoc, uploadFiles, uploadRef, technicalTenderInputRef, technicalTenderUploading,
   readTenderLoading, autoFillLoading, bidDocumentLoading, bidDocumentFilling, bidDocumentSaving, bidDocumentReviewSaving, bidDocumentExporting, bidDocumentDraft,
@@ -1916,6 +1876,76 @@ const {
   outlineActualWordCount, outlineTargetWordCount, technicalWordHealthClass, technicalWordHealthLabel, technicalWordHealthType
 } = useBidProjectPage()
 
+const bodyWorkspace = computed(() => activeDoc.value === 'TECHNICAL_SOLUTION' && technicalGeneratedView.value)
+const bodyEntryBlocked = computed(() => !!bodyEntryProjectId && (bodyEntryState.value !== 'ready' || !bodyWorkspace.value))
+const bodyPanelNarrow = ref(false)
+const outlineClosed = ref(new Set())
+const bodyTab = ref('outline')
+const bodyReference = ref(null)
+const bodyZoom = ref(100)
+const bodyPaperWidth = ref(790)
+const bodyPreviewViewport = ref(null)
+const bodyCategories = computed(() => visibleHomeCategories(bodyReference.value))
+const bodyTabs = computed(() => [
+  { id: 'outline', title: '目录' }, { id: 'source', title: '招标文件' },
+  ...bodyCategories.value.map(item => ({ id: item.id, title: item.title })),
+  { id: 'project', title: '标书信息' }
+])
+const bodyCategory = computed(() => bodyCategories.value.find(item => item.id === bodyTab.value))
+
+watch([bodyWorkspace, () => selectedProject.value?.id], async ([open, id], _, onCleanup) => {
+  bodyTab.value = 'outline'
+  bodyReference.value = null
+  outlineClosed.value = new Set()
+  bodyZoom.value = 100
+  bodyPanelNarrow.value = false
+  if (!open || !id) return
+  let active = true
+  onCleanup(() => { active = false })
+  try {
+    const view = await getHomeTenderParse(id)
+    if (active) bodyReference.value = view
+  } catch (_) { /* The outline and editor can be used independently. */ }
+})
+
+watch(bodyPreviewViewport, (element, _, onCleanup) => {
+  if (!element) return
+  const fit = () => { bodyPaperWidth.value = Math.max(220, Math.min(790, element.clientWidth - 48)) }
+  fit()
+  const observer = new ResizeObserver(fit)
+  observer.observe(element)
+  onCleanup(() => observer.disconnect())
+}, { flush: 'post' })
+
+function collapseBodyOutline() {
+  const ids = new Set()
+  function visit(nodes) {
+    for (const node of nodes) {
+      if (node.children?.length) {
+        ids.add(String(node.id))
+        visit(node.children)
+      }
+    }
+  }
+  visit(technicalOutlines.value)
+  outlineClosed.value = ids
+}
+
+function toggleOutlineBranch(id) {
+  const next = new Set(outlineClosed.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  outlineClosed.value = next
+}
+
+function leaveBodyWorkspace() {
+  if (bodyEntryProjectId) {
+    if (technicalSectionContentDirty.value) return ElMessage.warning('请先保存或取消正文修改')
+    return router.replace({ path: '/dashboard', query: { step: 'parse', projectId: bodyEntryProjectId, view: 'outline' } })
+  }
+  activeDoc.value = ''
+}
+
 function returnToConversation() {
   router.push({
     path: '/ai-bid',
@@ -1923,8 +1953,6 @@ function returnToConversation() {
   })
 }
 
-// 首页已明确选择文件，本次进入不叠加首次使用引导，避免挡住创建弹窗。
-const openedFromHomepage = router.currentRoute.value.query.from === 'home'
 const WORKBENCH_GUIDE_KEY = 'ai-bid:workbench-guide-disabled'
 const TECHNICAL_GUIDE_KEY = 'ai-bid:technical-guide-disabled'
 const BID_DOCUMENT_GUIDE_KEY = 'ai-bid:bid-document-guide-disabled'
@@ -2040,7 +2068,7 @@ onMounted(() => {
   let disabled = false
   try { disabled = window.localStorage.getItem(WORKBENCH_GUIDE_KEY) === '1' } catch (_) { /* 忽略本地存储限制 */ }
   if (!disabled) window.setTimeout(() => {
-    if (!openedFromHomepage && !activeDoc.value) startWorkbenchGuide()
+    if (!bodyEntryProjectId && !activeDoc.value) startWorkbenchGuide()
   }, 450)
 })
 onBeforeUnmount(() => {
@@ -2055,14 +2083,21 @@ const OutlineTree = defineComponent({
     mode: { type: String, default: 'view' },
     simple: { type: Boolean, default: false },
     selected: { type: Array, default: () => [] },
-    selectedId: { type: [String, Number], default: '' }
+    selectedId: { type: [String, Number], default: '' },
+    closedIds: { type: Set, default: null }
   },
-  emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate'],
+  emits: ['word-change', 'batch-word', 'add-node', 'update:selected', 'move', 'preview', 'section-generate', 'toggle-branch'],
   setup(props, { emit }) {
     const nodeKey = (node, depth = 0) => String(node?.id || `${depth}-${node?.title || 'node'}`)
     const renderNode = (node, depth = 0) => {
       const hasChildren = node.children?.length
       const key = nodeKey(node, depth)
+      const closed = props.closedIds?.has(key)
+      const disclosure = hasChildren && props.closedIds
+        ? h('button', { type: 'button', class: 'body-branch-toggle', 'aria-expanded': !closed,
+            'aria-label': (closed ? '展开' : '收起') + node.title,
+            onClick: (event) => { event.stopPropagation(); emit('toggle-branch', key) } }, closed ? '▸' : '▾')
+        : h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•')
       const checkbox = props.mode === 'delete'
         ? h(ElCheckbox, {
           modelValue: props.selected.includes(node.id),
@@ -2109,8 +2144,8 @@ const OutlineTree = defineComponent({
       }
       if (props.simple && !hasChildren) controls.push(h('span', { class: 'simple-level' }, node.headingType || 'H4'))
       return h('div', { class: 'tree-node-wrap', key }, [
-        h('div', { key: `${key}-row`, class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : '', isSelected ? 'selected' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, h('span', { class: 'tree-dot' }, hasChildren ? '▾' : '•'), title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
-        hasChildren ? h('div', { key: `${key}-children`, class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
+        h('div', { key: `${key}-row`, class: ['tree-row', `level-${depth}`, props.mode === 'generate' && !hasChildren ? 'clickable generate-row' : '', isSelected ? 'selected' : ''], style: { paddingLeft: `${depth * 20}px` }, onClick: () => { if (props.mode === 'generate' && !hasChildren) emit('preview', node) } }, [checkbox, disclosure, title, h('div', { class: ['tree-controls', props.mode === 'generate' && !hasChildren ? 'generate-controls' : ''] }, controls)]),
+        hasChildren && !closed ? h('div', { key: `${key}-children`, class: 'tree-children' }, node.children.map((child) => renderNode(child, depth + 1))) : null
       ])
     }
     return () => h('div', { class: 'outline-tree' }, props.nodes.map((node) => renderNode(node, 0)))
