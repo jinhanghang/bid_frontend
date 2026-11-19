@@ -3828,6 +3828,13 @@
 .ai-bid-page.body-workspace-open {
   grid-template-columns: minmax(0, 1fr);
 }
+/* Fill the manuscript workspace; the generic inset plus negative panel margin left an unused footer. */
+.ai-bid-page.body-workspace-open > .workspace {
+  padding: 0;
+}
+.body-workspace-open .bid-tech-panel {
+  margin: 0;
+}
 .body-workspace-open .bid-tech-header {
   flex-wrap: wrap;
   gap: 10px;
@@ -4001,3 +4008,14 @@
   padding: 12px 18px;
   border-bottom: 1px solid #ece9f4;
 }
+
+/* Keep chapter metadata on the title row so the paper receives the remaining height. */
+.body-split .section-preview-head.section-preview-head-inline {
+  flex-direction:row;align-items:center;gap:14px;margin-bottom:0;padding:12px 18px;min-height:58px;box-sizing:border-box;
+}
+.body-split .section-preview-head-inline .section-preview-title {flex:1 1 auto;min-width:0;width:auto;}
+.body-split .section-preview-head-inline .section-preview-title h3 {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:18px;line-height:1.5;}
+.body-split .section-preview-head-inline .section-preview-meta {flex:0 0 auto;margin:0;white-space:nowrap;}
+.body-split .section-preview-head-inline .section-preview-actions {flex:0 0 auto;width:auto;flex-wrap:nowrap;}
+.body-split .section-preview-head-inline .section-preview-actions :deep(.el-button) {margin-left:0;}
+@media(max-width:760px){.body-split .section-preview-head.section-preview-head-inline{gap:8px;padding:10px 12px;flex-wrap:wrap}.body-split .section-preview-head-inline .section-preview-title{flex-basis:60%}}

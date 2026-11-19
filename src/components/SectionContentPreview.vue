@@ -6,16 +6,24 @@
         v-if="block.type === 'text'"
         :class="['section-render-text', block.className]"
       >
-        <template v-for="(segment, segIndex) in block.segments || [{ text: block.text }]" :key="`${index}-${segIndex}`">
-          <strong v-if="segment.bold">{{ segment.text }}</strong>
-          <span v-else>{{ segment.text }}</span>
-        </template>
+        <InlineContent :segments="block.segments" />
       </component>
 
       <div v-else-if="block.type === 'blank'" class="section-render-blank" />
 
-      <figure v-else class="section-render-image-card" :class="`align-${block.align || 'center'}`">
-        <div v-if="editable" class="section-render-image-toolbar">
+      <div v-else-if="block.type === 'table'" class="section-render-table-wrap">
+        <table class="section-render-table">
+          <thead><tr><th v-for="(cell,column) in block.headers" :key="column" scope="col" :style="{textAlign:block.alignments[column]}"><InlineContent :segments="cell"/></th></tr></thead>
+          <tbody><tr v-for="(row,rowIndex) in block.rows" :key="rowIndex"><td v-for="(cell,column) in row" :key="column" :style="{textAlign:block.alignments[column]}"><InlineContent :segments="cell"/></td></tr></tbody>
+        </table>
+      </div>
+      <ContentList v-else-if="block.type === 'list'" :block="block" />
+      <pre v-else-if="block.type === 'code'" class="section-render-code"><code>{{ block.text }}</code></pre>
+      <blockquote v-else-if="block.type === 'quote'" class="section-render-quote"><InlineContent :segments="block.segments"/></blockquote>
+      <hr v-else-if="block.type === 'rule'" class="section-render-rule"/>
+
+      <figure v-else-if="block.type === 'image'" class="section-render-image-card" :class="`align-${block.align || 'center'}`">
+        <div v-if="editable && block.fileId" class="section-render-image-toolbar">
           <span class="toolbar-label">图片设置</span>
           <el-button size="small" text :type="Number(block.width || 0) === 420 ? 'primary' : ''" @click="emit('update-width', { block, width: 420 })">小</el-button>
           <el-button size="small" text :type="Number(block.width || 0) === 680 || !block.width ? 'primary' : ''" @click="emit('update-width', { block, width: 680 })">中</el-button>
@@ -31,14 +39,14 @@
 
         <div class="section-render-image-box">
           <img
-            v-if="imageUrls[block.fileId]"
+            v-if="(block.url && !imageErrors[block.url]) || imageUrls[block.fileId]"
             class="section-render-image-el"
-            :src="imageUrls[block.fileId]"
+            :src="block.url || imageUrls[block.fileId]"
             :alt="block.alt || '章节图片'"
             :style="getImageStyle(block)"
-            @error="handleImageError(block.fileId)"
+            @error="handleImageError(block.fileId || block.url)"
           />
-          <div v-else-if="imageErrors[block.fileId]" class="section-render-image-placeholder">图片加载失败</div>
+          <div v-else-if="imageErrors[block.fileId || block.url]" class="section-render-image-placeholder">图片加载失败</div>
           <div v-else class="section-render-image-placeholder">图片加载中...</div>
         </div>
         <figcaption v-if="block.alt">{{ block.alt }}</figcaption>
@@ -48,7 +56,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineComponent, h, onBeforeUnmount, ref, watch } from 'vue'
+import { parseSectionContent } from '@/utils/sectionContentBlocks'
 import { downloadFileBlob } from '@/api/file'
 
 const props = defineProps({
@@ -68,7 +77,7 @@ const imageUrls = ref({})
 const imageErrors = ref({})
 const objectUrls = new Set()
 
-const blocks = computed(() => parseContent(props.content))
+const blocks = computed(() => parseSectionContent(props.content))
 
 watch(blocks, async (list) => {
   const ids = [...new Set(list.filter((item) => item.type === 'image' && item.fileId).map((item) => item.fileId))]
@@ -104,113 +113,26 @@ function getImageStyle(block) {
   return { '--section-image-width': `${safeWidth}px` }
 }
 
-function parseContent(content) {
-  const lines = String(content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
-  const result = []
-  const imagePattern = /^!\[([^\]]*)\]\(aibid-file:\/\/([^)?\s]+)(?:\?([^)]*))?\)$/
-  lines.forEach((raw, lineIndex) => {
-    const line = String(raw || '')
-    const trimmed = line.trim()
-    if (!trimmed) {
-      result.push({ type: 'blank', lineIndex, rawLine: line })
-      return
-    }
-    const match = trimmed.match(imagePattern)
-    if (match) {
-      const query = parseQuery(match[3])
-      result.push({
-        type: 'image',
-        alt: decodeValue(match[1]),
-        fileId: match[2],
-        width: query.width,
-        align: query.align || 'center',
-        imageId: query.imageId || '',
-        rawLine: line,
-        lineIndex
-      })
-      return
-    }
-    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/)
-    if (heading) {
-      const level = Math.min(Math.max(heading[1].length + 1, 3), 5)
-      result.push({
-        type: 'text',
-        tag: `h${level}`,
-        className: `heading heading-${level}`,
-        text: stripInlineMarkdown(heading[2]),
-        segments: parseInlineSegments(heading[2]),
-        lineIndex,
-        rawLine: line
-      })
-      return
-    }
-    const list = trimmed.match(/^([-*+]|\d+[.)])\s+(.+)$/)
-    if (list) {
-      result.push({
-        type: 'text',
-        tag: 'p',
-        className: 'list-item',
-        text: `• ${stripInlineMarkdown(list[2])}`,
-        segments: [{ text: '• ' }, ...parseInlineSegments(list[2])],
-        lineIndex,
-        rawLine: line
-      })
-      return
-    }
-    result.push({
-      type: 'text',
-      tag: 'p',
-      className: 'paragraph',
-      text: stripInlineMarkdown(line),
-      segments: parseInlineSegments(line),
-      lineIndex,
-      rawLine: line
+const InlineContent = defineComponent({
+  props: { segments: Array },
+  setup(p) {
+    const render = segments => (segments || []).map(segment => {
+      if (segment.type === 'break') return h('br')
+      if (segment.type === 'link') return h('a', {href:segment.href,target:'_blank',rel:'noopener noreferrer'},render(segment.children))
+      const tag = {bold:'strong',italic:'em',strike:'del',code:'code'}[segment.type]
+      return tag ? h(tag, segment.children ? render(segment.children) : segment.text) : segment.text
     })
-  })
-  return result
-}
-
-function parseInlineSegments(text = '') {
-  const raw = String(text || '')
-  const segments = []
-  const pattern = /\*\*([^*]+)\*\*/g
-  let lastIndex = 0
-  let match
-  while ((match = pattern.exec(raw)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ text: stripInlineMarkdown(raw.slice(lastIndex, match.index)), bold: false })
-    }
-    segments.push({ text: stripInlineMarkdown(match[1]), bold: true })
-    lastIndex = match.index + match[0].length
+    return () => h('span', render(p.segments))
   }
-  if (lastIndex < raw.length) {
-    segments.push({ text: stripInlineMarkdown(raw.slice(lastIndex)), bold: false })
+})
+const ContentList = defineComponent({
+  props: { block: Object },
+  setup(p) {
+    const render = block => h(block.ordered ? 'ol' : 'ul', {class:'section-render-list',start:block.start}, block.items.map(item =>
+      h('li', [h(InlineContent,{segments:item.segments}),...item.children.map(render)])))
+    return () => render(p.block)
   }
-  return segments.length ? segments.filter((item) => item.text !== '') : [{ text: '' }]
-}
-
-function stripInlineMarkdown(text = '') {
-  return String(text || '')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-}
-
-function parseQuery(query = '') {
-  const data = {}
-  String(query || '').split('&').forEach((item) => {
-    const [key, value] = item.split('=')
-    if (key) data[decodeValue(key)] = decodeValue(value || '')
-  })
-  return data
-}
-
-function decodeValue(value = '') {
-  try {
-    return decodeURIComponent(String(value || ''))
-  } catch (e) {
-    return String(value || '')
-  }
-}
+})
 </script>
 
 <style scoped>
@@ -232,13 +154,13 @@ function decodeValue(value = '') {
   word-break: normal;
   overflow-wrap: break-word;
 }
-.section-render-text.heading-3 {
+.section-render-text.heading:is(h1,h2,h3) {
   font-size: 20px;
 }
-.section-render-text.heading-4 {
+.section-render-text.heading:is(h4) {
   font-size: 18px;
 }
-.section-render-text.heading-5 {
+.section-render-text.heading:is(h5,h6) {
   font-size: 16px;
 }
 .section-render-text.paragraph {
@@ -248,13 +170,25 @@ function decodeValue(value = '') {
   padding-left: 1.2em;
   text-indent: -1.2em;
 }
-.section-render-text strong {
+.section-content-renderer :deep(strong) {
   font-weight: 800;
   color: #06152b;
 }
 .section-render-blank {
   height: 10px;
 }
+.section-render-table-wrap { width:100%;overflow-x:auto;margin:16px 0 20px; }
+.section-render-table { width:100%;border-collapse:collapse;table-layout:fixed;font:inherit;line-height:1.65; }
+.section-render-table th,.section-render-table td {border:1px solid #9aa4b3;padding:9px 11px;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere;text-indent:0;}
+.section-render-table th {background:#f6f7fa;font-weight:600;}
+.section-content-renderer :deep(.section-render-list) {margin:10px 0;padding-left:1.8em;list-style:revert;}
+.section-content-renderer :deep(.section-render-list li) {margin:5px 0;white-space:pre-wrap;}
+.section-content-renderer :deep(.section-render-list .section-render-list) {margin:4px 0;}
+.section-render-code {white-space:pre;overflow:auto;background:#f6f7fa;padding:14px;border-radius:4px;text-indent:0;font-family:monospace;font-size:.85em;}
+.section-render-quote {border-left:3px solid #c9c2ed;padding:4px 14px;margin:14px 0;color:#586174;white-space:pre-wrap;}
+.section-render-rule {border:0;border-top:1px solid #cfd3dc;margin:18px 0;}
+.section-content-renderer :deep(code) {font-family:monospace;}
+.section-content-renderer :deep(a) {color:#6550d9;text-decoration:underline;}
 .section-render-image-card {
   position: relative;
   margin: 18px 0 20px;

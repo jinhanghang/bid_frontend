@@ -128,7 +128,7 @@ const outlineChapters = computed(() => visibleOutline.value.map(node => ({
 const outlineWords = computed(() => outlineChapters.value.reduce((total, chapter) => total + chapter.words, 0))
 
 function estimatePages(words) {
-  return Math.ceil(words / WORDS_PER_PAGE)
+  return Math.ceil(words / (Number(outline.value?.pageBudget?.wordsPerPage) || WORDS_PER_PAGE))
 }
 
 function downloadOutline() {
@@ -148,7 +148,11 @@ function downloadOutline() {
 const outlineDirty = computed(() => pendingOutlineDeletes.size > 0 || outlineRows.value.some(row => outlineDraft[row.id] !== row.title))
 
 function applyOutline(data) {
+  const budgetChanged = JSON.stringify(outline.value?.pageBudget) !== JSON.stringify(data?.pageBudget)
   outline.value = data
+  if (budgetChanged && data?.pageBudget?.adjusted) {
+    ElMessage.warning('已按招标文件要求将目标调整为' + data.pageBudget.effectivePages + '页')
+  }
   pendingOutlineDeletes.clear()
   for (const key of Object.keys(outlineDraft)) delete outlineDraft[key]
   for (const row of outlineRows.value) outlineDraft[row.id] = row.title
@@ -224,7 +228,8 @@ async function generateOutline() {
       await generateBidProjectTechnicalOutline(props.projectId, {
         aiLevel: current?.aiLevel || 'STANDARD',
         solutionType: props.options.projectType,
-        targetTotalWordCount: Math.min(400000, (Number(props.options.pageCount) || 200) * WORDS_PER_PAGE),
+        targetPages: Number(props.options.pageCount) || 200,
+        tableDensity: props.options.tableDensity || 'MEDIUM',
         regenerate
       })
     }

@@ -772,16 +772,16 @@ const technicalActualWordCount = computed(() => {
 function estimatePageCount(words) {
   const count = Number(words || 0)
   if (count <= 0) return 0
-  return Math.max(1, Math.round(count / 600))
+  return Math.max(1, Math.ceil(count / (Number(technicalSolution.value?.pageBudget?.wordsPerPage) || 650)))
 }
 
 const technicalTargetPageCount = computed(() => {
-  const fromSolution = Number(technicalSolution.value?.estimatedPageCount || technicalSolution.value?.targetPageCount || 0)
+  const fromSolution = Number(technicalSolution.value?.estimatePages || technicalSolution.value?.estimatedPageCount || technicalSolution.value?.targetPageCount || 0)
   return fromSolution > 0 ? fromSolution : estimatePageCount(technicalTargetWordCount.value)
 })
 
 const technicalActualPageCount = computed(() => {
-  const fromSolution = Number(technicalSolution.value?.actualPageCount || technicalSolution.value?.generatedPageCount || 0)
+  const fromSolution = Number(technicalSolution.value?.actualPages || technicalSolution.value?.actualPageCount || technicalSolution.value?.generatedPageCount || 0)
   return fromSolution > 0 ? fromSolution : estimatePageCount(technicalActualWordCount.value)
 })
 
@@ -3665,7 +3665,7 @@ async function reviewTechnicalByAi() {
   ]), 'AI二次审稿', { dangerouslyUseHTMLString: true })
 }
 
-async function exportTechnical() {
+async function exportTechnical(requestedFormat, request = {}) {
   if (!selectedProject.value?.id) return
   if (!canExportTechnicalWord.value) {
     ElMessage.warning(fullGenerating.value || isTechnicalRunningByBackend.value ? '技术方案正在生成，完成后再导出' : '仍有章节未生成完成，暂不能导出')
@@ -3673,14 +3673,18 @@ async function exportTechnical() {
   }
   const confirmed = await confirmTechnicalExportBeforeDownload()
   if (!confirmed) return
-  const format = await chooseExportFormat()
+  const format = requestedFormat || await chooseExportFormat()
   if (!format) return
+  const projectId = selectedProject.value.id
+  const projectName = technicalForm.solutionName || selectedProject.value.projectName || '技术方案'
   exportingWord.value = true
   try {
-    const started = await startBidProjectTechnicalExportTask(selectedProject.value.id, format)
-    const task = await waitTechnicalExportTask(selectedProject.value.id, started?.id)
-    await refreshWorkflow()
-    await loadTechnicalSolution()
+    const started = await startBidProjectTechnicalExportTask(projectId, format, request)
+    const task = await waitTechnicalExportTask(projectId, started?.id)
+    if (selectedProject.value?.id === projectId) {
+      await refreshWorkflow()
+      await loadTechnicalSolution()
+    }
     if (!task?.fileId) {
       ElMessage.warning('导出成功，但未返回文件ID，请到下载中心查看')
       return
@@ -3689,12 +3693,13 @@ async function exportTechnical() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = task.originalName || `${technicalForm.solutionName || selectedProject.value.projectName || '技术方案'}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
+    a.download = task.originalName || `${projectName}-导出.${format === 'pdf' ? 'pdf' : 'docx'}`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
     notifyTechnicalWordExportSuccess({ id: task.fileId, originalName: task.originalName }, a.download)
+    return true
   } catch (e) {
     notifyRequestError(e, '导出失败，请稍后重试')
   } finally {

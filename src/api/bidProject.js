@@ -593,3 +593,23 @@ export function exportBidDocumentMarkdown(id) {
   })
 }
 
+
+export function getBidProjectTechnicalExportStyle(id) {
+  return request.get(`/bid-project/${id}/technical-solution/export-style`)
+}
+
+export function saveBidProjectTechnicalExportStyle(id, data) {
+  return request.put(`/bid-project/${id}/technical-solution/export-style`, data)
+}
+
+export async function previewBidProjectTechnicalExportStyle(id, data, signal) {
+  const blob = await request.post(`/bid-project/${id}/technical-solution/export-style/preview`, data, {
+    responseType: 'blob', timeout: 120000, signal, silentError: true
+  })
+  if (blob?.type?.includes('json')) {
+    const error = JSON.parse(await blob.text())
+    throw new Error(error.message || '预览生成失败')
+  }
+  return blob
+}
+

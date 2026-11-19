@@ -373,7 +373,7 @@
               <el-button v-if="isTechnicalRunningByBackend" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">终止生成</el-button>
               <el-button v-if="canRewriteTechnicalAll && !canGenerateTechnicalContent && !isCurrentTechnicalContentTimingActive" type="primary" @click="openTechnicalFullGenerateDialog('REWRITE')">重新编写全文</el-button>
               <el-button v-else-if="canGenerateTechnicalContent || fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="default" type="primary" :disabled="!canGenerateTechnicalContent || isCurrentTechnicalContentTimingActive" :loading="fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalFullGenerateDialog('GENERATE')">{{ technicalGenerateButtonText === '开始生成' ? '一键编写全文' : technicalGenerateButtonText }}</el-button>
-              <el-button class="detail-action-btn" size="default" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="exportTechnical">{{ technicalFinishedLeafCount > 0 && technicalFinishedLeafCount < technicalLeafNodes.length ? '导出已有内容' : '导出标书' }}</el-button>
+              <el-button class="detail-action-btn" size="default" type="primary" plain :loading="exportingWord" :disabled="!canExportTechnicalWord" @click="technicalExportStyleVisible = true">{{ technicalFinishedLeafCount > 0 && technicalFinishedLeafCount < technicalLeafNodes.length ? '导出已有内容' : '导出标书' }}</el-button>
             </div>
           </div>
 
@@ -404,7 +404,7 @@
           <div class="bid-tech-body" :class="{ generated: technicalGeneratedView, 'body-split': bodyWorkspace, 'body-panel-narrow': bodyPanelNarrow }">
             <button v-if="bodyWorkspace" type="button" class="body-panel-toggle"
               :aria-expanded="!bodyPanelNarrow" aria-controls="body-information"
-              :title="bodyPanelNarrow ? '展开目录面板' : '收窄目录面板'"
+              :title="bodyPanelNarrow ? '展开目录面板' : '收起目录面板'"
               @click="bodyPanelNarrow = !bodyPanelNarrow">{{ bodyPanelNarrow ? '›' : '‹' }}</button>
             <div id="body-information" class="bid-tech-left">
               <template v-if="!technicalGeneratedView">
@@ -707,15 +707,15 @@
             <div class="bid-tech-right">
               <template v-if="technicalGeneratedView">
                 <div v-if="selectedTechnicalLeafDisplayContent" class="section-preview tech-section-preview">
-                  <div class="section-preview-head">
+                  <div class="section-preview-head" :class="{ 'section-preview-head-inline': bodyWorkspace }">
                     <div class="section-preview-title">
-                      <h3>{{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}</h3>
-                      <div v-if="selectedTechnicalLeaf" class="section-preview-meta">
+                      <h3 :title="selectedTechnicalLeaf?.title || '结果预览'">{{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}</h3>
+                    </div>
+                    <div v-if="selectedTechnicalLeaf" class="section-preview-meta">
                         <span>{{ technicalSectionContentEditMode ? technicalSectionEditorWordCount : outlineActualWordCount(selectedTechnicalLeaf) }} 字</span>
                         <el-tag v-if="technicalSectionContentEditMode" size="small" :type="technicalSectionContentDirty ? 'warning' : 'info'" effect="light">{{ technicalSectionContentDirty ? '有未保存修改' : '编辑中' }}</el-tag>
                       </div>
-                    </div>
-                    <div class="section-preview-actions">
+                    <div v-if="!bodyWorkspace || bodyPanelNarrow || technicalSectionContentEditMode" class="section-preview-actions">
                       <template v-if="technicalSectionContentEditMode">
                         <el-button size="small" plain :disabled="!canInsertTechnicalImage" @click="openTechnicalImagePicker">插入配图</el-button>
                         <el-button size="small" :disabled="technicalSectionContentSaving" @click="cancelEditTechnicalSectionContent">取消</el-button>
@@ -811,6 +811,8 @@
         </div>
       </template>
     </section>
+
+    <TechnicalExportStyleDialog v-model="technicalExportStyleVisible" :project-id="String(selectedProject?.id || '')" :busy="exportingWord" :on-export="exportTechnical" />
 
     <el-dialog v-model="createDialog.visible" title="新建项目" width="680px" destroy-on-close>
       <div v-if="isPlatformUser" class="create-admin-fields">
@@ -1802,12 +1804,15 @@ import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElOption, ElSelect, ElTag } from '@/plugins/element-plus-api'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
 import SectionContentPreview from '@/components/SectionContentPreview.vue'
+import TechnicalExportStyleDialog from '@/components/TechnicalExportStyleDialog.vue'
 import BidTenderOriginalPreview from '@/views/dashboard/components/BidTenderOriginalPreview.vue'
 import BidHomeStructuredResult from '@/views/dashboard/components/BidHomeStructuredResult.vue'
 import { getHomeTenderParse } from '@/api/homeTenderParse'
 import { visibleHomeCategories } from '@/utils/bidHomeParse'
 import { ArrowDown, Close, Delete, Document, EditPen, Loading, Plus, Refresh, Search, SortDown, SortUp, UploadFilled } from '@element-plus/icons-vue'
 import { useBidProjectPage } from './composables/useBidProjectPage'
+
+const technicalExportStyleVisible = ref(false)
 
 const {
   bodyEntryProjectId, bodyEntryState, loadBodyEntry,
