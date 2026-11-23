@@ -136,6 +136,7 @@ import { uploadTenderProject, pageBidProjects } from '@/api/bidProject'
 import { pageEnterprises } from '@/api/enterprise'
 import { pageUsers } from '@/api/systemUser'
 import { findHomeUpload, rememberHomeUpload } from '@/utils/bidHomeParse'
+import {projectEntryRoute} from '@/utils/projectEntry'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -274,7 +275,7 @@ async function loadProjectPage(page = 1) {
   } catch (_) { if (!disposed && sequence === projectListSequence) projectListError.value = true }
   finally { if (!disposed && sequence === projectListSequence) projectListLoading.value = false }
 }
-function openProjectFromList(item) { projectListVisible.value = false; openParse(item.id) }
+function openProjectFromList(item) { projectListVisible.value = false; return openRecentProject(item) }
 async function startGenerate() {
   if (openingWorkbench.value) return
   const error = validateHomeTender(form.file)
@@ -308,7 +309,7 @@ async function uploadAndOpenParse() {
 }
 function openParse(projectId, autoStart = false) { return router.replace({ path: '/dashboard', query: { step: 'parse', projectId, ...(autoStart ? { autoStart: '1' } : {}) } }) }
 function returnToHome() { router.replace({ path: '/dashboard' }); loadRecent() }
-function openRecentProject(item) { openParse(item.id) }
+function openRecentProject(item) { return router.replace(projectEntryRoute(item)) }
 async function searchEnterprises(keyword) {
   const sequence = ++scopeSequence
   scopeLoading.value = true

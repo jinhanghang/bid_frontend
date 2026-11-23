@@ -370,6 +370,7 @@
               </span>
             </div>
             <div v-if="bodyWorkspace" class="body-top-actions">
+              <el-button plain :disabled="isTechnicalRunningByBackend" @click="technicalRevisions?.openHistory(false)">方案历史</el-button>
               <el-button v-if="isTechnicalRunningByBackend" plain type="danger" :loading="technicalTaskCanceling" @click="cancelCurrentTechnicalTask">终止生成</el-button>
               <el-button v-if="canRewriteTechnicalAll && !canGenerateTechnicalContent && !isCurrentTechnicalContentTimingActive" type="primary" @click="openTechnicalFullGenerateDialog('REWRITE')">重新编写全文</el-button>
               <el-button v-else-if="canGenerateTechnicalContent || fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" class="detail-action-btn" size="default" type="primary" :disabled="!canGenerateTechnicalContent || isCurrentTechnicalContentTimingActive" :loading="fullGenerating || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalFullGenerateDialog('GENERATE')">{{ technicalGenerateButtonText === '开始生成' ? '一键编写全文' : technicalGenerateButtonText }}</el-button>
@@ -665,13 +666,6 @@
                       <BidTenderOriginalPreview v-if="bodyTab === 'source' && selectedProject?.tenderFileId"
                         :key="selectedProject.id" :project-id="String(selectedProject.id)"
                         :file-id="selectedProject.tenderFileId" :file-name="selectedProject.tenderFileName || ''" />
-                      <template v-else-if="bodyTab === 'project'">
-                        <dl class="body-project-info">
-                          <dt>项目名称</dt><dd>{{ selectedProject?.projectName || '—' }}</dd>
-                          <dt>项目编号</dt><dd>{{ selectedProject?.projectCode || '—' }}</dd>
-                          <dt>招标文件</dt><dd>{{ selectedProject?.tenderFileName || '—' }}</dd>
-                        </dl>
-                      </template>
                       <BidHomeStructuredResult v-else-if="bodyCategory" :category="bodyCategory" />
                       <el-empty v-else :image-size="64" :description="bodyTab === 'source' ? '暂无招标文件' : '暂无可展示的解析内容'" />
                     </div>
@@ -694,7 +688,7 @@
                           :closed-ids="outlineClosed"
                           @toggle-branch="toggleOutlineBranch"
                           @preview="selectTechnicalLeaf"
-                          @section-generate="openTechnicalSectionDialog"
+                          @section-generate="openTechnicalSectionAction"
                         />
                       </template>
                     </el-scrollbar>
@@ -706,7 +700,8 @@
 
             <div class="bid-tech-right">
               <template v-if="technicalGeneratedView">
-                <div v-if="selectedTechnicalLeafDisplayContent" class="section-preview tech-section-preview">
+                <Teleport to="body" :disabled="!bodyFullscreen">
+                <div v-if="selectedTechnicalLeafDisplayContent" class="section-preview tech-section-preview" :class="{ 'body-preview-fullscreen': bodyFullscreen }" aria-label="正文预览">
                   <div class="section-preview-head" :class="{ 'section-preview-head-inline': bodyWorkspace }">
                     <div class="section-preview-title">
                       <h3 :title="selectedTechnicalLeaf?.title || '结果预览'">{{ selectedTechnicalLeaf ? selectedTechnicalLeaf.title : '结果预览' }}</h3>
@@ -715,22 +710,22 @@
                         <span>{{ technicalSectionContentEditMode ? technicalSectionEditorWordCount : outlineActualWordCount(selectedTechnicalLeaf) }} 字</span>
                         <el-tag v-if="technicalSectionContentEditMode" size="small" :type="technicalSectionContentDirty ? 'warning' : 'info'" effect="light">{{ technicalSectionContentDirty ? '有未保存修改' : '编辑中' }}</el-tag>
                       </div>
-                    <div v-if="!bodyWorkspace || bodyPanelNarrow || technicalSectionContentEditMode" class="section-preview-actions">
+                    <div v-if="bodyFullscreen || !bodyWorkspace || bodyPanelNarrow || technicalSectionContentEditMode" class="section-preview-actions">
                       <template v-if="technicalSectionContentEditMode">
-                        <el-button size="small" plain :disabled="!canInsertTechnicalImage" @click="openTechnicalImagePicker">插入配图</el-button>
+                        <el-button size="small" plain :disabled="!canInsertTechnicalImage" @mousedown.prevent="technicalSectionEditorRef?.rememberSelection?.()" @click="openTechnicalImagePicker">插入配图</el-button>
                         <el-button size="small" :disabled="technicalSectionContentSaving" @click="cancelEditTechnicalSectionContent">取消</el-button>
                         <el-button size="small" type="primary" :loading="technicalSectionContentSaving" :disabled="!technicalSectionContentDirty" @click="saveTechnicalSectionContent">保存</el-button>
                       </template>
                       <template v-else>
-                        <el-button size="small" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="openTechnicalVersionDialog">历史版本</el-button>
+                        <el-button size="small" plain :disabled="!technicalSolution?.id || isTechnicalRunningByBackend || isCurrentTechnicalContentTimingActive" @click="technicalRevisions?.openHistory(true)">历史版本</el-button>
                         <el-button
                           size="small"
                           plain
                           :loading="sectionOptimizing === 'REWRITE'"
                           :disabled="!canOptimizeTechnicalSection"
-                          @click="optimizeTechnicalSection('REWRITE')"
+                          @click="technicalRevisions?.openRewrite()"
                         >
-                          重写本章
+                          重写本节
                         </el-button>
                         <el-button
                           size="small"
@@ -753,23 +748,17 @@
                     show-icon
                     title="当前正在重编全文，以下内容可能是上一版正文，新内容生成成功后会自动覆盖。"
                   />
-                  <el-input
+                  <div v-if="technicalSectionContentEditMode" class="section-editor-tip">直接修改正文、标题或表格；Ctrl + S 保存，取消可放弃本次修改。</div>
+                  <div ref="bodyPreviewViewport" class="body-preview-viewport">
+                    <div class="body-preview-paper" :style="{ width: bodyPaperWidth + 'px', zoom: bodyZoom / 100 }">
+                  <SectionVisualEditor
                     v-if="technicalSectionContentEditMode"
                     ref="technicalSectionEditorRef"
                     v-model="technicalSectionContentDraft"
-                    class="section-content-editor"
-                    type="textarea"
-                    :autosize="{ minRows: 24 }"
-                    maxlength="200000"
-                    show-word-limit
-                    placeholder="请输入章节正文内容"
-                    @keydown.ctrl.s.prevent="saveTechnicalSectionContent"
-                    @keydown.meta.s.prevent="saveTechnicalSectionContent"
+                    @save="saveTechnicalSectionContent"
                   />
-                  <div v-if="technicalSectionContentEditMode" class="section-editor-tip">已启用手动编辑，按 Ctrl + S 可快速保存；切换章节或取消时会提醒是否放弃未保存修改。</div>
-                  <div v-else ref="bodyPreviewViewport" class="body-preview-viewport">
-                    <div class="body-preview-paper" :style="{ width: bodyPaperWidth + 'px', zoom: bodyZoom / 100 }">
                   <SectionContentPreview
+                    v-else
                     class="section-content-preview"
                     :content="selectedTechnicalLeafDisplayContent"
                     :editable="canEditTechnicalSectionContent && !isTechnicalRunningByBackend"
@@ -780,7 +769,8 @@
                   />
                     </div>
                   </div>
-                  <div v-if="!technicalSectionContentEditMode" class="body-zoom-bar" aria-label="正文显示比例">
+                  <div class="body-zoom-bar" aria-label="正文显示比例">
+                    <el-button class="preview-fullscreen-toggle" text size="small" :aria-label="bodyFullscreen ? '退出正文全屏预览' : '正文全屏预览'" :aria-pressed="bodyFullscreen" :title="bodyFullscreen ? '退出全屏（Esc）' : '全屏预览'" @click="toggleBodyFullscreen"><span aria-hidden="true">⛶</span> {{ bodyFullscreen ? '退出全屏' : '全屏预览' }}</el-button>
                     <el-button text size="small" aria-label="缩小正文" :disabled="bodyZoom <= 50" @click="bodyZoom = Math.max(50, bodyZoom - 10)">−</el-button>
                     <input v-model.number="bodyZoom" type="range" min="50" max="160" step="5" aria-label="正文缩放比例" />
                     <el-button text size="small" aria-label="放大正文" :disabled="bodyZoom >= 160" @click="bodyZoom = Math.min(160, bodyZoom + 10)">+</el-button>
@@ -791,6 +781,7 @@
                 <div v-else class="result-main-empty">
                   <el-empty :description="selectedTechnicalLeaf ? '本节尚未编写' : '请选择章节'" :image-size="64" />
                 </div>
+                </Teleport>
               </template>
 
               <template v-else>
@@ -1467,6 +1458,8 @@
     </el-dialog>
 
 
+    <TechnicalSectionRevisionDialog ref="technicalRevisions" :project-id="selectedProject?.id" :node="selectedTechnicalLeaf" :outlines="technicalOutlines" :busy="isTechnicalRunningByBackend" @updated="loadTechnicalSolution" />
+
     <el-dialog v-model="technicalVersionDialogVisible" title="技术方案历史版本" width="960px" append-to-body class="version-dialog">
       <div class="version-layout">
         <div class="version-list-panel" v-loading="technicalVersionLoading">
@@ -1804,6 +1797,10 @@ import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref
 import { ElButton, ElCheckbox, ElInput, ElMessage, ElOption, ElSelect, ElTag } from '@/plugins/element-plus-api'
 import ImageLibraryPicker from '@/components/ImageLibraryPicker.vue'
 import SectionContentPreview from '@/components/SectionContentPreview.vue'
+import SectionVisualEditor from '@/components/SectionVisualEditor.vue'
+import {usePreviewFullscreen} from '@/utils/usePreviewFullscreen'
+import TechnicalSectionRevisionDialog from '@/components/TechnicalSectionRevisionDialog.vue'
+import {sectionRewriteSource} from '@/utils/sectionRewrite'
 import TechnicalExportStyleDialog from '@/components/TechnicalExportStyleDialog.vue'
 import BidTenderOriginalPreview from '@/views/dashboard/components/BidTenderOriginalPreview.vue'
 import BidHomeStructuredResult from '@/views/dashboard/components/BidHomeStructuredResult.vue'
@@ -1887,14 +1884,28 @@ const bodyPanelNarrow = ref(false)
 const outlineClosed = ref(new Set())
 const bodyTab = ref('outline')
 const bodyReference = ref(null)
+const technicalRevisions = ref(null)
+async function openTechnicalSectionAction(node) {
+  if (!sectionRewriteSource(node).trim()) return openTechnicalSectionDialog(node)
+  if (isTechnicalRunningByBackend.value || hasOtherAiTaskRunning.value) {
+    ElMessage.warning('已有生成任务正在执行，请等待完成后再重写')
+    return
+  }
+  await selectTechnicalLeaf(node)
+  if (selectedTechnicalLeaf.value !== node || technicalSectionContentEditMode.value) return
+  await nextTick()
+  technicalRevisions.value?.openRewrite(node)
+}
+
 const bodyZoom = ref(100)
 const bodyPaperWidth = ref(790)
 const bodyPreviewViewport = ref(null)
+const {fullscreen:bodyFullscreen,setFullscreen:setBodyFullscreen,toggleFullscreen:toggleBodyFullscreen}=usePreviewFullscreen(bodyPreviewViewport)
+watch([bodyWorkspace,()=>selectedProject.value?.id,()=>Boolean(selectedTechnicalLeafDisplayContent.value)],()=>{setBodyFullscreen(false)})
 const bodyCategories = computed(() => visibleHomeCategories(bodyReference.value))
 const bodyTabs = computed(() => [
   { id: 'outline', title: '目录' }, { id: 'source', title: '招标文件' },
-  ...bodyCategories.value.map(item => ({ id: item.id, title: item.title })),
-  { id: 'project', title: '标书信息' }
+  ...bodyCategories.value.map(item => ({ id: item.id, title: item.title }))
 ])
 const bodyCategory = computed(() => bodyCategories.value.find(item => item.id === bodyTab.value))
 

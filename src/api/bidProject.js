@@ -417,8 +417,8 @@ export function moveBidProjectTechnicalOutlineNode(projectId, outlineId, directi
 /**
  * AI标书：技术方案保存章节正文。
  */
-export function updateBidProjectTechnicalSectionContent(projectId, outlineId, content) {
-  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/section-content`, { content })
+export function updateBidProjectTechnicalSectionContent(projectId, outlineId, content, expectedContent) {
+  return request.put(`/bid-project/${requireProjectId(projectId)}/technical-solution/outline/${outlineId}/section-content`, { content, expectedContent })
 }
 
 /**
@@ -613,3 +613,20 @@ export async function previewBidProjectTechnicalExportStyle(id, data, signal) {
   return blob
 }
 
+
+export function getTechnicalRewriteDraft(projectId, outlineId) {
+  return request.get(`/bid-project/${projectId}/technical-solution/outline/${outlineId}/rewrite-draft`)
+}
+export function adoptTechnicalRewriteDraft(projectId, outlineId, draftId) {
+  return request.post(`/bid-project/${projectId}/technical-solution/outline/${outlineId}/rewrite-draft/${draftId}/adopt`)
+}
+export function discardTechnicalRewriteDraft(projectId, outlineId, draftId) {
+  return request.post(`/bid-project/${projectId}/technical-solution/outline/${outlineId}/rewrite-draft/${draftId}/discard`)
+}
+export function restoreTechnicalContentVersion(projectId, versionId, outlineId, restoreConfig = false) {
+  return request.post(`/bid-project/${projectId}/technical-solution/versions/${versionId}/restore-content`, null, { params: { outlineId, restoreConfig } })
+}
+
+export function listTechnicalSectionVersions(projectId, outlineId) {
+  return request.get(`/bid-project/${projectId}/technical-solution/outline/${outlineId}/versions`)
+}

@@ -22,7 +22,7 @@
       <blockquote v-else-if="block.type === 'quote'" class="section-render-quote"><InlineContent :segments="block.segments"/></blockquote>
       <hr v-else-if="block.type === 'rule'" class="section-render-rule"/>
 
-      <figure v-else-if="block.type === 'image'" class="section-render-image-card" :class="`align-${block.align || 'center'}`">
+      <figure v-else-if="block.type === 'image'" class="section-render-image-card" :class="`align-${block.align || 'center'}`" :data-image-source="block.rawLine" :contenteditable="visualEditing ? 'false' : undefined">
         <div v-if="editable && block.fileId" class="section-render-image-toolbar">
           <span class="toolbar-label">图片设置</span>
           <el-button size="small" text :type="Number(block.width || 0) === 420 ? 'primary' : ''" @click="emit('update-width', { block, width: 420 })">小</el-button>
@@ -61,6 +61,7 @@ import { parseSectionContent } from '@/utils/sectionContentBlocks'
 import { downloadFileBlob } from '@/api/file'
 
 const props = defineProps({
+  visualEditing: { type: Boolean, default: false },
   content: {
     type: String,
     default: ''

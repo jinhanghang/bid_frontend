@@ -42,7 +42,8 @@
             <el-collapse-item name="other" title="编排与颜色">
               <div class="setting-row"><el-checkbox v-model="form.cover">添加封面</el-checkbox><el-checkbox v-model="form.tableOfContents">添加目录</el-checkbox><el-checkbox v-model="form.chapterPageBreak">每章另起一页</el-checkbox></div>
               <div class="setting-row"><label>允许空白页</label><el-switch v-model="form.blankPages"/></div>
-              <div class="setting-row"><label>文字与图表颜色</label><el-select v-model="form.colorMode"><el-option value="monochrome" label="纯黑白"/><el-option value="grayscale" label="黑字、灰度图"/><el-option value="color" label="保留颜色"/></el-select></div>
+              <div class="setting-row"><label>文字与图表颜色</label><el-select v-model="form.colorMode"><el-option value="monochrome" label="纯黑白（增强文字）"/><el-option value="grayscale" label="黑字、灰度图（保留细节）"/><el-option value="color" label="保留颜色"/></el-select></div>
+              <p class="style-difference">纯黑白仅保留黑白两种颜色；扫描件、照片若允许使用灰度图，可选择“黑字、灰度图”保留细节。请以招标格式要求为准。</p>
               <div class="setting-row"><label>页数上限</label><el-input-number v-model="form.maxPages" :min="0" :max="10000" controls-position="right"/><span>页（0为不限）</span></div>
             </el-collapse-item>
             <el-collapse-item name="source" title="解析原文"><div v-if="sourceQuotes.length" class="source-quotes"><p v-for="(quote,index) in sourceQuotes" :key="index">{{ quote }}</p></div><p v-else>当前解析结果未提供格式原文。</p></el-collapse-item>

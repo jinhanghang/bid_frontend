@@ -3902,9 +3902,6 @@
 .body-outline-tools :deep(.el-button) { margin: 0; }
 .body-reference { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px; }
 .body-reference :deep(.original-preview) { min-height: 320px; height: 100%; }
-.body-project-info { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px; }
-.body-project-info dd { margin: 0; overflow-wrap: anywhere; }
-.body-project-info dt { color: #64647a; }
 .body-split :deep(.body-branch-toggle) {
   min-width: 20px;
   border: 0;
@@ -4019,3 +4016,47 @@
 .body-split .section-preview-head-inline .section-preview-actions {flex:0 0 auto;width:auto;flex-wrap:nowrap;}
 .body-split .section-preview-head-inline .section-preview-actions :deep(.el-button) {margin-left:0;}
 @media(max-width:760px){.body-split .section-preview-head.section-preview-head-inline{gap:8px;padding:10px 12px;flex-wrap:wrap}.body-split .section-preview-head-inline .section-preview-title{flex-basis:60%}}
+
+/* Editor and preview share the same scroll container and paper geometry. */
+.section-editor-tip { flex: 0 0 auto; margin: 0; padding: 4px 16px; }
+.body-preview-viewport { overscroll-behavior: contain; }
+.body-preview-paper :deep(.visual-editor-content) { font: inherit; color: inherit; }
+
+.body-preview-paper { --section-body-font-size: 17px; --section-body-line-height: 1.9; --section-body-color: #0f2747; }
+.body-preview-paper :deep(.section-content-preview) { font-size: var(--section-body-font-size); line-height: var(--section-body-line-height); color: var(--section-body-color); overflow: visible; padding: 0; margin: 0; }
+
+/* Teleport the same preview/editor DOM above the workbench, without creating a second editor. */
+.section-preview.body-preview-fullscreen {
+  position: fixed; inset: 0; z-index: 1900; width: 100vw; height: 100vh; height: 100dvh;
+  max-width: none; max-height: none; display: flex; flex-direction: column;
+  box-sizing: border-box; overflow: hidden; margin: 0; padding: 0; border: 0; border-radius: 0; background: white;
+}
+.body-preview-fullscreen .section-preview-head {
+  flex: 0 0 auto; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  align-items: center; gap: 12px; min-height: 46px; box-sizing: border-box;
+  padding: 7px 16px; margin: 0; border-bottom: 1px solid #ece9f4;
+}
+.body-preview-fullscreen .section-preview-title { min-width: 0; width: auto; }
+.body-preview-fullscreen .section-preview-title h3 {
+  margin: 0; font-size: 18px; line-height: 1.4; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.body-preview-fullscreen .section-preview-meta {
+  justify-self: center; margin: 0; flex-wrap: nowrap; white-space: nowrap; gap: 6px;
+}
+.body-preview-fullscreen .section-preview-actions {
+  justify-self: end; width: auto; display: flex; flex-wrap: nowrap; gap: 6px; white-space: nowrap;
+}
+.body-preview-fullscreen .section-preview-actions :deep(.el-button) { margin-left: 0; }
+.body-preview-fullscreen .section-editor-tip {
+  margin: 0; padding: 4px 16px; line-height: 1.4; font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.body-preview-fullscreen .body-preview-viewport { flex: 1 1 0; min-height: 0; overflow: auto; }
+.body-preview-fullscreen .body-zoom-bar { flex: 0 0 auto; }
+.preview-fullscreen-toggle { margin-right: auto !important; }
+.preview-fullscreen-toggle span { font-size: 18px; margin-right: 5px; }
+@media(max-width:540px) {
+  .body-preview-fullscreen .section-preview-head { grid-template-columns: minmax(0,1fr) auto; gap: 6px 8px; padding: 6px 10px; }
+  .body-preview-fullscreen .section-preview-actions { grid-column: 1 / -1; }
+}

@@ -304,10 +304,12 @@ const technicalStreamingOutlineId = ref(null)
 const technicalSectionContentEditMode = ref(false)
 
 const technicalSectionContentDraft = ref('')
+const technicalSectionContentBase = ref('')
 
 const technicalSectionContentSaving = ref(false)
 
 const technicalSectionEditorRef = ref(null)
+let technicalImageInsertTarget = null
 
 const imagePickerVisible = ref(false)
 
@@ -1471,8 +1473,18 @@ onMounted(async () => {
 async function loadBodyEntry() {
   bodyEntryState.value = 'loading'
   try {
-    await selectProject(bodyEntryProjectId, false)
-    await openDocumentByType('TECHNICAL_SOLUTION')
+    // selectProject synchronously sets the current project and clears old state before
+    // its first await. Start detail retrieval immediately, without waiting for workflow.
+    const projectReady = selectProject(bodyEntryProjectId, false)
+    const [, solution] = await Promise.all([projectReady, loadTechnicalSolution()])
+    if (String(selectedProject.value?.id || '') !== String(bodyEntryProjectId)) return
+    if (solution) {
+      hydrateTechnicalSolutionForm()
+      activeDoc.value = 'TECHNICAL_SOLUTION'
+    } else {
+      // First entry with no existing solution still needs the initialization endpoint.
+      await openDocumentByType('TECHNICAL_SOLUTION')
+    }
     bodyEntryState.value = activeDoc.value === 'TECHNICAL_SOLUTION' && technicalGeneratedView.value ? 'ready' : 'error'
   } catch (_) {
     bodyEntryState.value = 'error'
@@ -4323,6 +4335,7 @@ function normalizeSectionContent(value) {
 function startEditTechnicalSectionContent() {
   if (!canEditTechnicalSectionContent.value) return
   technicalSectionContentDraft.value = selectedTechnicalLeafContent.value || ''
+  technicalSectionContentBase.value = selectedTechnicalLeafContent.value || ''
   technicalSectionContentEditMode.value = true
 }
 
@@ -4344,6 +4357,7 @@ async function cancelEditTechnicalSectionContent() {
   const canLeave = await confirmDiscardTechnicalSectionContentChanges()
   if (!canLeave) return
   technicalSectionContentDraft.value = selectedTechnicalLeafContent.value || ''
+  technicalSectionContentBase.value = selectedTechnicalLeafContent.value || ''
   technicalSectionContentEditMode.value = false
 }
 
@@ -4643,6 +4657,8 @@ function openTechnicalImagePicker() {
   if (!technicalSectionContentEditMode.value) {
     startEditTechnicalSectionContent()
   }
+  technicalImageInsertTarget = { projectId: selectedProject.value?.id, outlineId: selectedTechnicalLeaf.value?.id }
+  technicalSectionEditorRef.value?.rememberSelection?.()
   imagePickerVisible.value = true
 }
 
@@ -4657,29 +4673,24 @@ async function insertTechnicalImage(payload) {
     ElMessage.warning('请先选择要插图的章节')
     return
   }
+  if (technicalImageInsertTarget && (technicalImageInsertTarget.projectId !== selectedProject.value?.id || technicalImageInsertTarget.outlineId !== selectedTechnicalLeaf.value?.id)) {
+    ElMessage.warning('章节已切换，请在目标章节重新选择配图')
+    return
+  }
+  if (technicalSectionContentEditMode.value && technicalSectionEditorRef.value?.insertImage) {
+    await technicalSectionEditorRef.value.insertImage(marker)
+    ElMessage.success('配图已插入草稿，点击保存后生效')
+    return
+  }
   const current = String(technicalSectionContentEditMode.value ? technicalSectionContentDraft.value : selectedTechnicalLeafDisplayContent.value || '')
   const prefix = current.trimEnd()
   const nextContent = `${prefix}${prefix ? '\n\n' : ''}${marker}\n`
   technicalSectionContentDraft.value = nextContent
   technicalSectionContentEditMode.value = true
 
-  // 配图要立即保存到章节正文，才算真正绑定当前章节，并且 Word 导出才能稳定带图。
-  technicalSectionContentSaving.value = true
-  try {
-    await updateBidProjectTechnicalSectionContent(selectedProject.value.id, selectedTechnicalLeaf.value.id, normalizeSectionContent(nextContent))
-    await loadTechnicalSolution()
-    const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
-    selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
-    technicalSectionContentEditMode.value = false
-    ElMessage.success('配图已插入并保存到当前章节')
-  } catch (e) {
-    // 保存失败时不丢用户操作，保留编辑草稿，用户可以手动点击保存。
-    technicalSectionContentEditMode.value = true
-    nextTick(() => focusTechnicalSectionEditor(true))
-    ElMessage.warning('配图已插入编辑草稿，但自动保存失败，请手动保存本章')
-  } finally {
-    technicalSectionContentSaving.value = false
-  }
+  nextTick(() => focusTechnicalSectionEditor(true))
+  ElMessage.success('配图已插入草稿，点击保存后生效')
+
 }
 
 function buildImageMarker(payload) {
@@ -4856,6 +4867,7 @@ async function restoreTechnicalImagesIfNeeded(nodeId, markers = []) {
 }
 
 function focusTechnicalSectionEditor(moveToEnd = false) {
+  if (technicalSectionEditorRef.value?.focus) { technicalSectionEditorRef.value.focus(moveToEnd); return }
   const input = technicalSectionEditorRef.value?.textarea || technicalSectionEditorRef.value?.$el?.querySelector?.('textarea')
   if (!input) return
   input.focus()
@@ -4917,7 +4929,7 @@ async function saveTechnicalSectionContent() {
   }
   technicalSectionContentSaving.value = true
   try {
-    await updateBidProjectTechnicalSectionContent(selectedProject.value?.id, selectedTechnicalLeaf.value.id, content)
+    await updateBidProjectTechnicalSectionContent(selectedProject.value?.id, selectedTechnicalLeaf.value.id, content, technicalSectionContentBase.value)
     await loadTechnicalSolution()
     const latest = findTechnicalOutlineNodeById(technicalOutlines.value, selectedTechnicalLeaf.value.id)
     selectedTechnicalLeaf.value = latest || selectedTechnicalLeaf.value
