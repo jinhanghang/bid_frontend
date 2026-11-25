@@ -1,6 +1,6 @@
 <template>
   <section class="home-parse-workspace" aria-label="首页招标文件解析">
-    <header class="workspace-heading"><div><button type="button" class="back-link" @click="requestBack"><el-icon><ArrowLeft /></el-icon> 返回首页</button><h1 :title="view.projectName">{{ view.projectName || '招标文件解析' }}</h1></div><span class="overall-state" :class="{ failed: view.status === 'FAILED' }"><el-icon v-if="running" class="rotating"><Loading /></el-icon><el-icon v-else-if="view.status === 'SUCCESS'"><CircleCheck /></el-icon>{{ phaseLabel }}</span></header>
+    <header class="workspace-heading"><div><button type="button" class="back-link" :disabled="outlineBusy || outlineSaving" @click="requestBack"><el-icon><ArrowLeft /></el-icon> 返回首页</button><h1 :title="view.projectName">{{ view.projectName || '招标文件解析' }}</h1></div><span class="overall-state" :class="{ failed: view.status === 'FAILED' }"><el-icon v-if="running" class="rotating"><Loading /></el-icon><el-icon v-else-if="view.status === 'SUCCESS'"><CircleCheck /></el-icon>{{ phaseLabel }}</span></header>
     <div v-if="loadError" class="connection-warning" role="alert">解析状态暂时无法获取，已保留当前内容。<button type="button" @click="reconnect">重新连接</button></div>
     <div v-if="view.reviewState === 'PARTIAL'" class="partial-warning" role="alert">部分内容未完成识别或未通过原文核对，请结合原文件检查。<button type="button" :disabled="starting" @click="retryParse">重新解析</button></div>
     <div v-if="categories.length && ['FAILED', 'CANCELED', 'CANCELLED'].includes(view.status)" class="partial-warning" role="alert">本次解析未完成，已识别内容仍保留。<button type="button" :disabled="starting" @click="retryParse">重新解析</button></div>
@@ -75,7 +75,7 @@
         :disabled="outlineBusy || outlineSaving" @click="writeBody">编写正文</el-button>
       <div>
         <el-button v-if="!outlineMode && view.status === 'SUCCESS' && categories.length" :loading="starting" @click="retryParse">重新解析</el-button>
-        <el-button :disabled="outlineSaving" @click="outlineMode ? leaveOutline() : requestBack()">上一步</el-button>
+        <el-button :disabled="outlineBusy || outlineSaving" @click="outlineMode ? leaveOutline() : requestBack()">上一步</el-button>
       </div>
     </footer>
   </section>
@@ -345,7 +345,7 @@ function findOutlineNode(nodes, id) {
 }
 
 async function leaveOutline() {
-  if (outlineSaving.value) return
+  if (outlineBusy.value || outlineSaving.value) return
   if (outlineDirty.value) {
     try { await ElMessageBox.confirm('目录有未保存的修改，确定返回吗？', '返回解析页') } catch (_) { return }
   }
@@ -426,6 +426,7 @@ async function retryParse() {
   await beginParse(true)
 }
 async function requestBack() {
+  if (outlineBusy.value || outlineSaving.value) return
   if (outlineMode.value) return leaveOutline()
   if (editing.value && editContent.value !== activeCategory.value?.content) {
     try { await ElMessageBox.confirm('当前修改尚未保存，是否放弃修改并返回首页？', '返回首页', { type: 'warning' }) } catch (_) { return }
@@ -513,4 +514,8 @@ onBeforeUnmount(() => { outlinePoller?.stop(); disposed = true; requestSequence 
 .outline-chapter-heading input{flex:1 1 140px;font-size:14px;font-weight:600}
 .outline-notice{padding:16px 24px;color:#6e6482}
 @media(max-width:760px){.outline-panel{min-height:360px}.outline-editor,.outline-toolbar{padding-inline:12px}.workspace-footer{gap:8px}}
+</style>
+
+<style scoped>
+.back-link:disabled{cursor:not-allowed;opacity:.5}
 </style>
